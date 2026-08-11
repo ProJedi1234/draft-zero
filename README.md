@@ -64,4 +64,19 @@ reads the file itself — drizzle-kit needs no flags.
 - `lib/db/` — `schema.ts` (Drizzle tables), `client.ts` (pool), `queries.ts` (reads), `mappers.ts` (row → domain)
 - `lib/actions/` — server actions (the only writers)
 - `lib/generation/` — provider interface + mock provider
+- `lib/import/` — `novelai.ts` reads NovelAI `.scenario` files (see below)
 - `docs/` — milestone specs; `MILESTONE2.md` predates the Postgres move
+
+## Importing NovelAI scenarios
+
+The upload icon beside the sidebar's Library heading takes a NovelAI
+`.scenario` file and turns it into a story: prompt → the opening passage,
+`context[0]`/`context[1]` → memory and author's note, tags → genre, and the
+scenario's lorebook → that story's lorebook. `${…}` placeholders are collected
+into the import dialog and filled before anything is written.
+
+Not imported: NovelAI's model, repetition penalties and `max_length` (its
+sampler has no OpenRouter equivalent — temperature and top-p carry over), user
+scripts, ephemeral context, phrase-bias and banned-sequence groups. Regex
+lorebook keys are flattened to plain text, since trigger matching here is
+substring-only. The dialog lists whatever it dropped before you commit.

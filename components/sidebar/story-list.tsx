@@ -11,6 +11,7 @@ import {
   SidebarGroupLabel,
   SidebarMenu,
 } from "@/components/ui/sidebar"
+import { ImportScenarioButton } from "@/components/sidebar/import-scenario-button"
 import {
   NewStoryButton,
   useCreateStory,
@@ -54,6 +55,7 @@ export function StoryList({
         {isPending ? <Loader2 className="animate-spin" /> : <Plus />}
         <span className="sr-only">New story</span>
       </SidebarGroupAction>
+      <ImportScenarioButton />
       <SidebarGroupContent>
         {stories.length === 0 ? (
           <div className="px-2 py-6 text-center">

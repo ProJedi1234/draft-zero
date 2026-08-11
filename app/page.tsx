@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { Feather } from "lucide-react"
 
+import { ImportScenarioButton } from "@/components/sidebar/import-scenario-button"
 import { NewStoryButton } from "@/components/sidebar/new-story-button"
 import {
   Empty,
@@ -32,7 +33,10 @@ export default async function Page() {
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <NewStoryButton size="sm" />
+          <div className="flex items-center gap-2">
+            <NewStoryButton size="sm" />
+            <ImportScenarioButton variant="button" />
+          </div>
         </EmptyContent>
       </Empty>
     </div>
