@@ -8,6 +8,7 @@ import { lorebookEntries } from "@/lib/db/schema"
 import type { ActionResult, NewLorebookEntry } from "@/lib/types"
 
 export async function createLorebookEntry(
+  storyId: string,
   input: NewLorebookEntry
 ): Promise<ActionResult<{ id: string }>> {
   const name = input.name.trim()
@@ -19,6 +20,7 @@ export async function createLorebookEntry(
 
   await db.insert(lorebookEntries).values({
     id,
+    storyId,
     name,
     category: input.category,
     keysJson: JSON.stringify(input.keys ?? []),

@@ -27,7 +27,7 @@ export default async function StoryPage({ params }: StoryPageProps) {
   const { storyId } = await params
   const [story, lorebookEntries, models] = await Promise.all([
     getStory(storyId),
-    listLorebookEntries(),
+    listLorebookEntries(storyId),
     listModels(),
   ])
 

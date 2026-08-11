@@ -60,18 +60,24 @@ export async function getStory(id: string): Promise<Story | null> {
       .from(storyEntries)
       .where(eq(storyEntries.storyId, id))
       .orderBy(asc(storyEntries.position)),
-    db.select().from(lorebookEntries),
+    db
+      .select()
+      .from(lorebookEntries)
+      .where(eq(lorebookEntries.storyId, id)),
   ])
 
   return toStory(storyRow, entryRows, lorebookRows)
 }
 
-/** All lorebook entries, ordered name ASC. */
-export async function listLorebookEntries(): Promise<LorebookEntry[]> {
+/** One story's lorebook entries, ordered name ASC. */
+export async function listLorebookEntries(
+  storyId: string
+): Promise<LorebookEntry[]> {
   const db = await getDb()
   const rows = await db
     .select()
     .from(lorebookEntries)
+    .where(eq(lorebookEntries.storyId, storyId))
     .orderBy(asc(lorebookEntries.name))
   return rows.map(toLorebookEntry)
 }

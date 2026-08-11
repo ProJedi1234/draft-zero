@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
-import { stories, storyEntries } from "@/lib/db/schema"
+import { lorebookEntries, stories, storyEntries } from "@/lib/db/schema"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type { ActionResult, GenerationSettings } from "@/lib/types"
 
@@ -98,7 +98,7 @@ export async function updateStoryMeta(
   return { ok: true, data: null }
 }
 
-/** Full copy (entries + settings), title suffixed " (copy)", fresh ids/timestamps. */
+/** Full copy (entries + lorebook + settings), title suffixed " (copy)", fresh ids/timestamps. */
 export async function duplicateStory(
   id: string
 ): Promise<ActionResult<{ id: string }>> {
@@ -112,11 +112,17 @@ export async function duplicateStory(
 
   if (!source) return { ok: false, error: "Story not found." }
 
-  const entries = await db
-    .select()
-    .from(storyEntries)
-    .where(eq(storyEntries.storyId, id))
-    .orderBy(asc(storyEntries.position))
+  const [entries, lore] = await Promise.all([
+    db
+      .select()
+      .from(storyEntries)
+      .where(eq(storyEntries.storyId, id))
+      .orderBy(asc(storyEntries.position)),
+    db
+      .select()
+      .from(lorebookEntries)
+      .where(eq(lorebookEntries.storyId, id)),
+  ])
 
   const now = new Date().toISOString()
   const copyId = crypto.randomUUID()
@@ -142,14 +148,28 @@ export async function duplicateStory(
     )
   }
 
+  // The lorebook is per-story, so a copy needs its own copy of the lore.
+  if (lore.length > 0) {
+    await db.insert(lorebookEntries).values(
+      lore.map((entry) => ({
+        ...entry,
+        id: crypto.randomUUID(),
+        storyId: copyId,
+        createdAt: now,
+        updatedAt: now,
+      }))
+    )
+  }
+
   revalidatePath("/", "layout")
   return { ok: true, data: { id: copyId } }
 }
 
 export async function deleteStory(id: string): Promise<ActionResult> {
   const db = await getDb()
-  // Child entries go with it: Postgres enforces the ON DELETE CASCADE declared
-  // on story_entries.story_id, so no explicit child delete is needed.
+  // Child entries and lorebook entries go with it: Postgres enforces the
+  // ON DELETE CASCADE declared on both story_id columns, so no explicit child
+  // delete is needed.
   const deleted = await db
     .delete(stories)
     .where(eq(stories.id, id))

@@ -22,7 +22,7 @@ import type { LorebookEntry, Story } from "@/lib/types"
  *
  * Matching is recomputed here (rather than reading `story.activeLorebookEntryIds`)
  * so each card can surface the trigger key that pulled the entry in. Read-only:
- * enabling, editing and deleting all live in the /lorebook route.
+ * enabling, editing and deleting all live in this story's lorebook route.
  */
 export function LoreTab({
   story,
@@ -50,7 +50,7 @@ export function LoreTab({
         </EmptyHeader>
         <EmptyContent>
           <Link
-            href="/lorebook"
+            href={`/story/${story.id}/lorebook`}
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
             Open lorebook
@@ -73,7 +73,7 @@ export function LoreTab({
       </div>
 
       <Link
-        href="/lorebook"
+        href={`/story/${story.id}/lorebook`}
         className={buttonVariants({ variant: "ghost", size: "xs" })}
       >
         Manage lorebook

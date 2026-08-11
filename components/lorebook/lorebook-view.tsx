@@ -1,8 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { NotebookText } from "lucide-react"
+import Link from "next/link"
+import { ArrowLeft, NotebookText } from "lucide-react"
 
+import { buttonVariants } from "@/components/ui/button"
 import {
   Empty,
   EmptyDescription,
@@ -12,6 +14,11 @@ import {
 } from "@/components/ui/empty"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import type { LorebookCategory, LorebookEntry } from "@/lib/types"
 
 import { LorebookEntryEditor } from "@/components/lorebook/lorebook-entry-editor"
@@ -40,7 +47,16 @@ function nextSelection(
   return current[0]?.id ?? null
 }
 
-export function LorebookView({ entries }: { entries: LorebookEntry[] }) {
+export function LorebookView({
+  storyId,
+  storyTitle,
+  entries,
+}: {
+  /** Lore is scoped to this story; every entry here belongs to it. */
+  storyId: string
+  storyTitle: string
+  entries: LorebookEntry[]
+}) {
   const [selectedId, setSelectedId] = useState<string | null>(
     entries[0]?.id ?? null
   )
@@ -72,12 +88,27 @@ export function LorebookView({ entries }: { entries: LorebookEntry[] }) {
     <div className="flex h-app flex-col">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger />
-        <h1 className="text-sm font-medium">Lorebook</h1>
-        <span className="text-xs text-muted-foreground">
-          {entries.length} {entries.length === 1 ? "entry" : "entries"}
+        <Tooltip>
+          {/* The trigger renders the anchor directly. Wrapping it in <Button>
+              instead would make Base UI's button expect native <button>
+              semantics from an <a>, which it warns about. */}
+          <TooltipTrigger
+            className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+            aria-label="Back to story"
+            render={<Link href={`/story/${storyId}`} />}
+          >
+            <ArrowLeft className="size-4" />
+          </TooltipTrigger>
+          <TooltipContent>Back to story</TooltipContent>
+        </Tooltip>
+        <h1 className="truncate text-sm font-medium">{storyTitle}</h1>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          Lorebook · {entries.length}{" "}
+          {entries.length === 1 ? "entry" : "entries"}
         </span>
         <div className="flex-1" />
         <NewEntryDialog
+          storyId={storyId}
           onCreated={(id) => {
             // Clear the filters so the new entry is actually visible in the list.
             setCategory("all")

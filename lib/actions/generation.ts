@@ -44,7 +44,7 @@ export async function prepareGeneration(
 
   const [story, lorebookEntries] = await Promise.all([
     getStory(storyId),
-    listLorebookEntries(),
+    listLorebookEntries(storyId),
   ])
   const openRouterKey = resolveOpenRouterKey()
 

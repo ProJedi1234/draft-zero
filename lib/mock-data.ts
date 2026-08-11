@@ -89,12 +89,14 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
 }
 
 // ---------------------------------------------------------------------------
-// Lorebook
+// Lorebook — every fixture entry belongs to the Cartographer draft. Lore is
+// scoped per story, so the other seeded stories start with an empty lorebook.
 // ---------------------------------------------------------------------------
 
 export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   {
     id: "lore-char-maren",
+    storyId: "story-cartographer",
     name: "Maren Kestrel",
     category: "character",
     keys: ["Maren", "Kestrel", "the cartographer"],
@@ -108,6 +110,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   },
   {
     id: "lore-char-oswin",
+    storyId: "story-cartographer",
     name: "Oswin Pyke",
     category: "character",
     keys: ["Oswin", "Pyke", "ferryman"],
@@ -121,6 +124,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   },
   {
     id: "lore-char-elathe",
+    storyId: "story-cartographer",
     name: "Elathe, the Ithren",
     category: "character",
     keys: ["Elathe", "river god", "the Ithren", "the river"],
@@ -134,6 +138,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   },
   {
     id: "lore-loc-graywater",
+    storyId: "story-cartographer",
     name: "Graywater Crossing",
     category: "location",
     keys: ["Graywater", "the Crossing"],
@@ -147,6 +152,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   },
   {
     id: "lore-loc-saltmarket",
+    storyId: "story-cartographer",
     name: "The Salt Market",
     category: "location",
     keys: ["Salt Market", "saltmarket"],
@@ -160,6 +166,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   },
   {
     id: "lore-loc-undermap",
+    storyId: "story-cartographer",
     name: "The Undermap Archive",
     category: "location",
     keys: ["Undermap", "archive"],
@@ -173,6 +180,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   },
   {
     id: "lore-faction-guild",
+    storyId: "story-cartographer",
     name: "The Surveyors' Guild",
     category: "faction",
     keys: ["Guild", "surveyors"],
@@ -186,6 +194,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   },
   {
     id: "lore-faction-drowned",
+    storyId: "story-cartographer",
     name: "Court of the Drowned",
     category: "faction",
     keys: ["Drowned", "the Court"],
@@ -199,6 +208,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   },
   {
     id: "lore-item-needle",
+    storyId: "story-cartographer",
     name: "The Bone Needle",
     category: "item",
     keys: ["bone needle", "needle", "compass"],
@@ -212,6 +222,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   },
   {
     id: "lore-event-flood",
+    storyId: "story-cartographer",
     name: "The Third Flood",
     category: "event",
     keys: ["Third Flood", "the flood"],
@@ -225,6 +236,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   },
   {
     id: "lore-concept-debt",
+    storyId: "story-cartographer",
     name: "Cartographer's Debt",
     category: "concept",
     keys: ["debt", "twelfth map", "payment"],

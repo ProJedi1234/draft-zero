@@ -68,6 +68,8 @@ export type LorebookCategory =
 
 export interface LorebookEntry {
   id: string
+  /** Owning story. Lore is scoped per story — there is no global lorebook. */
+  storyId: string
   name: string
   category: LorebookCategory
   /** Trigger keywords that activate this entry when seen in recent story text. */
@@ -85,10 +87,10 @@ export interface LorebookEntry {
   updatedAt: string
 }
 
-/** Input for creating a lorebook entry. */
+/** Input for creating a lorebook entry. The owning story is passed separately. */
 export type NewLorebookEntry = Omit<
   LorebookEntry,
-  "id" | "createdAt" | "updatedAt"
+  "id" | "storyId" | "createdAt" | "updatedAt"
 >
 
 /** App-level settings (settings page). */

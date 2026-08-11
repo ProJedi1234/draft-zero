@@ -25,8 +25,11 @@ import {
 } from "@/components/lorebook/lorebook-entry-editor"
 
 export function NewEntryDialog({
+  storyId,
   onCreated,
 }: {
+  /** The story the new entry belongs to. */
+  storyId: string
   /** Fired after a successful create so the view can select the new entry. */
   onCreated?: (id: string) => void
 }) {
@@ -49,7 +52,7 @@ export function NewEntryDialog({
   function handleCreate() {
     if (draft.name.trim() === "") return
     startTransition(async () => {
-      const res = await createLorebookEntry({
+      const res = await createLorebookEntry(storyId, {
         ...draft,
         name: draft.name.trim(),
       })

@@ -62,6 +62,10 @@ export const lorebookEntries = pgTable(
   "lorebook_entries",
   {
     id: text("id").primaryKey(),
+    /** Lore is scoped to one story; there is no global lorebook. */
+    storyId: text("story_id")
+      .notNull()
+      .references(() => stories.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     category: text("category").notNull(),
     /** JSON-serialized string[] of trigger keys. */
@@ -73,7 +77,9 @@ export const lorebookEntries = pgTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("lorebook_entries_name_idx").on(table.name)]
+  (table) => [
+    index("lorebook_entries_story_id_name_idx").on(table.storyId, table.name),
+  ]
 )
 
 /** Single-row table; `id` is always 1. */

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { NotebookText, Settings2 } from "lucide-react"
+import { Settings2 } from "lucide-react"
 
 import {
   SidebarGroup,
@@ -13,10 +13,9 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-const items = [
-  { title: "Lorebook", href: "/lorebook", icon: NotebookText },
-  { title: "Settings", href: "/settings", icon: Settings2 },
-]
+// No Lorebook entry: lore is scoped to a story, so it is reached from the
+// story header (/story/[storyId]/lorebook), not from the global sidebar.
+const items = [{ title: "Settings", href: "/settings", icon: Settings2 }]
 
 export function NavWorkspace() {
   const pathname = usePathname()

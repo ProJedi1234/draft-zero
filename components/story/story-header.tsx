@@ -1,12 +1,19 @@
 "use client"
 
-import { CircleAlert, CircleCheck, Loader2, PanelRight } from "lucide-react"
+import Link from "next/link"
+import {
+  CircleAlert,
+  CircleCheck,
+  Loader2,
+  NotebookText,
+  PanelRight,
+} from "lucide-react"
 
 import type { Story } from "@/lib/types"
 import { formatWordCount } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useSaveStatus } from "@/hooks/use-autosave"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import {
   Tooltip,
@@ -68,6 +75,19 @@ export function StoryHeader({
       </span>
       <div className="flex-1" />
       <SaveStatusChip />
+      <Tooltip>
+        {/* The trigger renders the anchor directly. Wrapping it in <Button>
+            instead would make Base UI's button expect native <button>
+            semantics from an <a>, which it warns about. */}
+        <TooltipTrigger
+          className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+          aria-label="Open lorebook"
+          render={<Link href={`/story/${story.id}/lorebook`} />}
+        >
+          <NotebookText className="size-4" />
+        </TooltipTrigger>
+        <TooltipContent>Lorebook</TooltipContent>
+      </Tooltip>
       {/* Below lg the inspector lives in a sheet; at lg+ it's a toggleable side panel. */}
       <Tooltip>
         <TooltipTrigger

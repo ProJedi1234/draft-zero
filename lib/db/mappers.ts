@@ -72,6 +72,7 @@ export function toGenerationSettings(row: StoryRow): GenerationSettings {
 export function toLorebookEntry(row: LorebookEntryRow): LorebookEntry {
   return {
     id: row.id,
+    storyId: row.storyId,
     name: row.name,
     category: row.category as LorebookCategory,
     keys: parseKeys(row.keysJson),
@@ -102,7 +103,7 @@ export function toStorySummary(
 
 /**
  * Full domain story. `entryRows` must already be ordered by position ASC.
- * `lorebookRows` is the whole lorebook — active ids are recomputed by real
+ * `lorebookRows` is this story's lorebook — active ids are recomputed by real
  * trigger matching against the recent story text.
  */
 export function toStory(
