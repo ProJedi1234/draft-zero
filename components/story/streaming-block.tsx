@@ -1,12 +1,16 @@
 // components/story/streaming-block.tsx — In-flight prose.
 //
 // Typography is deliberately identical to a generated StoryEntryBlock (same
-// wrapper padding, same serif spec, same paragraph rhythm) so that when the
-// persisted entry replaces this block there is no layout shift — only the
-// hover action cluster appears.
+// wrapper padding, same serif spec, same paragraph rhythm) because both render
+// through <ProseParagraph>, so when the persisted entry replaces this block
+// there is no layout shift — only the hover action cluster appears.
+//
+// Inline markdown is parsed on every chunk. A half-arrived `**bol` has no closer
+// yet, so it renders as literal text and snaps to bold when the closer lands;
+// nothing flickers because an unterminated delimiter is never markup.
 
-const PARAGRAPH_CLASS =
-  "font-serif text-[1.0625rem] leading-8 text-foreground [&:not(:first-child)]:mt-5"
+import { ProseParagraph } from "@/components/story/prose"
+import { toParagraphs } from "@/lib/markdown"
 
 function Caret() {
   return (
@@ -31,7 +35,7 @@ export function StreamingBlock({
   text: string
   pending: boolean
 }) {
-  const paragraphs = text === "" ? [] : text.split("\n\n")
+  const paragraphs = toParagraphs(text)
 
   return (
     <div
@@ -41,15 +45,14 @@ export function StreamingBlock({
       className="relative -mx-4 px-4 py-3"
     >
       {paragraphs.length === 0 ? (
-        <p className={PARAGRAPH_CLASS}>
+        <ProseParagraph text="">
           <Caret />
-        </p>
+        </ProseParagraph>
       ) : (
         paragraphs.map((paragraph, i) => (
-          <p key={i} className={PARAGRAPH_CLASS}>
-            {paragraph}
+          <ProseParagraph key={i} text={paragraph}>
             {i === paragraphs.length - 1 && <Caret />}
-          </p>
+          </ProseParagraph>
         ))
       )}
     </div>

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { CanvasEmptyState } from "@/components/story/canvas-empty-state"
+import { Prose } from "@/components/story/prose"
 import { StoryEntryBlock } from "@/components/story/story-entry-block"
 import { StreamingBlock } from "@/components/story/streaming-block"
 import type { GenerationStatus } from "@/hooks/use-generation"
@@ -170,14 +171,7 @@ export function StoryCanvas({
                   data-source="user"
                   className="relative -mx-4 border-l-2 border-primary/40 px-4 py-3"
                 >
-                  {optimisticUserText.split("\n\n").map((paragraph, i) => (
-                    <p
-                      key={i}
-                      className="font-serif text-[1.0625rem] leading-8 text-foreground [&:not(:first-child)]:mt-5"
-                    >
-                      {paragraph}
-                    </p>
-                  ))}
+                  <Prose text={optimisticUserText} />
                 </div>
               )}
 

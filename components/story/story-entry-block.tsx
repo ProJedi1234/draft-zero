@@ -23,6 +23,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { PassageEditor } from "@/components/story/passage-editor"
+import { Prose } from "@/components/story/prose"
 
 /**
  * Memoised: a generation pushes ~40 chunk updates through the canvas in about a
@@ -45,7 +46,6 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
   const [confirmOpen, setConfirmOpen] = React.useState(false)
   const [isDeleting, startDeleting] = React.useTransition()
 
-  const paragraphs = entry.text.split("\n\n")
   const locked = busy || editing || isDeleting
 
   function handleDelete() {
@@ -103,14 +103,7 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
           onDone={() => setEditing(false)}
         />
       ) : (
-        paragraphs.map((para, i) => (
-          <p
-            key={i}
-            className="font-serif text-[1.0625rem] leading-8 text-foreground [&:not(:first-child)]:mt-5"
-          >
-            {para}
-          </p>
-        ))
+        <Prose text={entry.text} />
       )}
 
       {/* Revealed on hover, but never `display: none` — the same pattern as

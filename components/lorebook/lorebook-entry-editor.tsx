@@ -36,6 +36,7 @@ import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useAutosave } from "@/hooks/use-autosave"
+import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import {
   deleteLorebookEntry,
   updateLorebookEntry,
@@ -100,6 +101,7 @@ export function LorebookEntryEditor({
   onChange?: (draft: NewLorebookEntry) => void
 }) {
   const uid = useId()
+  const markdownShortcuts = useMarkdownShortcuts()
   const entryId = entry?.id
   const persists = layout === "page" && entryId !== undefined
 
@@ -302,6 +304,7 @@ export function LorebookEntryEditor({
           defaultValue={entry?.content ?? ""}
           className="min-h-40"
           placeholder="What should the model know?"
+          onKeyDown={markdownShortcuts}
           onChange={(e) => {
             const content = e.target.value
             setDraft((prev) => ({ ...prev, content }))
@@ -310,7 +313,7 @@ export function LorebookEntryEditor({
           onBlur={flushIfPersisting}
         />
         <p className="text-xs text-muted-foreground">
-          Injected into context when triggered.
+          Injected into context when triggered. Supports **bold** and *italic*.
         </p>
       </div>
 

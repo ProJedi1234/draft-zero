@@ -1,3 +1,4 @@
+import { InlineMarkdown } from "@/components/inline-markdown"
 import { Badge } from "@/components/ui/badge"
 import {
   Tooltip,
@@ -59,8 +60,12 @@ export function LoreEntryCard({ match }: { match: LoreMatch }) {
         ))}
       </div>
 
+      {/* One clamped run, not paragraphs: this is a two-line preview, so blank
+          lines collapse to whitespace exactly as they did before. */}
       {content !== "" ? (
-        <p className="line-clamp-2 text-xs text-muted-foreground">{content}</p>
+        <p className="line-clamp-2 text-xs text-muted-foreground">
+          <InlineMarkdown text={content} />
+        </p>
       ) : null}
     </div>
   )

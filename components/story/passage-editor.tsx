@@ -4,6 +4,7 @@ import * as React from "react"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import { updateEntryText } from "@/lib/actions/entries"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -28,6 +29,7 @@ export function PassageEditor({
   const [value, setValue] = React.useState(initialText)
   const [isPending, startTransition] = React.useTransition()
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const markdownShortcuts = useMarkdownShortcuts()
 
   const canSave = value.trim() !== "" && !isPending
 
@@ -52,6 +54,7 @@ export function PassageEditor({
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (markdownShortcuts(event)) return
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault()
       save()

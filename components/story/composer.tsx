@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 
 import type { ComposerMode, GenerationStatus } from "@/hooks/use-generation"
+import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -78,6 +79,7 @@ export function Composer({
   onStop: () => void
 }) {
   const mode = MODES.find((m) => m.value === modeValue) ?? MODES[0]
+  const markdownShortcuts = useMarkdownShortcuts()
 
   const generating = status !== "idle"
   const hasText = value.trim() !== ""
@@ -123,6 +125,7 @@ export function Composer({
   const onTextareaKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>
   ) => {
+    if (markdownShortcuts(event)) return
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault()
       if (busy) return
