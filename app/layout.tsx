@@ -1,15 +1,34 @@
-import { Geist, Geist_Mono, Inter } from "next/font/google"
+import type { Metadata } from "next"
+import { Geist_Mono, Inter, Source_Serif_4 } from "next/font/google"
 
 import "./globals.css"
+import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { ThemeProvider } from "@/components/theme-provider"
-import { cn } from "@/lib/utils";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { cn } from "@/lib/utils"
 
-const inter = Inter({subsets:['latin'],variable:'--font-sans'})
+const fontSans = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+})
+
+const fontSerif = Source_Serif_4({
+  subsets: ["latin"],
+  variable: "--font-serif",
+})
 
 const fontMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
 })
+
+export const metadata: Metadata = {
+  title: {
+    default: "draft zero",
+    template: "%s · draft zero",
+  },
+  description: "A local-first studio for AI-assisted fiction.",
+}
 
 export default function RootLayout({
   children,
@@ -20,10 +39,20 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn("antialiased", fontMono.variable, "font-sans", inter.variable)}
+      className={cn(
+        "antialiased font-sans",
+        fontSans.variable,
+        fontSerif.variable,
+        fontMono.variable
+      )}
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <SidebarProvider>
+            <AppSidebar />
+            <SidebarInset>{children}</SidebarInset>
+          </SidebarProvider>
+        </ThemeProvider>
       </body>
     </html>
   )
