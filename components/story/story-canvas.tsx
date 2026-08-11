@@ -66,15 +66,29 @@ export function StoryCanvas({
     const viewport = getViewport()
     if (!viewport) return
 
-    stickToBottomRef.current = true
-    viewport.scrollTop = viewport.scrollHeight
+    const content = contentRef.current
+    if (!content) return
 
-    // Fonts and the measured composer padding can settle a frame later; correct
-    // the landing position once, unless the writer already scrolled away.
-    const frame = requestAnimationFrame(() => {
-      if (!stickToBottomRef.current) return
+    stickToBottomRef.current = true
+    let live = true
+    const pin = () => {
+      if (!live || !stickToBottomRef.current) return
       viewport.scrollTop = viewport.scrollHeight
-    })
+    }
+    pin()
+
+    // The landing height is wrong for longer than a frame: web fonts swap in
+    // over the fallback metrics, and --composer-h (the canvas' bottom padding)
+    // is published by the workspace's own ResizeObserver. Both grow the
+    // document *after* the pin, leaving scrollTop stranded near the top — so
+    // re-pin on every height change instead of guessing when it settles.
+    const observer = new ResizeObserver(pin)
+    observer.observe(content)
+    observer.observe(viewport)
+
+    // ResizeObserver never fires for a same-size reflow, which is exactly what
+    // a metrics-compatible font swap is.
+    document.fonts?.ready.then(pin)
 
     const onScroll = () => {
       const distance =
@@ -84,7 +98,8 @@ export function StoryCanvas({
 
     viewport.addEventListener("scroll", onScroll, { passive: true })
     return () => {
-      cancelAnimationFrame(frame)
+      live = false
+      observer.disconnect()
       viewport.removeEventListener("scroll", onScroll)
     }
   }, [getViewport, story.id])
