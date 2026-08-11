@@ -38,6 +38,6 @@ export interface GenerationRequest {
 export interface GenerationProvider {
   /** Yields plain-text chunks. Concatenation of all chunks = the full continuation. Stops promptly on signal abort. */
   generate(request: GenerationRequest): AsyncIterable<string>
-  /** Mock in this milestone; a real provider would call the OpenRouter auth endpoint. */
+  /** Mock: shape-only check. OpenRouter: real check against the auth endpoint via a server action. */
   verifyKey(key: string): Promise<{ ok: boolean; message: string }>
 }

@@ -27,18 +27,27 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { useAutosave } from "@/hooks/use-autosave"
 import { updateAppSettings } from "@/lib/actions/settings"
 import { getGenerationProvider } from "@/lib/generation/provider"
-import { MOCK_MODELS } from "@/lib/mock-data"
-import type { AppSettings } from "@/lib/types"
+import type { AppSettings, OpenRouterModel } from "@/lib/types"
 
-const MODEL_ITEMS = MOCK_MODELS.map((m) => ({ value: m.id, label: m.name }))
-
-function SettingsView({ settings }: { settings: AppSettings }) {
+function SettingsView({
+  settings,
+  models,
+}: {
+  settings: AppSettings
+  models: OpenRouterModel[]
+}) {
   // Uncontrolled-after-mount (§4.2): the input owns its text; this mirror only
   // feeds the helper copy and the verify button.
   const [key, setKey] = React.useState(settings.openRouterKey)
   const [verifying, setVerifying] = React.useState(false)
   const [modelId, setModelId] = React.useState(settings.defaultModelId)
   const [isPending, startTransition] = React.useTransition()
+
+  // Kept as the Base UI `items` prop so SSR renders the selected label.
+  const modelItems = React.useMemo(
+    () => models.map((m) => ({ value: m.id, label: m.name })),
+    [models]
+  )
 
   const keyAutosave = useAutosave(
     (value: string) => updateAppSettings({ openRouterKey: value }),
@@ -63,7 +72,8 @@ function SettingsView({ settings }: { settings: AppSettings }) {
     keyAutosave.flush()
     setVerifying(true)
     try {
-      const result = await getGenerationProvider().verifyKey(key)
+      // Always the real check: verifying a key against the mock is meaningless.
+      const result = await getGenerationProvider("openrouter").verifyKey(key)
       if (result.ok) toast.success(result.message)
       else toast.error(result.message)
     } catch (error) {
@@ -148,14 +158,14 @@ function SettingsView({ settings }: { settings: AppSettings }) {
                   onValueChange={(value) => {
                     handleModelChange(typeof value === "string" ? value : "")
                   }}
-                  items={MODEL_ITEMS}
+                  items={modelItems}
                   disabled={isPending}
                 >
                   <SelectTrigger id="default-model" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {MOCK_MODELS.map((m) => (
+                    {models.map((m) => (
                       <SelectItem key={m.id} value={m.id}>
                         {m.name}
                       </SelectItem>

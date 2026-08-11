@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 
 import { StoryWorkspace } from "@/components/story/story-workspace"
 import { getStory, listLorebookEntries } from "@/lib/db/queries"
+import { listModels } from "@/lib/generation/models"
 
 type StoryPageProps = {
   params: Promise<{ storyId: string }>
@@ -24,9 +25,10 @@ export async function generateMetadata({
 
 export default async function StoryPage({ params }: StoryPageProps) {
   const { storyId } = await params
-  const [story, lorebookEntries] = await Promise.all([
+  const [story, lorebookEntries, models] = await Promise.all([
     getStory(storyId),
     listLorebookEntries(),
+    listModels(),
   ])
 
   if (!story) {
@@ -36,5 +38,11 @@ export default async function StoryPage({ params }: StoryPageProps) {
   // No key here: the workspace keys its own editor subtree by story id, so
   // per-story state resets while the writer's UI preferences (inspector
   // visibility, composer mode) survive navigation.
-  return <StoryWorkspace story={story} lorebookEntries={lorebookEntries} />
+  return (
+    <StoryWorkspace
+      story={story}
+      lorebookEntries={lorebookEntries}
+      models={models}
+    />
+  )
 }

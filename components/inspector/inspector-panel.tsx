@@ -25,17 +25,18 @@ import {
 } from "@/lib/actions/stories"
 import { formatContextLength } from "@/lib/format"
 import { composeContext } from "@/lib/generation/context"
-import { getModelById, MOCK_MODELS } from "@/lib/mock-data"
-import type { LorebookEntry, Story } from "@/lib/types"
+import type { LorebookEntry, OpenRouterModel, Story } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 export function InspectorPanel({
   story,
   lorebookEntries,
+  models,
   className,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
+  models: OpenRouterModel[]
   className?: string
 }) {
   return (
@@ -46,7 +47,11 @@ export function InspectorPanel({
         className
       )}
     >
-      <InspectorContent story={story} lorebookEntries={lorebookEntries} />
+      <InspectorContent
+        story={story}
+        lorebookEntries={lorebookEntries}
+        models={models}
+      />
     </aside>
   )
 }
@@ -113,15 +118,18 @@ function useServerSyncedField<E extends HTMLInputElement | HTMLTextAreaElement>(
 export function InspectorContent({
   story,
   lorebookEntries,
+  models,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
+  models: OpenRouterModel[]
 }) {
   return (
     <InspectorSections
       key={story.id}
       story={story}
       lorebookEntries={lorebookEntries}
+      models={models}
     />
   )
 }
@@ -129,9 +137,11 @@ export function InspectorContent({
 function InspectorSections({
   story,
   lorebookEntries,
+  models,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
+  models: OpenRouterModel[]
 }) {
   // Unique per mounted instance: the desktop panel and the mobile sheet can be
   // in the DOM at once, and duplicate ids would cross-wire the labels.
@@ -204,7 +214,7 @@ function InspectorSections({
         <div className="space-y-3">
           <div className="space-y-1">
             <ModelPicker
-              models={MOCK_MODELS}
+              models={models}
               value={modelId}
               onValueChange={handleModelChange}
             />
@@ -274,7 +284,9 @@ function InspectorSections({
           <ContextMeter
             story={story}
             lorebookEntries={lorebookEntries}
-            modelId={modelId}
+            contextLength={
+              models.find((m) => m.id === modelId)?.contextLength ?? 0
+            }
           />
         </div>
 
@@ -422,17 +434,17 @@ function formatApproxTokens(tokens: number): string {
 function ContextMeter({
   story,
   lorebookEntries,
-  modelId,
+  contextLength,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
-  modelId: string
+  /** Selected model's window; 0 when the model is unknown to the catalog. */
+  contextLength: number
 }) {
   const approxTokens = React.useMemo(
     () => composeContext({ story, lorebookEntries }).approxTokens,
     [story, lorebookEntries]
   )
-  const contextLength = getModelById(modelId)?.contextLength ?? 0
   const ratio =
     contextLength > 0 ? Math.min(1, approxTokens / contextLength) : 0
 

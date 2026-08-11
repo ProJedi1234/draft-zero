@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache"
 
 import { getStory, listLorebookEntries } from "@/lib/db/queries"
 import { composeContext } from "@/lib/generation/context"
+import { resolveOpenRouterKey } from "@/lib/generation/key"
+import type { ProviderKind } from "@/lib/generation/provider"
 import type { ComposedContext } from "@/lib/generation/types"
 import type { ActionResult, GenerationSettings } from "@/lib/types"
 
@@ -21,7 +23,12 @@ export async function prepareGeneration(
   storyId: string,
   opts: { mode: "story" | "instruction"; userText?: string; variant?: number }
 ): Promise<
-  ActionResult<{ context: ComposedContext; settings: GenerationSettings }>
+  ActionResult<{
+    context: ComposedContext
+    settings: GenerationSettings
+    /** Decided here, where the key is visible: real provider iff a key exists. */
+    providerKind: ProviderKind
+  }>
 > {
   let instruction: string | null = null
 
@@ -35,9 +42,10 @@ export async function prepareGeneration(
     if (!appended.ok) return appended
   }
 
-  const [story, lorebookEntries] = await Promise.all([
+  const [story, lorebookEntries, openRouterKey] = await Promise.all([
     getStory(storyId),
     listLorebookEntries(),
+    resolveOpenRouterKey(),
   ])
 
   if (!story) return { ok: false, error: "Story not found." }
@@ -50,5 +58,12 @@ export async function prepareGeneration(
   })
 
   revalidatePath("/", "layout")
-  return { ok: true, data: { context, settings: story.settings } }
+  return {
+    ok: true,
+    data: {
+      context,
+      settings: story.settings,
+      providerKind: openRouterKey !== null ? "openrouter" : "mock",
+    },
+  }
 }

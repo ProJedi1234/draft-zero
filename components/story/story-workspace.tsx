@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import type { LorebookEntry, Story } from "@/lib/types"
+import type { LorebookEntry, OpenRouterModel, Story } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useGeneration, type ComposerMode } from "@/hooks/use-generation"
 import {
@@ -36,9 +36,11 @@ const useIsomorphicLayoutEffect =
 export function StoryWorkspace({
   story,
   lorebookEntries,
+  models,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
+  models: OpenRouterModel[]
 }) {
   const [inspectorOpen, setInspectorOpen] = useInspectorOpen()
   const [mobileInspectorOpen, setMobileInspectorOpen] = React.useState(false)
@@ -64,6 +66,7 @@ export function StoryWorkspace({
         <InspectorPanel
           story={story}
           lorebookEntries={lorebookEntries}
+          models={models}
           className={cn("hidden", inspectorOpen && "lg:flex")}
         />
       </div>
@@ -76,7 +79,11 @@ export function StoryWorkspace({
           <SheetHeader className="border-b p-4">
             <SheetTitle className="text-sm">Inspector</SheetTitle>
           </SheetHeader>
-          <InspectorContent story={story} lorebookEntries={lorebookEntries} />
+          <InspectorContent
+            story={story}
+            lorebookEntries={lorebookEntries}
+            models={models}
+          />
         </SheetContent>
       </Sheet>
     </div>

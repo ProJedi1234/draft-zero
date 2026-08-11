@@ -18,7 +18,10 @@ import {
   undoLastEntry,
 } from "@/lib/actions/entries"
 import { prepareGeneration } from "@/lib/actions/generation"
-import { getGenerationProvider } from "@/lib/generation/provider"
+import {
+  getGenerationProvider,
+  type ProviderKind,
+} from "@/lib/generation/provider"
 import type { ComposedContext } from "@/lib/generation/types"
 import type { ActionResult, GenerationSettings, Story } from "@/lib/types"
 
@@ -28,7 +31,11 @@ export type ComposerMode = "story" | "instruction"
 const GENERATION_ERROR = "Generation failed. Try again."
 const UNDO_ERROR = "Couldn't undo the last passage."
 
-type Prepared = { context: ComposedContext; settings: GenerationSettings }
+type Prepared = {
+  context: ComposedContext
+  settings: GenerationSettings
+  providerKind: ProviderKind
+}
 
 interface StartOptions {
   mode: ComposerMode
@@ -160,7 +167,7 @@ export function useGeneration(
     async (prepared: Prepared, controller: AbortController) => {
       let full = ""
       try {
-        const provider = getGenerationProvider()
+        const provider = getGenerationProvider(prepared.providerKind)
         for await (const chunk of provider.generate({
           context: prepared.context,
           settings: prepared.settings,
@@ -171,8 +178,15 @@ export function useGeneration(
           setStreamingText(full)
           setStatus("streaming")
         }
-      } catch {
-        if (!controller.signal.aborted) toast.error(GENERATION_ERROR)
+      } catch (err) {
+        // Surface the provider's specific message (bad key, credits, rate
+        // limit) when there is one; aborts stay silent as before.
+        if (!controller.signal.aborted)
+          toast.error(
+            err instanceof Error && err.message
+              ? err.message
+              : GENERATION_ERROR
+          )
       }
       finalize(full)
     },
