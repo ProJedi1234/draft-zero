@@ -7,7 +7,6 @@ import { formatWordCount } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useSaveStatus } from "@/hooks/use-autosave"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import {
   Tooltip,
@@ -63,7 +62,6 @@ export function StoryHeader({
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
       <SidebarTrigger />
-      <Separator orientation="vertical" className="h-4" />
       <h1 className="truncate text-sm font-medium">{story.title}</h1>
       <span className="hidden text-xs text-muted-foreground sm:inline">
         {formatWordCount(story.wordCount)}

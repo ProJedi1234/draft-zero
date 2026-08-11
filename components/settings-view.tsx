@@ -23,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { useAutosave } from "@/hooks/use-autosave"
 import { updateAppSettings } from "@/lib/actions/settings"
@@ -82,7 +81,6 @@ function SettingsView({ settings }: { settings: AppSettings }) {
     <div className="flex h-app flex-col">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger />
-        <Separator orientation="vertical" className="h-4" />
         <h1 className="text-sm font-medium">Settings</h1>
         <div className="flex-1" />
         <span className="font-mono text-xs text-muted-foreground">

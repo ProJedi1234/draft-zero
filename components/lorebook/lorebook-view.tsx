@@ -11,7 +11,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import type { LorebookCategory, LorebookEntry } from "@/lib/types"
 
@@ -73,7 +72,6 @@ export function LorebookView({ entries }: { entries: LorebookEntry[] }) {
     <div className="flex h-app flex-col">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger />
-        <Separator orientation="vertical" className="h-4" />
         <h1 className="text-sm font-medium">Lorebook</h1>
         <span className="text-xs text-muted-foreground">
           {entries.length} {entries.length === 1 ? "entry" : "entries"}
