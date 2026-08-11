@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { Compass } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import {
   Empty,
   EmptyContent,
@@ -25,9 +25,9 @@ export default function NotFound() {
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button size="sm" render={<Link href="/" />}>
+          <Link href="/" className={buttonVariants({ size: "sm" })}>
             Back to writing
-          </Button>
+          </Link>
         </EmptyContent>
       </Empty>
     </div>

@@ -2,7 +2,7 @@ import Link from "next/link"
 import { ArrowUpRight, BookOpen } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import {
   Empty,
   EmptyContent,
@@ -30,9 +30,12 @@ export function LoreTab({ story }: { story: Story }) {
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button variant="outline" size="sm" render={<Link href="/lorebook" />}>
+          <Link
+            href="/lorebook"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
             Open lorebook
-          </Button>
+          </Link>
         </EmptyContent>
       </Empty>
     )
@@ -67,10 +70,13 @@ export function LoreTab({ story }: { story: Story }) {
         ))}
       </div>
 
-      <Button variant="ghost" size="xs" render={<Link href="/lorebook" />}>
+      <Link
+        href="/lorebook"
+        className={buttonVariants({ variant: "ghost", size: "xs" })}
+      >
         Manage lorebook
         <ArrowUpRight data-icon="inline-end" />
-      </Button>
+      </Link>
     </>
   )
 }
