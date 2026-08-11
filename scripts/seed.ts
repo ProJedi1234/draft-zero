@@ -92,7 +92,6 @@ async function seed() {
   await db.insert(appSettings).values({
     id: 1,
     defaultModelId: DEFAULT_GENERATION_SETTINGS.modelId,
-    openRouterKey: "",
   })
 
   console.log(

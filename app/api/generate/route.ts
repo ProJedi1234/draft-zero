@@ -10,10 +10,10 @@ import type { ComposedContext } from "@/lib/generation/types"
 import type { GenerationSettings } from "@/lib/types"
 
 export async function POST(req: Request): Promise<Response> {
-  const key = await resolveOpenRouterKey()
+  const key = resolveOpenRouterKey()
   if (!key) {
     return Response.json(
-      { error: "Add your OpenRouter key in Settings." },
+      { error: "OPENROUTER_API_KEY is not configured." },
       { status: 503 }
     )
   }

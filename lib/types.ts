@@ -94,8 +94,6 @@ export type NewLorebookEntry = Omit<
 /** App-level settings (settings page). */
 export interface AppSettings {
   defaultModelId: string
-  /** OpenRouter API key, "" when unset. Stored locally only. */
-  openRouterKey: string
 }
 
 /** Uniform server-action result. Actions never throw for expected failures. */

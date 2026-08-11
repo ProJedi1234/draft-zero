@@ -104,7 +104,6 @@ export async function getAppSettings(): Promise<AppSettings> {
   const defaults = {
     id: 1,
     defaultModelId: DEFAULT_GENERATION_SETTINGS.modelId,
-    openRouterKey: "",
   }
   await db.insert(appSettings).values(defaults).onConflictDoNothing()
   return toAppSettings(defaults)

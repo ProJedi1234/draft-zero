@@ -136,6 +136,5 @@ export function toStory(
 export function toAppSettings(row: AppSettingsRow): AppSettings {
   return {
     defaultModelId: row.defaultModelId,
-    openRouterKey: row.openRouterKey,
   }
 }

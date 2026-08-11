@@ -1,9 +1,7 @@
 // lib/generation/openrouter-provider.ts — Client half of the real provider.
 // Same GenerationProvider contract as the mock; the key never comes here —
-// generation goes through POST /api/generate, key checks through a server
-// action. No @openrouter/sdk import in this file (it must stay client-safe).
-import { verifyOpenRouterKey } from "@/lib/actions/settings"
-
+// generation goes through POST /api/generate. No @openrouter/sdk import in
+// this file (it must stay client-safe).
 import type { GenerationProvider, GenerationRequest } from "./types"
 
 export class OpenRouterProvider implements GenerationProvider {
@@ -39,9 +37,5 @@ export class OpenRouterProvider implements GenerationProvider {
       // the route's ReadableStream, which aborts the OpenRouter request.
       reader.cancel().catch(() => {})
     }
-  }
-
-  async verifyKey(key: string): Promise<{ ok: boolean; message: string }> {
-    return verifyOpenRouterKey(key)
   }
 }

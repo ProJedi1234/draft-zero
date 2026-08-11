@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache"
 import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
 import { appSettings } from "@/lib/db/schema"
+import { resolveOpenRouterKey } from "@/lib/generation/key"
 import type { ActionResult, AppSettings } from "@/lib/types"
 
 export async function updateAppSettings(
@@ -19,8 +20,6 @@ export async function updateAppSettings(
     if (modelId === "") return { ok: false, error: "Pick a default model." }
     values.defaultModelId = modelId
   }
-  if (patch.openRouterKey !== undefined)
-    values.openRouterKey = patch.openRouterKey.trim()
 
   // Ensures the single settings row exists before patching it.
   await getAppSettings()
@@ -35,19 +34,20 @@ export async function updateAppSettings(
 }
 
 /**
- * Real key check against OpenRouter. Returns the provider-contract shape
- * { ok, message } (not ActionResult): verification failure is a result,
- * not an error. The candidate key is used transiently and never logged.
+ * Real key check against OpenRouter, using the single shared key from
+ * OPENROUTER_API_KEY. Returns the provider-contract shape { ok, message }
+ * (not ActionResult): verification failure is a result, not an error.
  */
-export async function verifyOpenRouterKey(
-  key: string
-): Promise<{ ok: boolean; message: string }> {
-  const trimmed = key.trim()
-  if (!trimmed.startsWith("sk-or-")) {
-    return { ok: false, message: "That doesn't look like an OpenRouter key." }
+export async function verifyOpenRouterKey(): Promise<{
+  ok: boolean
+  message: string
+}> {
+  const key = resolveOpenRouterKey()
+  if (!key) {
+    return { ok: false, message: "OPENROUTER_API_KEY is not configured." }
   }
   try {
-    const client = new OpenRouter({ apiKey: trimmed })
+    const client = new OpenRouter({ apiKey: key })
     // GET /key — the cheapest call authenticated by a plain inference key.
     await client.apiKeys.getCurrentKeyMetadata()
     return { ok: true, message: "Key verified with OpenRouter." }

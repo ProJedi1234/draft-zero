@@ -16,10 +16,6 @@ export interface MockProviderOptions {
 
 const DEFAULT_INITIAL_DELAY_MS = 350
 const DEFAULT_CHUNK_DELAY_MS = 24
-const VERIFY_DELAY_MS = 600
-
-const VALID_KEY_MESSAGE = "Key looks valid (mock check)."
-const INVALID_KEY_MESSAGE = "That doesn't look like an OpenRouter key."
 
 /** Resolves after `ms`, or immediately once `signal` aborts. */
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
@@ -92,12 +88,5 @@ export class MockGenerationProvider implements GenerationProvider {
       yield chunk
       await delay(this.chunkDelayMs, signal)
     }
-  }
-
-  /** Shape-only check — the key never leaves this machine in this milestone. */
-  async verifyKey(key: string): Promise<{ ok: boolean; message: string }> {
-    await delay(VERIFY_DELAY_MS)
-    const ok = key.startsWith("sk-or-") && key.length >= 20
-    return { ok, message: ok ? VALID_KEY_MESSAGE : INVALID_KEY_MESSAGE }
   }
 }

@@ -43,7 +43,7 @@ function toDomainModel(m: Model): OpenRouterModel {
  */
 export async function listModels(): Promise<OpenRouterModel[]> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.data
-  const key = await resolveOpenRouterKey()
+  const key = resolveOpenRouterKey()
   if (!key) return MOCK_MODELS
   try {
     const client = new OpenRouter({ apiKey: key, appTitle: "draft-zero" })

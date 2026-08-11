@@ -4,6 +4,7 @@ import * as React from "react"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { ModelCombobox } from "@/components/model-combobox"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import {
@@ -13,20 +14,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { useAutosave } from "@/hooks/use-autosave"
-import { updateAppSettings } from "@/lib/actions/settings"
-import { getGenerationProvider } from "@/lib/generation/provider"
+import { updateAppSettings, verifyOpenRouterKey } from "@/lib/actions/settings"
 import type { AppSettings, OpenRouterModel } from "@/lib/types"
 
 function SettingsView({
@@ -36,23 +27,9 @@ function SettingsView({
   settings: AppSettings
   models: OpenRouterModel[]
 }) {
-  // Uncontrolled-after-mount (§4.2): the input owns its text; this mirror only
-  // feeds the helper copy and the verify button.
-  const [key, setKey] = React.useState(settings.openRouterKey)
   const [verifying, setVerifying] = React.useState(false)
   const [modelId, setModelId] = React.useState(settings.defaultModelId)
   const [isPending, startTransition] = React.useTransition()
-
-  // Kept as the Base UI `items` prop so SSR renders the selected label.
-  const modelItems = React.useMemo(
-    () => models.map((m) => ({ value: m.id, label: m.name })),
-    [models]
-  )
-
-  const keyAutosave = useAutosave(
-    (value: string) => updateAppSettings({ openRouterKey: value }),
-    600
-  )
 
   function handleModelChange(next: string) {
     if (next === "" || next === modelId) return
@@ -68,19 +45,16 @@ function SettingsView({
   }
 
   async function handleVerify() {
-    // Don't verify a key the DB hasn't caught up with yet.
-    keyAutosave.flush()
     setVerifying(true)
     try {
-      // Always the real check: verifying a key against the mock is meaningless.
-      const result = await getGenerationProvider("openrouter").verifyKey(key)
+      const result = await verifyOpenRouterKey()
       if (result.ok) toast.success(result.message)
       else toast.error(result.message)
     } catch (error) {
       toast.error(
         error instanceof Error && error.message
           ? error.message
-          : "Couldn't verify that key."
+          : "Couldn't verify the key."
       )
     } finally {
       setVerifying(false)
@@ -104,32 +78,14 @@ function SettingsView({
             <CardHeader>
               <CardTitle>OpenRouter</CardTitle>
               <CardDescription>
-                Connect your account to generate text. Keys are stored locally.
+                Generation runs on the OPENROUTER_API_KEY configured for this
+                deploy.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                <Label htmlFor="or-key">API key</Label>
-                <Input
-                  id="or-key"
-                  type="password"
-                  placeholder="sk-or-v1-..."
-                  defaultValue={settings.openRouterKey}
-                  onChange={(event) => {
-                    const value = event.target.value
-                    setKey(value)
-                    keyAutosave.schedule(value)
-                  }}
-                  onBlur={() => keyAutosave.flush()}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {key.trim() === "" ? "Not connected." : "Key stored locally."}
-                </p>
-              </div>
               <Button
                 variant="outline"
                 size="sm"
-                className="mt-4"
                 disabled={verifying}
                 onClick={handleVerify}
               >
@@ -153,25 +109,13 @@ function SettingsView({
             <CardContent>
               <div className="space-y-2">
                 <Label htmlFor="default-model">Default model</Label>
-                <Select
+                <ModelCombobox
+                  id="default-model"
+                  models={models}
                   value={modelId}
-                  onValueChange={(value) => {
-                    handleModelChange(typeof value === "string" ? value : "")
-                  }}
-                  items={modelItems}
+                  onValueChange={handleModelChange}
                   disabled={isPending}
-                >
-                  <SelectTrigger id="default-model" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {models.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
                 <p className="text-xs text-muted-foreground">
                   New stories start from this model; each story can override it
                   in the inspector.

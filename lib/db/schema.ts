@@ -80,7 +80,6 @@ export const lorebookEntries = pgTable(
 export const appSettings = pgTable("app_settings", {
   id: integer("id").primaryKey(),
   defaultModelId: text("default_model_id").notNull(),
-  openRouterKey: text("openrouter_key").notNull().default(""),
 })
 
 export type StoryRow = typeof stories.$inferSelect

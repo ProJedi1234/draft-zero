@@ -42,11 +42,11 @@ export async function prepareGeneration(
     if (!appended.ok) return appended
   }
 
-  const [story, lorebookEntries, openRouterKey] = await Promise.all([
+  const [story, lorebookEntries] = await Promise.all([
     getStory(storyId),
     listLorebookEntries(),
-    resolveOpenRouterKey(),
   ])
+  const openRouterKey = resolveOpenRouterKey()
 
   if (!story) return { ok: false, error: "Story not found." }
 
