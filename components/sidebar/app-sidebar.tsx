@@ -3,7 +3,7 @@
 import * as React from "react"
 import { Feather, Search } from "lucide-react"
 
-import { MOCK_STORIES } from "@/lib/mock-data"
+import type { StorySummary } from "@/lib/types"
 import {
   Sidebar,
   SidebarContent,
@@ -16,7 +16,12 @@ import { NavWorkspace } from "@/components/sidebar/nav-workspace"
 import { StoryList } from "@/components/sidebar/story-list"
 import { ThemeToggle } from "@/components/theme-toggle"
 
-export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({
+  stories,
+  ...props
+}: { stories: StorySummary[] } & React.ComponentProps<typeof Sidebar>) {
+  const [query, setQuery] = React.useState("")
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader className="gap-4 p-3 pt-4">
@@ -32,11 +37,16 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             placeholder="Search stories"
             aria-label="Search stories"
             className="border-transparent bg-sidebar-accent pl-8 placeholder:text-muted-foreground/70"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setQuery("")
+            }}
           />
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <StoryList stories={MOCK_STORIES} />
+        <StoryList stories={stories} query={query} />
         <NavWorkspace />
       </SidebarContent>
       <SidebarFooter>

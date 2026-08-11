@@ -2,33 +2,39 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
 import { StoryWorkspace } from "@/components/story/story-workspace"
-import { getStoryById, MOCK_STORIES } from "@/lib/mock-data"
+import { getStory, listLorebookEntries } from "@/lib/db/queries"
 
 type StoryPageProps = {
   params: Promise<{ storyId: string }>
 }
 
-export function generateStaticParams() {
-  return MOCK_STORIES.map((story) => ({ storyId: story.id }))
-}
+// No generateStaticParams: the root layout forces dynamic rendering, so DB
+// content is read per request and never prerendered.
 
 export async function generateMetadata({
   params,
 }: StoryPageProps): Promise<Metadata> {
   const { storyId } = await params
+  const story = await getStory(storyId)
 
   return {
-    title: getStoryById(storyId)?.title ?? "Story",
+    title: story?.title ?? "Story",
   }
 }
 
 export default async function StoryPage({ params }: StoryPageProps) {
   const { storyId } = await params
-  const story = getStoryById(storyId)
+  const [story, lorebookEntries] = await Promise.all([
+    getStory(storyId),
+    listLorebookEntries(),
+  ])
 
   if (!story) {
     notFound()
   }
 
-  return <StoryWorkspace story={story} />
+  // No key here: the workspace keys its own editor subtree by story id, so
+  // per-story state resets while the writer's UI preferences (inspector
+  // visibility, composer mode) survive navigation.
+  return <StoryWorkspace story={story} lorebookEntries={lorebookEntries} />
 }

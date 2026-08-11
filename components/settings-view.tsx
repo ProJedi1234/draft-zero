@@ -1,5 +1,9 @@
 "use client"
 
+import * as React from "react"
+import { Loader2 } from "lucide-react"
+import { toast } from "sonner"
+
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,18 +25,68 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { DEFAULT_GENERATION_SETTINGS, MOCK_MODELS } from "@/lib/mock-data"
+import { useAutosave } from "@/hooks/use-autosave"
+import { updateAppSettings } from "@/lib/actions/settings"
+import { getGenerationProvider } from "@/lib/generation/provider"
+import { MOCK_MODELS } from "@/lib/mock-data"
+import type { AppSettings } from "@/lib/types"
 
-function SettingsView() {
+const MODEL_ITEMS = MOCK_MODELS.map((m) => ({ value: m.id, label: m.name }))
+
+function SettingsView({ settings }: { settings: AppSettings }) {
+  // Uncontrolled-after-mount (§4.2): the input owns its text; this mirror only
+  // feeds the helper copy and the verify button.
+  const [key, setKey] = React.useState(settings.openRouterKey)
+  const [verifying, setVerifying] = React.useState(false)
+  const [modelId, setModelId] = React.useState(settings.defaultModelId)
+  const [isPending, startTransition] = React.useTransition()
+
+  const keyAutosave = useAutosave(
+    (value: string) => updateAppSettings({ openRouterKey: value }),
+    600
+  )
+
+  function handleModelChange(next: string) {
+    if (next === "" || next === modelId) return
+    const previous = modelId
+    setModelId(next)
+    startTransition(async () => {
+      const result = await updateAppSettings({ defaultModelId: next })
+      if (!result.ok) {
+        setModelId(previous)
+        toast.error(result.error)
+      }
+    })
+  }
+
+  async function handleVerify() {
+    // Don't verify a key the DB hasn't caught up with yet.
+    keyAutosave.flush()
+    setVerifying(true)
+    try {
+      const result = await getGenerationProvider().verifyKey(key)
+      if (result.ok) toast.success(result.message)
+      else toast.error(result.message)
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message
+          ? error.message
+          : "Couldn't verify that key."
+      )
+    } finally {
+      setVerifying(false)
+    }
+  }
+
   return (
-    <div className="flex h-svh flex-col">
+    <div className="flex h-app flex-col">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger />
         <Separator orientation="vertical" className="h-4" />
         <h1 className="text-sm font-medium">Settings</h1>
         <div className="flex-1" />
         <span className="font-mono text-xs text-muted-foreground">
-          local preview
+          local-first
         </span>
       </header>
 
@@ -48,13 +102,37 @@ function SettingsView() {
             <CardContent>
               <div className="space-y-2">
                 <Label htmlFor="or-key">API key</Label>
-                <Input id="or-key" type="password" placeholder="sk-or-v1-..." />
+                <Input
+                  id="or-key"
+                  type="password"
+                  placeholder="sk-or-v1-..."
+                  defaultValue={settings.openRouterKey}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setKey(value)
+                    keyAutosave.schedule(value)
+                  }}
+                  onBlur={() => keyAutosave.flush()}
+                />
                 <p className="text-xs text-muted-foreground">
-                  Not connected. Generation is disabled in this preview.
+                  {key.trim() === "" ? "Not connected." : "Key stored locally."}
                 </p>
               </div>
-              <Button variant="outline" size="sm" className="mt-4">
-                Verify key
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                disabled={verifying}
+                onClick={handleVerify}
+              >
+                {verifying ? (
+                  <>
+                    <Loader2 className="animate-spin" />
+                    Verifying
+                  </>
+                ) : (
+                  "Verify key"
+                )}
               </Button>
             </CardContent>
           </Card>
@@ -68,11 +146,12 @@ function SettingsView() {
               <div className="space-y-2">
                 <Label htmlFor="default-model">Default model</Label>
                 <Select
-                  defaultValue={DEFAULT_GENERATION_SETTINGS.modelId}
-                  items={MOCK_MODELS.map((m) => ({
-                    value: m.id,
-                    label: m.name,
-                  }))}
+                  value={modelId}
+                  onValueChange={(value) => {
+                    handleModelChange(typeof value === "string" ? value : "")
+                  }}
+                  items={MODEL_ITEMS}
+                  disabled={isPending}
                 >
                   <SelectTrigger id="default-model" className="w-full">
                     <SelectValue />

@@ -52,13 +52,19 @@ export interface Story {
   activeLorebookEntryIds: string[]
 }
 
+/** Story metadata without entries — sidebar/library surface. */
+export interface StorySummary {
+  id: string
+  title: string
+  description: string
+  genre: string
+  createdAt: string
+  updatedAt: string
+  wordCount: number
+}
+
 export type LorebookCategory =
-  | "character"
-  | "location"
-  | "faction"
-  | "item"
-  | "event"
-  | "concept"
+  "character" | "location" | "faction" | "item" | "event" | "concept"
 
 export interface LorebookEntry {
   id: string
@@ -78,6 +84,23 @@ export interface LorebookEntry {
   /** ISO-8601. */
   updatedAt: string
 }
+
+/** Input for creating a lorebook entry. */
+export type NewLorebookEntry = Omit<
+  LorebookEntry,
+  "id" | "createdAt" | "updatedAt"
+>
+
+/** App-level settings (settings page). */
+export interface AppSettings {
+  defaultModelId: string
+  /** OpenRouter API key, "" when unset. Stored locally only. */
+  openRouterKey: string
+}
+
+/** Uniform server-action result. Actions never throw for expected failures. */
+export type ActionResult<T = null> =
+  { ok: true; data: T } | { ok: false; error: string }
 
 /** Minimal stub of an OpenRouter model listing. */
 export interface OpenRouterModel {

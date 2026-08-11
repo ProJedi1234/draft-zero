@@ -2,10 +2,9 @@
 // All output is SSR-safe: relative dates are computed against a pinned mock
 // "now" so server and client render identical strings.
 
-/** Pinned "now" for the static-scaffolding milestone. */
+/** Pinned "now" from the static-scaffolding milestone (still used by fixtures). */
 export const MOCK_NOW_ISO = "2026-08-10T12:00:00Z"
 
-const MOCK_NOW_MS = Date.parse(MOCK_NOW_ISO)
 const DAY_MS = 86_400_000
 
 /** 12480 -> "12,480 words"; 1 -> "1 word". */
@@ -33,9 +32,12 @@ export function formatDateShort(iso: string): string {
   })
 }
 
-/** Day-granularity relative label against MOCK_NOW_ISO: "today", "yesterday", "3d ago", "2w ago", "4mo ago", "1y ago". */
-export function formatRelativeDate(iso: string): string {
-  const days = Math.floor((MOCK_NOW_MS - Date.parse(iso)) / DAY_MS)
+/** Day-granularity relative label against `nowMs` (default: now): "today", "yesterday", "3d ago", "2w ago", "4mo ago", "1y ago". */
+export function formatRelativeDate(
+  iso: string,
+  nowMs: number = Date.now()
+): string {
+  const days = Math.floor((nowMs - Date.parse(iso)) / DAY_MS)
   if (days <= 0) return "today"
   if (days === 1) return "yesterday"
   if (days < 7) return `${days}d ago`

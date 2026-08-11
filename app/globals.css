@@ -4,6 +4,21 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Full-height app shell. The viewport is edge-to-edge (viewport-fit=cover), so
+ * the shell pads itself below the status bar / notch while its background
+ * bleeds behind it. --app-h is set by ViewportHeightSync only while the mobile
+ * software keyboard is up; otherwise pure CSS rules.
+ *
+ * Known iOS limit: nothing an inner-scrolling shell paints can appear under
+ * Safari's expanded bottom toolbar — that region only shows document scroll
+ * overflow. True under-bar bleed needs a document-scroll layout on mobile.
+ */
+@utility h-app {
+  height: var(--app-h, 100dvh);
+  padding-top: env(safe-area-inset-top);
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: var(--font-sans);

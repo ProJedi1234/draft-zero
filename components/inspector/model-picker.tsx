@@ -32,22 +32,33 @@ function groupByProvider(models: OpenRouterModel[]): ProviderGroup[] {
   return groups
 }
 
+/**
+ * Provider-grouped model select. Controlled by the inspector so the context
+ * meter can size itself against the model the writer just picked; persistence
+ * happens in `onValueChange` (immediate, never debounced — §4.4).
+ */
 export function ModelPicker({
   models,
-  defaultModelId,
+  value,
+  onValueChange,
 }: {
   models: OpenRouterModel[]
-  defaultModelId: string
+  value: string
+  onValueChange: (modelId: string) => void
 }) {
   const providers = groupByProvider(models)
-  const selected = models.find((m) => m.id === defaultModelId)
+  const selected = models.find((m) => m.id === value)
 
   return (
     <div className="space-y-2">
       <Label>Model</Label>
       <Select
-        defaultValue={defaultModelId}
+        value={value}
         items={models.map((m) => ({ value: m.id, label: m.name }))}
+        onValueChange={(next) => {
+          if (next === null || next === value) return
+          onValueChange(next)
+        }}
       >
         <SelectTrigger className="w-full">
           <SelectValue />

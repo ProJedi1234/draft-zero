@@ -1,9 +1,11 @@
 "use client"
 
-import { CircleCheck, PanelRight } from "lucide-react"
+import { CircleAlert, CircleCheck, Loader2, PanelRight } from "lucide-react"
 
 import type { Story } from "@/lib/types"
 import { formatWordCount } from "@/lib/format"
+import { cn } from "@/lib/utils"
+import { useSaveStatus } from "@/hooks/use-autosave"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
@@ -12,6 +14,38 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+
+/** Live save chip. Fixed width + identical icon size so states never shift the bar. */
+function SaveStatusChip() {
+  const status = useSaveStatus()
+
+  return (
+    <span
+      aria-live="polite"
+      className={cn(
+        "hidden min-w-32 items-center justify-end gap-1.5 text-xs md:flex",
+        status === "error" ? "text-destructive" : "text-muted-foreground"
+      )}
+    >
+      {status === "saving" ? (
+        <>
+          <Loader2 className="size-3.5 animate-spin" />
+          Saving…
+        </>
+      ) : status === "error" ? (
+        <>
+          <CircleAlert className="size-3.5" />
+          Save failed
+        </>
+      ) : (
+        <>
+          <CircleCheck className="size-3.5" />
+          Saved locally
+        </>
+      )}
+    </span>
+  )
+}
 
 export function StoryHeader({
   story,
@@ -35,10 +69,7 @@ export function StoryHeader({
         {formatWordCount(story.wordCount)}
       </span>
       <div className="flex-1" />
-      <span className="hidden items-center gap-1.5 text-xs text-muted-foreground md:flex">
-        <CircleCheck className="size-3.5" />
-        Saved locally
-      </span>
+      <SaveStatusChip />
       {/* Below lg the inspector lives in a sheet; at lg+ it's a toggleable side panel. */}
       <Tooltip>
         <TooltipTrigger

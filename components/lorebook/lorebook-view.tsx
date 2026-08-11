@@ -13,37 +13,80 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import {
-  MOCK_LOREBOOK_ENTRIES,
-  getLorebookEntriesByCategory,
-  getLorebookEntryById,
-} from "@/lib/mock-data"
-import type { LorebookCategory } from "@/lib/types"
+import type { LorebookCategory, LorebookEntry } from "@/lib/types"
 
 import { LorebookEntryEditor } from "@/components/lorebook/lorebook-entry-editor"
 import { LorebookEntryList } from "@/components/lorebook/lorebook-entry-list"
 import { NewEntryDialog } from "@/components/lorebook/new-entry-dialog"
 
-export function LorebookView() {
+/**
+ * The entry that inherits the selection when the selected one disappears:
+ * the next one in list order, else the previous one, else the first survivor.
+ */
+function nextSelection(
+  previous: LorebookEntry[],
+  current: LorebookEntry[],
+  goneId: string
+): string | null {
+  const alive = new Set(current.map((e) => e.id))
+  const index = previous.findIndex((e) => e.id === goneId)
+  if (index !== -1) {
+    for (let i = index + 1; i < previous.length; i++) {
+      if (alive.has(previous[i].id)) return previous[i].id
+    }
+    for (let i = index - 1; i >= 0; i--) {
+      if (alive.has(previous[i].id)) return previous[i].id
+    }
+  }
+  return current[0]?.id ?? null
+}
+
+export function LorebookView({ entries }: { entries: LorebookEntry[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(
-    MOCK_LOREBOOK_ENTRIES[0]?.id ?? null
+    entries[0]?.id ?? null
   )
   const [category, setCategory] = useState<LorebookCategory | "all">("all")
+  const [query, setQuery] = useState("")
 
-  const entries = getLorebookEntriesByCategory(category)
-  const selected = selectedId ? getLorebookEntryById(selectedId) : undefined
+  // Reconcile the selection with server revalidations: the entries prop is a
+  // fresh array after every mutation, so re-resolve by id rather than holding
+  // on to a stale object.
+  const [seenEntries, setSeenEntries] = useState(entries)
+  if (seenEntries !== entries) {
+    setSeenEntries(entries)
+    if (selectedId === null && seenEntries.length === 0) {
+      setSelectedId(entries[0]?.id ?? null)
+    } else if (
+      selectedId !== null &&
+      !entries.some((e) => e.id === selectedId) &&
+      // Only inherit when the entry really vanished — a freshly created id can
+      // legitimately lead the revalidated list by a render.
+      seenEntries.some((e) => e.id === selectedId)
+    ) {
+      setSelectedId(nextSelection(seenEntries, entries, selectedId))
+    }
+  }
+
+  const selected = entries.find((e) => e.id === selectedId)
 
   return (
-    <div className="flex h-svh flex-col">
+    <div className="flex h-app flex-col">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger />
         <Separator orientation="vertical" className="h-4" />
         <h1 className="text-sm font-medium">Lorebook</h1>
         <span className="text-xs text-muted-foreground">
-          {MOCK_LOREBOOK_ENTRIES.length} entries
+          {entries.length} {entries.length === 1 ? "entry" : "entries"}
         </span>
         <div className="flex-1" />
-        <NewEntryDialog />
+        <NewEntryDialog
+          onCreated={(id) => {
+            // Clear the filters so the new entry is actually visible in the list.
+            setCategory("all")
+            setQuery("")
+            setSelectedId(id)
+          }}
+        />
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -51,6 +94,8 @@ export function LorebookView() {
           entries={entries}
           category={category}
           onCategoryChange={setCategory}
+          query={query}
+          onQueryChange={setQuery}
           selectedId={selectedId}
           onSelect={setSelectedId}
         />

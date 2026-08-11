@@ -13,7 +13,7 @@ import {
 
 export default function NotFound() {
   return (
-    <div className="flex h-svh items-center justify-center">
+    <div className="flex h-app items-center justify-center">
       <Empty>
         <EmptyHeader>
           <EmptyMedia variant="icon">
