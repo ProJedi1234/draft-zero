@@ -1,18 +1,23 @@
-// lib/db/schema.ts — Drizzle schema for the local SQLite database.
+// lib/db/schema.ts — Drizzle schema for the Postgres database.
 // Column names are snake_case on disk; lib/db/mappers.ts converts rows to the
 // camelCase domain types in lib/types.ts. Components never see these types.
+//
+// Two deliberate non-idiomatic choices, both to keep the mapping layer trivial:
+// timestamps are ISO-8601 `text` rather than `timestamptz` (lib/format.ts works
+// on ISO strings), and trigger keys are a JSON `text` blob rather than `jsonb`
+// (nothing queries inside them yet). Both are cheap to migrate later.
 
-import { sql } from "drizzle-orm"
 import {
+  boolean,
+  doublePrecision,
   index,
   integer,
-  real,
-  sqliteTable,
+  pgTable,
   text,
   uniqueIndex,
-} from "drizzle-orm/sqlite-core"
+} from "drizzle-orm/pg-core"
 
-export const stories = sqliteTable("stories", {
+export const stories = pgTable("stories", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description").notNull().default(""),
@@ -21,16 +26,18 @@ export const stories = sqliteTable("stories", {
   authorsNote: text("authors_note").notNull().default(""),
   // Generation settings live inline (1:1 with the story).
   modelId: text("model_id").notNull(),
-  temperature: real("temperature").notNull(),
-  topP: real("top_p").notNull(),
+  // doublePrecision, not real: Postgres `real` is 4-byte and would silently
+  // round the slider values that SQLite stored at 8-byte precision.
+  temperature: doublePrecision("temperature").notNull(),
+  topP: doublePrecision("top_p").notNull(),
   maxTokens: integer("max_tokens").notNull(),
-  frequencyPenalty: real("frequency_penalty").notNull(),
-  presencePenalty: real("presence_penalty").notNull(),
+  frequencyPenalty: doublePrecision("frequency_penalty").notNull(),
+  presencePenalty: doublePrecision("presence_penalty").notNull(),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
 
-export const storyEntries = sqliteTable(
+export const storyEntries = pgTable(
   "story_entries",
   {
     id: text("id").primaryKey(),
@@ -51,7 +58,7 @@ export const storyEntries = sqliteTable(
   ]
 )
 
-export const lorebookEntries = sqliteTable(
+export const lorebookEntries = pgTable(
   "lorebook_entries",
   {
     id: text("id").primaryKey(),
@@ -60,12 +67,8 @@ export const lorebookEntries = sqliteTable(
     /** JSON-serialized string[] of trigger keys. */
     keysJson: text("keys_json").notNull(),
     content: text("content").notNull().default(""),
-    enabled: integer("enabled", { mode: "boolean" })
-      .notNull()
-      .default(sql`1`),
-    alwaysActive: integer("always_active", { mode: "boolean" })
-      .notNull()
-      .default(sql`0`),
+    enabled: boolean("enabled").notNull().default(true),
+    alwaysActive: boolean("always_active").notNull().default(false),
     priority: integer("priority").notNull().default(50),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -74,7 +77,7 @@ export const lorebookEntries = sqliteTable(
 )
 
 /** Single-row table; `id` is always 1. */
-export const appSettings = sqliteTable("app_settings", {
+export const appSettings = pgTable("app_settings", {
   id: integer("id").primaryKey(),
   defaultModelId: text("default_model_id").notNull(),
   openRouterKey: text("openrouter_key").notNull().default(""),

@@ -2,6 +2,13 @@
 
 **Status:** Binding contract for parallel implementation. Every export name, signature, file path, column name, and UX behavior in this doc is binding. Where this doc is silent, `docs/DESIGN.md` (milestone 1) still governs — its conventions (base-sera + Base UI `render` prop, theme tokens only, squared corners, font slots, header bar pattern, empty states) all remain in force.
 
+> **⚠️ Superseded in one respect (Aug 11, 2026): storage is now Postgres, not SQLite.**
+> Everything below about `@libsql/client`, `sqliteTable`, `dialect: "sqlite"`, the
+> `data/draft-zero.db` file, and `migrate()` inside `getDb()` describes the original
+> implementation and no longer matches the code. The table/column *names* and the
+> `getDb()`/queries/mappers/actions structure are unchanged and still binding. See
+> the README for the current database setup.
+
 **Headline goal: usability.** The app must feel instantly responsive and polished — optimistic echoes, streaming text, debounced autosave, live save status, keyboard shortcuts — not merely "functional". Every interaction that was a dead button in milestone 1 now works against a real local SQLite database. The only thing that is fake is the model: a deterministic `MockGenerationProvider` behind an interface shaped for a future OpenRouter provider. **No network calls to any external service anywhere in the app.**
 
 ---

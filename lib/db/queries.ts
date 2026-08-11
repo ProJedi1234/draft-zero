@@ -1,5 +1,5 @@
 // lib/db/queries.ts — Read layer. Server-only: imported by server components
-// and server actions. Every call reads fresh from SQLite (no caching layer).
+// and server actions. Every call reads fresh from Postgres (no caching layer).
 
 import { asc, desc, eq } from "drizzle-orm"
 

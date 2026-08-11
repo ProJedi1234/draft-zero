@@ -1,9 +1,11 @@
-// scripts/seed.ts — Destructive reseed of the local database (bun run db:seed).
+// scripts/seed.ts — Destructive reseed of the database at DATABASE_URL
+// (bun run db:seed). Deletes run child-first so the story_entries → stories
+// foreign key holds.
 // Wipes every table, then inserts the milestone-1 fixtures so the app has
 // something to show. Mock `activeLorebookEntryIds` are deliberately NOT stored:
 // they are recomputed at read time by real trigger matching.
 
-import { getDb } from "@/lib/db/client"
+import { closeDb, getDb } from "@/lib/db/client"
 import {
   appSettings,
   lorebookEntries,
@@ -94,11 +96,14 @@ async function seed() {
   })
 
   console.log(
-    `Seeded data/draft-zero.db: ${MOCK_STORIES.length} stories, ${entryCount} entries, ${MOCK_LOREBOOK_ENTRIES.length} lorebook entries, 1 settings row.`
+    `Seeded: ${MOCK_STORIES.length} stories, ${entryCount} entries, ${MOCK_LOREBOOK_ENTRIES.length} lorebook entries, 1 settings row.`
   )
 }
 
-seed().catch((error) => {
-  console.error("Seed failed:", error)
-  process.exit(1)
-})
+// The pool holds the event loop open; close it either way or the script hangs.
+seed()
+  .catch((error) => {
+    console.error("Seed failed:", error)
+    process.exitCode = 1
+  })
+  .finally(closeDb)

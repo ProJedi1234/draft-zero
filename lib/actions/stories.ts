@@ -148,9 +148,8 @@ export async function duplicateStory(
 
 export async function deleteStory(id: string): Promise<ActionResult> {
   const db = await getDb()
-  // Explicit child delete: SQLite enforces FK cascades only when the
-  // foreign_keys pragma is on, which we do not rely on.
-  await db.delete(storyEntries).where(eq(storyEntries.storyId, id))
+  // Child entries go with it: Postgres enforces the ON DELETE CASCADE declared
+  // on story_entries.story_id, so no explicit child delete is needed.
   const deleted = await db
     .delete(stories)
     .where(eq(stories.id, id))
