@@ -1,36 +1,9 @@
 "use client"
 
+import { ModelCombobox } from "@/components/model-combobox"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { formatContextLength } from "@/lib/format"
 import type { OpenRouterModel } from "@/lib/types"
-
-interface ProviderGroup {
-  provider: string
-  models: OpenRouterModel[]
-}
-
-/** Group models by provider, preserving the order they appear in the array. */
-function groupByProvider(models: OpenRouterModel[]): ProviderGroup[] {
-  const groups: ProviderGroup[] = []
-  for (const model of models) {
-    const existing = groups.find((g) => g.provider === model.provider)
-    if (existing) {
-      existing.models.push(model)
-    } else {
-      groups.push({ provider: model.provider, models: [model] })
-    }
-  }
-  return groups
-}
 
 /**
  * Provider-grouped model select. Controlled by the inspector so the context
@@ -46,39 +19,16 @@ export function ModelPicker({
   value: string
   onValueChange: (modelId: string) => void
 }) {
-  const providers = groupByProvider(models)
   const selected = models.find((m) => m.id === value)
 
   return (
     <div className="space-y-2">
       <Label>Model</Label>
-      <Select
+      <ModelCombobox
+        models={models}
         value={value}
-        items={models.map((m) => ({ value: m.id, label: m.name }))}
-        onValueChange={(next) => {
-          if (next === null || next === value) return
-          onValueChange(next)
-        }}
-      >
-        <SelectTrigger className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {providers.map(({ provider, models: providerModels }) => (
-            <SelectGroup key={provider}>
-              <SelectLabel>{provider}</SelectLabel>
-              {providerModels.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  <span className="flex-1 truncate">{m.name}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {formatContextLength(m.contextLength)}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          ))}
-        </SelectContent>
-      </Select>
+        onValueChange={onValueChange}
+      />
       {selected ? (
         <p className="text-xs text-muted-foreground">
           In {selected.pricing.prompt} · Out {selected.pricing.completion} per
