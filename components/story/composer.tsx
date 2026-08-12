@@ -82,7 +82,11 @@ export function Composer({
   const active = KINDS.find((k) => k.value === actionKind) ?? KINDS[0]
   const markdownShortcuts = useMarkdownShortcuts()
 
-  const generating = status !== "idle"
+  // Not `status !== "idle"`: `settling` is busy but not stoppable — the passage
+  // is already final and waiting on its row, so offering Stop there would
+  // promise something that can no longer happen. The Send button comes back
+  // (disabled, via `busy`) for that sliver instead of a dead Stop.
+  const generating = status === "pending" || status === "streaming"
   const hasText = value.trim() !== ""
 
   // A keyboard swap moves nothing and speaks nothing: focus stays in the

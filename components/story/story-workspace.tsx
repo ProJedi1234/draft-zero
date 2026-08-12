@@ -161,6 +161,7 @@ function StoryEditor({
         busy={generation.busy}
         streamingText={generation.streamingText}
         optimisticUserText={generation.optimisticUserText}
+        optimisticUserPending={generation.optimisticUserPending}
         removingEntryIds={generation.removingEntryIds}
         onRetryFrom={generation.retryFrom}
         onSuggestion={handleSuggestion}

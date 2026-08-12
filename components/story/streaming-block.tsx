@@ -31,9 +31,17 @@ function Caret() {
 export function StreamingBlock({
   text,
   pending,
+  caret,
 }: {
   text: string
+  /** Before the first token: nothing to show but the caret. */
   pending: boolean
+  /**
+   * False once the passage is final and only waiting on its row. The block
+   * stays mounted through that wait, so the caret has to stop blinking on its
+   * own — otherwise finished prose reads as still being written.
+   */
+  caret: boolean
 }) {
   const paragraphs = toParagraphs(text)
 
@@ -45,13 +53,11 @@ export function StreamingBlock({
       className="relative -mx-4 px-4 py-3"
     >
       {paragraphs.length === 0 ? (
-        <ProseParagraph text="">
-          <Caret />
-        </ProseParagraph>
+        <ProseParagraph text="">{caret && <Caret />}</ProseParagraph>
       ) : (
         paragraphs.map((paragraph, i) => (
           <ProseParagraph key={i} text={paragraph}>
-            {i === paragraphs.length - 1 && <Caret />}
+            {caret && i === paragraphs.length - 1 && <Caret />}
           </ProseParagraph>
         ))
       )}
