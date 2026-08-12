@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { LoreTab } from "@/components/inspector/lore-tab"
 import { ModelPicker } from "@/components/inspector/model-picker"
 import { SettingSlider } from "@/components/inspector/setting-slider"
+import { levelForModel } from "@/components/thinking-select"
 import { Button } from "@/components/ui/button"
 import {
   Collapsible,
@@ -228,10 +229,10 @@ function InspectorSections({
     setModelId(nextModelId)
     // Thinking levels are per-model: a level the new model doesn't offer (or
     // any level at all, on a model that can't think) falls back to off.
-    const efforts =
-      models.find((m) => m.id === nextModelId)?.reasoning?.efforts ?? []
-    const nextThinking: ThinkingLevel =
-      thinking !== "off" && efforts.includes(thinking) ? thinking : "off"
+    const nextThinking = levelForModel(
+      models.find((m) => m.id === nextModelId)?.reasoning,
+      thinking
+    )
     setThinking(nextThinking)
     saveSettings({ modelId: nextModelId, thinking: nextThinking })
   }

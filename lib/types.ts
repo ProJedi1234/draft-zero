@@ -132,6 +132,8 @@ export type NewLorebookEntry = Omit<
 /** App-level settings (settings page). */
 export interface AppSettings {
   defaultModelId: string
+  /** Thinking level new stories start from. "off" unless the writer says otherwise. */
+  defaultThinking: ThinkingLevel
 }
 
 /** Uniform server-action result. Actions never throw for expected failures. */

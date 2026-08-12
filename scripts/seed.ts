@@ -81,6 +81,7 @@ async function seed() {
   await db.insert(appSettings).values({
     id: 1,
     defaultModelId: DEFAULT_GENERATION_SETTINGS.modelId,
+    defaultThinking: DEFAULT_GENERATION_SETTINGS.thinking,
   })
 
   console.log(

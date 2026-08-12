@@ -9,7 +9,11 @@ import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
 import { appSettings } from "@/lib/db/schema"
 import { resolveOpenRouterKey } from "@/lib/generation/key"
-import type { ActionResult, AppSettings } from "@/lib/types"
+import {
+  REASONING_EFFORTS,
+  type ActionResult,
+  type AppSettings,
+} from "@/lib/types"
 
 export async function updateAppSettings(
   patch: Partial<AppSettings>
@@ -19,6 +23,15 @@ export async function updateAppSettings(
     const modelId = patch.defaultModelId.trim()
     if (modelId === "") return { ok: false, error: "Pick a default model." }
     values.defaultModelId = modelId
+  }
+  if (patch.defaultThinking !== undefined) {
+    // Guarded here rather than trusted from the client: the column feeds every
+    // story created afterwards, and an unknown level would 400 at generation.
+    const thinking = patch.defaultThinking
+    if (thinking !== "off" && !REASONING_EFFORTS.includes(thinking)) {
+      return { ok: false, error: "Unknown thinking level." }
+    }
+    values.defaultThinking = thinking
   }
 
   // Ensures the single settings row exists before patching it.

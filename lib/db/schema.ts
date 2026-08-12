@@ -95,6 +95,10 @@ export const lorebookEntries = pgTable(
 export const appSettings = pgTable("app_settings", {
   id: integer("id").primaryKey(),
   defaultModelId: text("default_model_id").notNull(),
+  defaultThinking: text("default_thinking")
+    .notNull()
+    .default("off")
+    .$type<ThinkingLevel>(),
 })
 
 export type StoryRow = typeof stories.$inferSelect

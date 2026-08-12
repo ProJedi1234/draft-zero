@@ -32,7 +32,7 @@ export async function createStory(input?: {
     // null, not "": new stories track the built-in narrator prompt.
     systemPrompt: null,
     modelId: appSettings.defaultModelId,
-    thinking: DEFAULT_GENERATION_SETTINGS.thinking,
+    thinking: appSettings.defaultThinking,
     temperature: DEFAULT_GENERATION_SETTINGS.temperature,
     topP: DEFAULT_GENERATION_SETTINGS.topP,
     maxTokens: DEFAULT_GENERATION_SETTINGS.maxTokens,
