@@ -11,6 +11,7 @@ import { OpenRouterError } from "@openrouter/sdk/models/errors"
 import type { GenerationSettings } from "@/lib/types"
 
 import { renderPrompt } from "./context"
+import { resolveSystemPrompt } from "./system-prompt"
 import type { ComposedContext } from "./types"
 
 /** Maps SDK/stream errors to { status, message } safe to show the writer. */
@@ -53,10 +54,11 @@ export function mapOpenRouterError(err: unknown): {
 }
 
 /**
- * Streams a continuation. The prompt is renderPrompt(context) VERBATIM — the
- * same pure function the ContextMeter uses, so the tokens the writer sees are
- * the tokens sent. Throws before the first yield for pre-stream errors (401,
- * 402, 429, ...) so the route can still answer with a JSON error status.
+ * Streams a continuation. Two messages: the narrator instructions as a real
+ * system turn, and renderPrompt(context) VERBATIM as the user turn — the same
+ * pure function the ContextMeter uses, so the tokens the writer sees are the
+ * tokens sent. Throws before the first yield for pre-stream errors (401, 402,
+ * 429, ...) so the route can still answer with a JSON error status.
  */
 export async function* streamCompletion(opts: {
   context: ComposedContext
@@ -72,7 +74,13 @@ export async function* streamCompletion(opts: {
     {
       chatRequest: {
         model: settings.modelId,
-        messages: [{ role: "user", content: renderPrompt(context) }],
+        messages: [
+          // Re-resolved rather than trusted: the context arrives over the wire
+          // from the client, so a stale or hand-edited body must not be able to
+          // send an empty system turn.
+          { role: "system", content: resolveSystemPrompt(context.systemPrompt) },
+          { role: "user", content: renderPrompt(context) },
+        ],
         temperature: settings.temperature,
         topP: settings.topP,
         maxTokens: settings.maxTokens,

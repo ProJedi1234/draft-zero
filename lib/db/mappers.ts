@@ -130,6 +130,7 @@ export function toStory(
     settings: toGenerationSettings(row),
     memory: row.memory,
     authorsNote: row.authorsNote,
+    systemPrompt: row.systemPrompt,
     activeLorebookEntryIds: matches.map((match) => match.entry.id),
   }
 }

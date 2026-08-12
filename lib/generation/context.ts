@@ -4,6 +4,7 @@
 
 import type { LorebookEntry, Story } from "@/lib/types"
 import { matchActiveLorebookEntries, recentStoryText } from "./lorebook"
+import { resolveSystemPrompt } from "./system-prompt"
 import type { ActiveLoreEntry, ComposedContext } from "./types"
 
 /** Max characters of story prose carried into context. */
@@ -12,6 +13,9 @@ const STORY_CHAR_BUDGET = 24_000
 const LORE_CHAR_BUDGET = 8_000
 /** Paragraphs are separated by a blank line everywhere in the app. */
 const PARAGRAPH_SEPARATOR = "\n\n"
+/** Stands in for the story text when there is none, so the turn is never empty. */
+const EMPTY_STORY_MARKER =
+  "(This story has no text yet. Write its opening paragraph.)"
 
 /**
  * The final STORY_CHAR_BUDGET chars of `text`, cut forward to the next paragraph
@@ -72,6 +76,7 @@ export function composeContext(input: {
   const trimmedInstruction = instruction?.trim() ?? ""
 
   const context: ComposedContext = {
+    systemPrompt: resolveSystemPrompt(story.systemPrompt),
     memory: story.memory,
     lore,
     storyText,
@@ -80,7 +85,9 @@ export function composeContext(input: {
     seed: story.entries.length + variant,
     approxTokens: 0,
   }
-  context.approxTokens = estimateTokens(renderPrompt(context))
+  context.approxTokens = estimateTokens(
+    context.systemPrompt + renderPrompt(context)
+  )
   return context
 }
 
@@ -101,8 +108,12 @@ export function renderPrompt(ctx: ComposedContext): string {
 
   const storyText = ctx.storyText.trim()
   if (storyText === "") {
-    // No prose yet (blank story): no [Story] header, but the author's note is
-    // still a real instruction to the model.
+    // No prose yet. This block is load-bearing: a blank story used to render an
+    // empty (or memory-only) user turn, and a model handed a few bracket-tagged
+    // sections and nothing else treats them as a document to format — which is
+    // where the screenplays came from. Say plainly that the story is empty and
+    // what to do about it. The author's note still applies to the opening.
+    blocks.push(`[Story]\n${EMPTY_STORY_MARKER}`)
     if (authorsNoteBlock) blocks.push(authorsNoteBlock)
   } else {
     const boundary = storyText.lastIndexOf(PARAGRAPH_SEPARATOR)

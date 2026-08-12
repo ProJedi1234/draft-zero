@@ -15,6 +15,8 @@ export interface ActiveLoreEntry {
 
 /** Fully composed generation context — everything a provider needs, provider-agnostic. */
 export interface ComposedContext {
+  /** Already resolved: the story's override, or the built-in default. Sent as the system message. */
+  systemPrompt: string
   memory: string
   /** Ordered priority DESC (then id ASC). Already budget-trimmed. */
   lore: ActiveLoreEntry[]
@@ -25,7 +27,7 @@ export interface ComposedContext {
   instruction: string | null
   /** Deterministic seed: entryCount at composition time + variant. Drives mock fixture choice. */
   seed: number
-  /** estimateTokens(renderPrompt(ctx)) — for the inspector context meter. */
+  /** estimateTokens of the system prompt + renderPrompt(ctx) — for the inspector context meter. */
   approxTokens: number
 }
 
