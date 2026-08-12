@@ -354,6 +354,8 @@ Binding composition rules:
 - `storyText` = all entries' text joined `"\n\n"`, trimmed to the **final 24 000 chars**, cut forward to the next paragraph boundary so it never starts mid-paragraph.
 - `lore` = `matchActiveLorebookEntries(...)` mapped to `ActiveLoreEntry`, then greedily included in order (priority DESC, id ASC) while cumulative `content` length ≤ **8 000 chars** — higher priority survives trimming, exactly as `lib/types.ts` documents.
 - `seed` = `story.entries.length + variant` (count *after* any user append — `prepareGeneration` composes from fresh DB state).
+- `systemPrompt` = `resolveSystemPrompt(story.systemPrompt)` — the story's override when non-blank, else `DEFAULT_SYSTEM_PROMPT`. Sent as a real `role: "system"` message, **separate** from `renderPrompt`, which stays the user turn. The split is the point: the bracket-tagged blocks below are NovelAI-style raw conditioning written for a base model, and an instruct-tuned model reads them as a document to format unless it is told out of band what it is.
+- `approxTokens` counts the system prompt **and** the rendered prompt, so the context meter still equals what is sent.
 - `renderPrompt` layout (memory top; author's note injected near the most recent words; instruction last):
 
 ```
@@ -373,6 +375,8 @@ Binding composition rules:
 [Instruction]
 {instruction}                         ← instruction mode only
 ```
+
+- Blank story (no prose yet): the `[Story]` block is still emitted, carrying the marker `(This story has no text yet. Write its opening paragraph.)`. The user turn is never empty and never a bare stack of labelled sections — that was what produced screenplay-formatted openings.
 
 ### 3.6 Client generation flow (who calls what)
 

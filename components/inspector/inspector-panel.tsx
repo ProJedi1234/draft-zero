@@ -25,6 +25,7 @@ import {
 } from "@/lib/actions/stories"
 import { formatContextLength } from "@/lib/format"
 import { composeContext } from "@/lib/generation/context"
+import { DEFAULT_SYSTEM_PROMPT } from "@/lib/generation/system-prompt"
 import type { LorebookEntry, OpenRouterModel, Story } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -165,12 +166,16 @@ function InspectorSections({
   const authorsNoteSave = useAutosave((value: string) =>
     updateStoryMeta(story.id, { authorsNote: value })
   )
+  const systemPromptSave = useAutosave((value: string) =>
+    updateStoryMeta(story.id, { systemPrompt: value })
+  )
 
   const titleRef = React.useRef<HTMLInputElement>(null)
   const descriptionRef = React.useRef<HTMLTextAreaElement>(null)
   const genreRef = React.useRef<HTMLInputElement>(null)
   const memoryRef = React.useRef<HTMLTextAreaElement>(null)
   const authorsNoteRef = React.useRef<HTMLTextAreaElement>(null)
+  const systemPromptRef = React.useRef<HTMLTextAreaElement>(null)
 
   const titleField = useServerSyncedField(
     titleRef,
@@ -196,6 +201,13 @@ function InspectorSections({
     authorsNoteRef,
     story.authorsNote,
     authorsNoteSave.status
+  )
+  // "" is the honest rendering of a null override: the field shows the built-in
+  // prompt as placeholder text, and clearing it stores NULL again.
+  const systemPromptField = useServerSyncedField(
+    systemPromptRef,
+    story.systemPrompt ?? "",
+    systemPromptSave.status
   )
 
   function handleModelChange(nextModelId: string) {
@@ -407,6 +419,44 @@ function InspectorSections({
             Injected near the most recent words.
           </p>
         </div>
+
+        <Collapsible>
+          <CollapsibleTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="xs"
+                className="w-full justify-between text-muted-foreground"
+              />
+            }
+          >
+            System prompt
+            <ChevronsUpDown className="size-3" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-2 pt-3">
+            <Label htmlFor={`${uid}-system-prompt`} className="sr-only">
+              System prompt
+            </Label>
+            <Textarea
+              id={`${uid}-system-prompt`}
+              ref={systemPromptRef}
+              defaultValue={story.systemPrompt ?? ""}
+              className="min-h-48 font-mono text-xs"
+              // The built-in prompt as placeholder: it is what actually runs
+              // when the field is empty, so it belongs in the box, greyed out.
+              placeholder={DEFAULT_SYSTEM_PROMPT}
+              onChange={(event) => {
+                systemPromptField.markWritten(event.target.value)
+                systemPromptSave.schedule(event.target.value)
+              }}
+              onBlur={() => systemPromptSave.flush()}
+            />
+            <p className="text-xs text-muted-foreground">
+              How the narrator writes. Replaces the built-in prompt shown here;
+              clear it to go back.
+            </p>
+          </CollapsibleContent>
+        </Collapsible>
 
         <Separator />
 

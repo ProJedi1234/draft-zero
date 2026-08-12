@@ -24,6 +24,10 @@ export const stories = pgTable("stories", {
   genre: text("genre").notNull().default(""),
   memory: text("memory").notNull().default(""),
   authorsNote: text("authors_note").notNull().default(""),
+  // Nullable on purpose: NULL means "use the built-in narrator prompt", which
+  // is a different state from an empty override and lets the default keep
+  // evolving for every story that never set one.
+  systemPrompt: text("system_prompt"),
   // Generation settings live inline (1:1 with the story).
   modelId: text("model_id").notNull(),
   // doublePrecision, not real: Postgres `real` is 4-byte and would silently

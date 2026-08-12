@@ -48,6 +48,8 @@ export interface Story {
   memory: string
   /** Author's note: injected near the most recent words. */
   authorsNote: string
+  /** Per-story narrator prompt override; null uses DEFAULT_SYSTEM_PROMPT. */
+  systemPrompt: string | null
   /** LorebookEntry ids currently "triggered" for this story (mocked). */
   activeLorebookEntryIds: string[]
 }

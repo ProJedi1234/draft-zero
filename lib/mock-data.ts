@@ -83,7 +83,10 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   modelId: "anthropic/claude-sonnet-4.5",
   temperature: 0.9,
   topP: 0.95,
-  maxTokens: 1024,
+  // A hard ceiling on the runaway case, not a target. The system prompt asks
+  // for a single paragraph; this is what stops a model that ignores it from
+  // filling most of a page before the writer can reach Stop.
+  maxTokens: 400,
   frequencyPenalty: 0.15,
   presencePenalty: 0.1,
 }
@@ -266,6 +269,7 @@ export const MOCK_STORIES: Story[] = [
     wordCount: 436,
     memory:
       "Maren Kestrel is a Guild-licensed surveyor whose maps come true because the river god Elathe guides her hand. She owes Elathe a twelfth and final map: the drowned quarter as it was the night it sank. Tone: literary fantasy, wry, melancholy. Third person past, close on Maren.",
+    systemPrompt: null,
     authorsNote:
       "Keep the river's dialogue literal and contractual. Never let Elathe lie.",
     activeLorebookEntryIds: [
@@ -327,6 +331,7 @@ export const MOCK_STORIES: Story[] = [
     wordCount: 328,
     memory:
       "The salvage tug Magpie (crew: Ade Osei, pilot; Rhys, engineer; the narrator, comms) has intercepted a distress loop from the colony ship Meridian, lost 60 years ago. The loop's timestamp updates every day. Tone: quiet dread, hard-SF texture. First person present.",
+    systemPrompt: null,
     authorsNote: "Slow burn. Horror through procedure and radio protocol, not gore.",
     activeLorebookEntryIds: [],
     settings: {
@@ -375,6 +380,7 @@ export const MOCK_STORIES: Story[] = [
     wordCount: 243,
     memory:
       "Esther Hale, recently widowed, has taken the winter keeper's post at Wren Point light. The previous three keepers each resigned on the 14th of February. The Trust's logbooks for that date are razored out. Tone: gothic, restrained. First person past, epistolary logbook entries.",
+    systemPrompt: null,
     authorsNote: "Every scene should be explainable two ways until the final act.",
     activeLorebookEntryIds: [],
     settings: {
@@ -415,6 +421,7 @@ export const MOCK_STORIES: Story[] = [
     updatedAt: "2026-08-10T07:00:00Z",
     wordCount: 0,
     memory: "",
+    systemPrompt: null,
     authorsNote: "",
     activeLorebookEntryIds: [],
     settings: { ...DEFAULT_GENERATION_SETTINGS },
