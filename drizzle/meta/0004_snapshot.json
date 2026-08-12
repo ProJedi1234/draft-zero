@@ -1,6 +1,6 @@
 {
-  "id": "464d1565-22bc-407b-826b-31e4b188bab8",
-  "prevId": "5ba4f37b-9562-49ad-ab41-d830861ca4d6",
+  "id": "08e71684-6887-493b-be57-936955779bdd",
+  "prevId": "464d1565-22bc-407b-826b-31e4b188bab8",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -203,6 +203,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "thinking": {
+          "name": "thinking",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'off'"
         },
         "temperature": {
           "name": "temperature",

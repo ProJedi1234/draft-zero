@@ -26,6 +26,10 @@ export const stories = pgTable("stories", {
   genre: text("genre").notNull().default(""),
   memory: text("memory").notNull().default(""),
   authorsNote: text("authors_note").notNull().default(""),
+  // Nullable on purpose: NULL means "use the built-in narrator prompt", which
+  // is a different state from an empty override and lets the default keep
+  // evolving for every story that never set one.
+  systemPrompt: text("system_prompt"),
   // Generation settings live inline (1:1 with the story).
   modelId: text("model_id").notNull(),
   // Reasoning effort, or "off". Thinking is opt-in, so "off" is the default
