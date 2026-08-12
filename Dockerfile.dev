@@ -1,0 +1,21 @@
+# Node base with the bun binary copied in, rather than the oven/bun image: bun
+# is the package manager and script runner, but Next must run under real Node.
+# oven/bun's `node` is a bun shim, and under it Turbopack fails to load external
+# packages — "Failed to load external module pg-<hash>" — despite them being
+# present in node_modules.
+FROM node:22-alpine
+
+COPY --from=oven/bun:1-alpine /usr/local/bin/bun /usr/local/bin/bun
+
+WORKDIR /app
+
+# Split from the rest of the source so a lockfile change is what invalidates the
+# install layer, not every edit to a component.
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["bun", "run", "next", "dev", "--hostname", "0.0.0.0"]
