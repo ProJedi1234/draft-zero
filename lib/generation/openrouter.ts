@@ -8,14 +8,17 @@ import { chatSend } from "@openrouter/sdk/funcs/chatSend.js"
 import { EventStream } from "@openrouter/sdk/lib/event-streams.js"
 import { OpenRouterError } from "@openrouter/sdk/models/errors"
 
-import type {
-  GenerationSettings,
-  OpenRouterModel,
-  ReasoningEffort,
-  ThinkingLevel,
+import {
+  endpointForTag,
+  type GenerationSettings,
+  type ModelEndpoint,
+  type OpenRouterModel,
+  type ReasoningEffort,
+  type ThinkingLevel,
 } from "@/lib/types"
 
 import { renderPrompt } from "./context"
+import { listModelEndpoints } from "./endpoints"
 import { listModels } from "./models"
 import { resolveSystemPrompt } from "./system-prompt"
 import type { ComposedContext } from "./types"
@@ -80,6 +83,25 @@ export function reasoningParam(
 }
 
 /**
+ * The `provider` block for a request, or undefined to let OpenRouter route.
+ *
+ * A pinned endpoint is sent as `only` with fallbacks off: the writer picked that
+ * provider for its speed, price or quantization, and silently serving the
+ * request from a different one would make the picker a decoration. A tag that is
+ * no longer in the model's endpoint list is dropped back to Auto rather than
+ * sent — endpoints come and go, and a stale row should cost a writer a different
+ * provider, not a failed generation.
+ */
+export function providerParam(
+  endpoints: ModelEndpoint[],
+  providerTag: string | null
+): { only: string[]; allowFallbacks: boolean } | undefined {
+  const endpoint = endpointForTag(endpoints, providerTag)
+  if (!endpoint) return undefined
+  return { only: [endpoint.tag], allowFallbacks: false }
+}
+
+/**
  * Streams a continuation. Two messages: the narrator instructions as a real
  * system turn, and renderPrompt(context) VERBATIM as the user turn — the same
  * pure function the ContextMeter uses, so the tokens the writer sees are the
@@ -94,12 +116,20 @@ export async function* streamCompletion(opts: {
 }): AsyncGenerator<string> {
   const { context, settings, key, signal } = opts
   const core = new OpenRouterCore({ apiKey: key, appTitle: "draft-zero" })
-  // The catalog is cached per process, so this is a lookup, not a round-trip.
-  const models = await listModels()
+  // Both catalogs are cached per process, so these are lookups rather than
+  // round-trips on the hot path. The endpoint list is only needed when the story
+  // actually pins a provider.
+  const [models, endpoints] = await Promise.all([
+    listModels(),
+    settings.providerTag === null
+      ? Promise.resolve<ModelEndpoint[]>([])
+      : listModelEndpoints(settings.modelId),
+  ])
   const reasoning = reasoningParam(
     models.find((m) => m.id === settings.modelId),
     settings.thinking
   )
+  const provider = providerParam(endpoints, settings.providerTag)
 
   const res = await chatSend(
     core,
@@ -110,7 +140,10 @@ export async function* streamCompletion(opts: {
           // Re-resolved rather than trusted: the context arrives over the wire
           // from the client, so a stale or hand-edited body must not be able to
           // send an empty system turn.
-          { role: "system", content: resolveSystemPrompt(context.systemPrompt) },
+          {
+            role: "system",
+            content: resolveSystemPrompt(context.systemPrompt),
+          },
           { role: "user", content: renderPrompt(context) },
         ],
         temperature: settings.temperature,
@@ -120,6 +153,7 @@ export async function* streamCompletion(opts: {
         presencePenalty: settings.presencePenalty,
         seed: context.seed,
         reasoning,
+        provider,
         stream: true,
       },
     },

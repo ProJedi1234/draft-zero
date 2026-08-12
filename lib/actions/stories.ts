@@ -34,6 +34,8 @@ export async function createStory(input?: {
     systemPrompt: null,
     modelId: appSettings.defaultModelId,
     thinking: appSettings.defaultThinking,
+    // Auto: a new story has no reason to pin one provider of its default model.
+    providerTag: null,
     temperature: DEFAULT_GENERATION_SETTINGS.temperature,
     topP: DEFAULT_GENERATION_SETTINGS.topP,
     maxTokens: DEFAULT_GENERATION_SETTINGS.maxTokens,
@@ -203,6 +205,11 @@ export async function updateGenerationSettings(
   const values: Partial<typeof stories.$inferInsert> = {}
   if (patch.modelId !== undefined) values.modelId = patch.modelId
   if (patch.thinking !== undefined) values.thinking = patch.thinking
+  // null is a real value here (Auto), so only `undefined` means "not patched".
+  // Unvalidated on purpose: the endpoint list is a live remote catalog, and a
+  // tag that no longer serves this model is dropped at send time by
+  // providerParam() rather than rejected on the way in — see openrouter.ts.
+  if (patch.providerTag !== undefined) values.providerTag = patch.providerTag
   if (patch.temperature !== undefined) values.temperature = patch.temperature
   if (patch.topP !== undefined) values.topP = patch.topP
   if (patch.maxTokens !== undefined) values.maxTokens = patch.maxTokens
