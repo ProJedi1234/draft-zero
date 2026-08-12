@@ -58,18 +58,23 @@ function toReasoning(m: Model): ModelReasoning | null {
 }
 
 function toDomainModel(m: Model): OpenRouterModel {
-  // OpenRouter names are "Provider: Model Name" — split for grouping.
+  // OpenRouter names are "Provider: Model Name" — split for grouping. Not all
+  // of them: entries named without the colon fall back to the id's author, and
+  // a router alias ("~anthropic/claude-sonnet-latest") carries a "~" there that
+  // belongs to the id, not to the lab's name.
   const [provider, ...rest] = m.name.split(": ")
   return {
     id: m.id,
     name: rest.length > 0 ? rest.join(": ") : m.name,
-    provider: rest.length > 0 ? provider : m.id.split("/")[0],
+    provider:
+      rest.length > 0 ? provider : m.id.split("/")[0].replace(/^~/, ""),
     contextLength: m.contextLength ?? 0,
     pricing: {
       prompt: per1M(m.pricing.prompt),
       completion: per1M(m.pricing.completion),
     },
     reasoning: toReasoning(m),
+    ...(m.aliasTarget ? { aliasTarget: m.aliasTarget.slug } : {}),
   }
 }
 

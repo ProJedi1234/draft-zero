@@ -231,13 +231,26 @@ export function mockEndpoints(model: OpenRouterModel): ModelEndpoint[] {
   })
   // Closed models are single-source in reality; pretending Groq serves Claude
   // would make the mock actively misleading.
-  return CLOSED_MODEL_PROVIDERS.has(model.provider)
-    ? [firstParty]
-    : [firstParty, ...rest]
+  return isClosedLab(model) ? [firstParty] : [firstParty, ...rest]
 }
 
 /** Labs that only serve their own weights, so their models have one endpoint. */
-const CLOSED_MODEL_PROVIDERS = new Set(["Anthropic", "OpenAI", "Google"])
+const CLOSED_MODEL_PROVIDERS = new Set(["anthropic", "openai", "google"])
+
+/**
+ * Whether the lab behind `model` serves it alone. Matched on both the display
+ * provider and the model id's author, normalised, because the catalog's
+ * provider name is only as good as the "Lab: Name" split it came from — an
+ * entry named without the colon lands here as its bare author instead, and a
+ * router alias wears a "~" in front of that author.
+ */
+function isClosedLab(model: OpenRouterModel): boolean {
+  const normalise = (s: string) => s.replace(/^~/, "").toLowerCase()
+  return (
+    CLOSED_MODEL_PROVIDERS.has(normalise(model.provider)) ||
+    CLOSED_MODEL_PROVIDERS.has(normalise(model.id.split("/")[0]))
+  )
+}
 
 export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   modelId: "anthropic/claude-sonnet-4.5",
