@@ -128,14 +128,27 @@ export function StoryCanvas({
         ref={contentRef}
         // The bottom reservation tracks the real composer height (published as
         // --composer-h by the workspace); the fallback matches its resting size.
-        className="mx-auto w-full max-w-2xl px-6 pt-12 pb-[calc(var(--composer-h,11rem)+2rem)]"
+        // break-words is load-bearing, not cosmetic: the viewport scrolls on
+        // BOTH axes (Base UI sets overflow:scroll inline), so any single
+        // unbreakable token — a pasted URL, a long imported genre — turns the
+        // manuscript into a horizontally pannable page on touch.
+        className="mx-auto w-full max-w-2xl px-6 pt-12 pb-[calc(var(--composer-h,11rem)+2rem)] break-words"
       >
         <span role="status" aria-live="polite" className="sr-only">
           {announcement}
         </span>
-        <div className="mb-2 flex items-center gap-2">
-          <Badge variant="outline">{story.genre}</Badge>
-          <span className="text-xs text-muted-foreground">
+        {/* An imported scenario's "genre" is often its whole tag list, and the
+            badge is whitespace-nowrap by design — so it must be allowed to
+            shrink and ellipsise here, or it sets the width of the canvas. */}
+        <div className="mb-2 flex min-w-0 items-center gap-2">
+          <Badge
+            variant="outline"
+            className="min-w-0 shrink truncate"
+            title={story.genre}
+          >
+            {story.genre}
+          </Badge>
+          <span className="shrink-0 text-xs text-muted-foreground">
             Started {formatDateShort(story.createdAt)}
           </span>
         </div>
