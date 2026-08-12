@@ -50,6 +50,8 @@ async function seed() {
 
     if (story.entries.length > 0) {
       await db.insert(storyEntries).values(
+        // The fixtures are all prose, so action_kind and input_text are left
+        // unset and land as NULL — none of these passages is a Say or a Do.
         story.entries.map((entry, index) => ({
           id: entry.id,
           storyId: story.id,

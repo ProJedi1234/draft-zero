@@ -8,7 +8,21 @@ import type {
   LorebookEntry,
   OpenRouterModel,
   Story,
+  StoryEntry,
 } from "./types"
+
+/**
+ * Wraps a fixture passage as "not a player action". Every entry below is
+ * third-person literary prose written for the scaffolding, not something a
+ * writer typed into the Say/Do composer, so all of them carry the null pair.
+ * The helper exists so the fixtures still read as prose rather than as twelve
+ * repetitions of two nulls.
+ */
+function proseEntry(
+  entry: Omit<StoryEntry, "actionKind" | "inputText">
+): StoryEntry {
+  return { ...entry, actionKind: null, inputText: null }
+}
 
 // ---------------------------------------------------------------------------
 // Models (OpenRouter stubs)
@@ -311,36 +325,36 @@ export const MOCK_STORIES: Story[] = [
       presencePenalty: 0.1,
     },
     entries: [
-      {
+      proseEntry({
         id: "entry-cart-1",
         source: "generated",
         createdAt: "2026-06-02T08:45:00Z",
         text: 'The river had been lying to maps for three hundred years, and Maren Kestrel was the first cartographer honest enough to write the lies down. She stood on the stone lip of Graywater Crossing with her drafting board strapped to her chest, watching the Ithren bend a way no river should bend — uphill, against its own current, toward the drowned quarter of the old city.\n\nHer Guild license said she surveyed floodplains. Her private ledger said something truer: eleven maps drawn, eleven debts accrued, one river god growing impatient.\n\n"You\'re late," said the water.',
-      },
-      {
+      }),
+      proseEntry({
         id: "entry-cart-2",
         source: "user",
         createdAt: "2026-06-02T09:10:00Z",
         text: 'Maren set down her board and unwrapped the bone needle from its oilcloth. It swung once, twice, and settled — pointing not north but down, through the causeway stone, toward whatever the Ithren kept beneath the crossing. "I brought your payment," she said, and hated how small her voice sounded over the water.',
-      },
-      {
+      }),
+      proseEntry({
         id: "entry-cart-3",
         source: "generated",
         createdAt: "2026-06-02T09:12:00Z",
         text: 'The current folded in on itself, and out of the fold rose a shape that was mostly suggestion: a figure of green glass water, tall as a mast, wearing the surface of the river like a borrowed coat. Elathe did not have a face. It had, instead, a place where attention gathered, and all of it gathered now on the oilcloth in her hands.\n\n"Payment," the god repeated, in a voice like a lock turning. "You use that word the way drowning men use the word \'swimming.\' Show me the twelfth map, Maren Kestrel."',
-      },
-      {
+      }),
+      proseEntry({
         id: "entry-cart-4",
         source: "user",
         createdAt: "2026-06-02T09:30:00Z",
         text: "\"It isn't finished.\" The lie came out smooth, practiced. The map was finished. It had been finished for a month, rolled inside her chimney where the damp couldn't reach, and every night since she had dreamed of the streets it showed — streets full of people who did not yet know they were about to be dead.",
-      },
-      {
+      }),
+      proseEntry({
         id: "entry-cart-5",
         source: "generated",
         createdAt: "2026-06-02T09:32:00Z",
         text: 'The river went still. Not calm — still, the way a courtroom goes still. Along the whole length of the crossing the water stopped moving, and in that stillness Maren could see straight down through forty feet of green light to the drowned quarter: slate roofs furred with weed, a bell tower, a market square where pale shapes drifted between the stalls in an unhurried parody of errands.\n\n"Cartographer," Elathe said softly, "I taught you to draw true things. I did not teach you to say false ones. We will both pretend that mercy is why I let that pass."',
-      },
+      }),
     ],
   },
   {
@@ -369,30 +383,30 @@ export const MOCK_STORIES: Story[] = [
       presencePenalty: 0.2,
     },
     entries: [
-      {
+      proseEntry({
         id: "entry-static-1",
         source: "generated",
         createdAt: "2026-07-14T19:20:00Z",
         text: "The distress call is sixty years old and four hours new. I keep both facts on my screen because one of them has to be wrong, and so far neither of them will admit it.\n\nMagpie hangs at station-keeping two thousand klicks off the Meridian's hull, close enough that our floodlights catch the colony ship's name in flaking paint. Every twenty-six hours her transmitter wakes, sends the same forty-one seconds of audio, and stamps it with the current date. Ships do not do that. Dead ships especially do not do that.",
-      },
-      {
+      }),
+      proseEntry({
         id: "entry-static-2",
         source: "user",
         createdAt: "2026-07-15T08:05:00Z",
         text: "Ade wants to board her. Rhys wants to log the contact and burn for home, and for once I think the engineer has the better physics. But salvage law is salvage law: first crew to make hull contact owns the claim, and the Meridian is the richest wreck in three systems.\n\nI put the forty-one seconds on the cabin speakers one more time.",
-      },
-      {
+      }),
+      proseEntry({
         id: "entry-static-3",
         source: "generated",
         createdAt: "2026-07-15T08:07:00Z",
         text: "It opens with the standard header, a woman's voice, calm the way only trained voices are calm: 'Colony vessel Meridian, requesting immediate assistance, one-one-eight souls aboard.' Then eleven seconds of station noise — air handlers, a child asking something far from the mic — and then the part I do not play for the others anymore.\n\nThe voice comes back. It is the same voice, but it has stopped being calm, and it says: 'Correction. One-one-nine souls aboard. Correction. One-two-zero.'\n\nThe count has gone up in every broadcast since we arrived.",
-      },
-      {
+      }),
+      proseEntry({
         id: "entry-static-4",
         source: "user",
         createdAt: "2026-07-16T22:00:00Z",
         text: "I flag the anomaly in the contact log, encrypt it, and do not tell Ade about the newest number. One hundred twenty-three. We are three people on this tug, and I have stopped believing in coincidence.",
-      },
+      }),
     ],
   },
   {
@@ -421,24 +435,24 @@ export const MOCK_STORIES: Story[] = [
       presencePenalty: 0.05,
     },
     entries: [
-      {
+      proseEntry({
         id: "entry-light-1",
         source: "user",
         createdAt: "2026-05-20T10:30:00Z",
         text: "Log of the keeper, Wren Point Light. 3rd November.\n\nThe Trust's launch left me at the landing at noon with four months of tinned goods, a crate of lamp oil, and the strong impression that the boatman did not intend to cut the engine while I unloaded. The tower is sound. The light is sound. The logbook they gave me is new, which I thought nothing of until I found the old ones in the store room — nine volumes, complete, except that in each of them the same week of February has been cut out with a razor.",
-      },
-      {
+      }),
+      proseEntry({
         id: "entry-light-2",
         source: "generated",
         createdAt: "2026-05-20T10:33:00Z",
         text: "4th November.\n\nWind northwest, moderate. Lamp lit at 4:12, extinguished at 7:40. I record these details because the Trust requires them and because there is a comfort in requirements.\n\nOne matter I will set down plainly, since no one reads this but the Trust and the Trust does not read it either: the light was already warm when I climbed to light it. Not burning — warm. The brass of the lamp housing held heat the way a chair holds the shape of someone who has just stood up. I have decided to attribute it to the sun through the lens room glass, and I record here, honestly, that the sky was overcast all day.",
-      },
-      {
+      }),
+      proseEntry({
         id: "entry-light-3",
         source: "user",
         createdAt: "2026-05-21T09:00:00Z",
         text: "6th November.\n\nI have begun taking my supper in the lens room. Edward would have laughed at me — dining at the top of ninety-eight stairs for the company of a lamp. But the kitchen has a window that faces the sea, and the sea at dusk has started to look to me like it is standing very still on purpose.",
-      },
+      }),
     ],
   },
   {

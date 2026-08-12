@@ -54,6 +54,8 @@ export function toStoryEntry(row: StoryEntryRow): StoryEntry {
     id: row.id,
     source: row.source,
     text: row.text,
+    actionKind: row.actionKind,
+    inputText: row.inputText,
     createdAt: row.createdAt,
   }
 }

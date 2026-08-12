@@ -50,6 +50,13 @@
       "when": 1786498822427,
       "tag": "0006_mysterious_eternity",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786539390193,
+      "tag": "0007_dazzling_daredevil",
+      "breakpoints": true
     }
   ]
 }
