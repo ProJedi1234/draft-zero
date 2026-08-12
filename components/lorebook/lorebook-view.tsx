@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, NotebookText } from "lucide-react"
 
-import { buttonVariants } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Empty,
   EmptyDescription,
@@ -19,6 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
 import type { LorebookCategory, LorebookEntry } from "@/lib/types"
 
 import { LorebookEntryEditor } from "@/components/lorebook/lorebook-entry-editor"
@@ -62,6 +63,10 @@ export function LorebookView({
   )
   const [category, setCategory] = useState<LorebookCategory | "all">("all")
   const [query, setQuery] = useState("")
+  // Below md the list and the editor are one screen each, not two columns —
+  // 320px of rail plus an editor leaves ~70px for the editor on a phone. This
+  // is which of the two is showing; from md up both are, and it is inert.
+  const [showEntry, setShowEntry] = useState(false)
 
   // Reconcile the selection with server revalidations: the entries prop is a
   // fresh array after every mutation, so re-resolve by id rather than holding
@@ -78,7 +83,10 @@ export function LorebookView({
       // legitimately lead the revalidated list by a render.
       seenEntries.some((e) => e.id === selectedId)
     ) {
-      setSelectedId(nextSelection(seenEntries, entries, selectedId))
+      const inheritor = nextSelection(seenEntries, entries, selectedId)
+      setSelectedId(inheritor)
+      // Nothing left to inherit — don't strand a phone on an empty pane.
+      if (inheritor === null) setShowEntry(false)
     }
   }
 
@@ -88,12 +96,29 @@ export function LorebookView({
     <div className="flex h-app flex-col">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger />
+        {/* While an entry fills a phone screen, Back means "back to the list" —
+            the only way out of the editor. At md+ both panes are visible, so
+            Back keeps its single meaning of "back to the story". */}
+        {showEntry && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Back to entries"
+            onClick={() => setShowEntry(false)}
+            className="md:hidden"
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+        )}
         <Tooltip>
           {/* The trigger renders the anchor directly. Wrapping it in <Button>
               instead would make Base UI's button expect native <button>
               semantics from an <a>, which it warns about. */}
           <TooltipTrigger
-            className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "icon-sm" }),
+              showEntry && "hidden md:inline-flex"
+            )}
             aria-label="Back to story"
             render={<Link href={`/story/${storyId}`} />}
           >
@@ -102,7 +127,7 @@ export function LorebookView({
           <TooltipContent>Back to story</TooltipContent>
         </Tooltip>
         <h1 className="truncate text-sm font-medium">{storyTitle}</h1>
-        <span className="shrink-0 text-xs text-muted-foreground">
+        <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
           Lorebook · {entries.length}{" "}
           {entries.length === 1 ? "entry" : "entries"}
         </span>
@@ -114,6 +139,8 @@ export function LorebookView({
             setCategory("all")
             setQuery("")
             setSelectedId(id)
+            // A new entry is empty by definition — go straight to editing it.
+            setShowEntry(true)
           }}
         />
       </header>
@@ -126,9 +153,13 @@ export function LorebookView({
           query={query}
           onQueryChange={setQuery}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          onSelect={(id) => {
+            setSelectedId(id)
+            setShowEntry(true)
+          }}
+          className={cn(showEntry && "hidden md:flex")}
         />
-        <div className="min-w-0 flex-1">
+        <div className={cn("min-w-0 flex-1", !showEntry && "hidden md:block")}>
           {selected ? (
             <ScrollArea className="h-full">
               <div className="mx-auto w-full max-w-xl px-6 py-8">

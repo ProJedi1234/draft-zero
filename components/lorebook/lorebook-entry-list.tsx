@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
 import { LOREBOOK_CATEGORIES, type LorebookCategory } from "@/lib/types"
 import type { LorebookEntry } from "@/lib/types"
 
@@ -20,6 +21,8 @@ export interface LorebookEntryListProps {
   onQueryChange: (q: string) => void
   selectedId: string | null
   onSelect: (id: string) => void
+  /** The view owns whether this pane is the visible one on mobile. */
+  className?: string
 }
 
 const CATEGORY_CHIPS: ReadonlyArray<{
@@ -82,6 +85,7 @@ export function LorebookEntryList(props: LorebookEntryListProps) {
     onQueryChange,
     selectedId,
     onSelect,
+    className,
   } = props
 
   const needle = query.trim().toLowerCase()
@@ -97,7 +101,14 @@ export function LorebookEntryList(props: LorebookEntryListProps) {
   )
 
   return (
-    <div className="flex w-80 shrink-0 flex-col border-r">
+    // Full-bleed below md, where it is the whole screen; a fixed rail beside
+    // the editor from md up.
+    <div
+      className={cn(
+        "flex w-full shrink-0 flex-col border-r md:w-80",
+        className
+      )}
+    >
       <div className="space-y-2 p-3">
         <Input
           value={query}
