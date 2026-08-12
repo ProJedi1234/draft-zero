@@ -4,6 +4,9 @@
 
 import type { LorebookEntry, StoryEntry } from "@/lib/types"
 
+// The scan window is deliberately fixed and independent of the story's
+// contextWindow: this is *activation*, not *budgeting*. If the window moved with
+// the slider, dragging it would silently change which entries trigger.
 /** How many trailing entries the scan window looks at. */
 const SCAN_ENTRY_COUNT = 4
 /** Hard character cap on the scan window. */
