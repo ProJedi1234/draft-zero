@@ -18,16 +18,29 @@ export interface ComposedContext {
   /** Already resolved: the story's override, or the built-in default. Sent as the system message. */
   systemPrompt: string
   memory: string
-  /** Ordered priority DESC (then id ASC). Already budget-trimmed. */
+  /**
+   * Ordered priority DESC (then id ASC). Already trimmed to its share of the
+   * story's contextWindow token budget — entries that did not fit are absent.
+   */
   lore: ActiveLoreEntry[]
-  /** Recent story prose window (authors note NOT baked in — renderPrompt injects it). */
+  /**
+   * Recent story prose window, trimmed from the tail to whatever the
+   * contextWindow budget had left over (authors note NOT baked in — renderPrompt
+   * injects it).
+   */
   storyText: string
   authorsNote: string
   /** Ephemeral instruction (instruction mode), else null. */
   instruction: string | null
   /** Deterministic seed: entryCount at composition time + variant. Drives mock fixture choice. */
   seed: number
-  /** estimateTokens of the system prompt + renderPrompt(ctx) — for the inspector context meter. */
+  /**
+   * estimateTokens of the system prompt + renderPrompt(ctx) — for the inspector
+   * context meter. composeContext trims until this is <= the story's
+   * contextWindow; it can still exceed it when the fixed overhead (system
+   * prompt, memory, author's note, instruction) alone does not fit, since none
+   * of that is trimmable.
+   */
   approxTokens: number
 }
 

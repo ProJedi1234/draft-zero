@@ -7,10 +7,20 @@ import { matchActiveLorebookEntries, recentStoryText } from "./lorebook"
 import { resolveSystemPrompt } from "./system-prompt"
 import type { ActiveLoreEntry, ComposedContext } from "./types"
 
-/** Max characters of story prose carried into context. */
-const STORY_CHAR_BUDGET = 24_000
-/** Max total characters of lore content carried into context. */
-const LORE_CHAR_BUDGET = 8_000
+/**
+ * The inverse of estimateTokens. Because estimateTokens is ceil(len / 4),
+ * `ceil(len / 4) <= W` holds exactly when `len <= 4 * W` — so a token budget
+ * converts into a character budget losslessly, with no fudge factor. Everything
+ * below therefore budgets in characters and only converts once, at the top.
+ */
+const CHARS_PER_TOKEN = 4
+/**
+ * Share of the free budget lore may claim before prose gets the rest. 0.25
+ * reproduces the old fixed split (8k lore against 24k prose) at the default
+ * window, so existing stories compose roughly as they always did. Anything lore
+ * does not spend flows back to prose, which is what matters at the small stops.
+ */
+const LORE_BUDGET_SHARE = 0.25
 /** Paragraphs are separated by a blank line everywhere in the app. */
 const PARAGRAPH_SEPARATOR = "\n\n"
 /** Stands in for the story text when there is none, so the turn is never empty. */
@@ -18,59 +28,100 @@ const EMPTY_STORY_MARKER =
   "(This story has no text yet. Write its opening paragraph.)"
 
 /**
- * The final STORY_CHAR_BUDGET chars of `text`, cut forward to the next paragraph
+ * The final `budget` chars of `text`, cut forward to the next paragraph
  * boundary so the window never starts mid-paragraph. A window with no boundary
- * at all (one very long paragraph) is kept as-is rather than dropped.
+ * at all (one very long paragraph) is kept as-is rather than dropped. Trimming
+ * from the tail is the whole point: the most recent prose is what the model
+ * needs to continue, so it is the last thing we give up.
  */
-function trimStoryText(text: string): string {
-  if (text.length <= STORY_CHAR_BUDGET) return text
-  const window = text.slice(-STORY_CHAR_BUDGET)
+function trimStoryText(text: string, budget: number): string {
+  if (budget <= 0) return ""
+  if (text.length <= budget) return text
+  const window = text.slice(-budget)
   const boundary = window.indexOf(PARAGRAPH_SEPARATOR)
   if (boundary === -1) return window
   return window.slice(boundary + PARAGRAPH_SEPARATOR.length)
 }
 
+/** What one lore entry actually costs once renderPrompt has wrapped it. */
+function loreBlockCost(item: ActiveLoreEntry): number {
+  return (
+    "[Lore: ".length +
+    item.name.length +
+    "]\n".length +
+    item.content.trim().length +
+    PARAGRAPH_SEPARATOR.length
+  )
+}
+
 /**
- * Greedy inclusion in priority order while cumulative content length stays
- * within LORE_CHAR_BUDGET. An entry too large to fit is skipped and the scan
- * continues, so a high-priority giant never starves everything below it — but
- * order is never reshuffled, so higher priority always survives trimming first.
+ * Greedy inclusion in priority order while the cumulative *rendered* cost stays
+ * within `budget`. Charging the rendered block (label + separator), not just the
+ * content, is what keeps the token guarantee honest — under the old character
+ * budget that slop was harmless. An entry too large to fit is skipped and the
+ * scan continues, so a high-priority giant never starves everything below it —
+ * but order is never reshuffled, so higher priority always survives trimming
+ * first. Returns the kept entries and what they cost, since the unspent
+ * remainder is handed to prose.
  */
-function trimLore(lore: ActiveLoreEntry[]): ActiveLoreEntry[] {
+function trimLore(
+  lore: ActiveLoreEntry[],
+  budget: number
+): { kept: ActiveLoreEntry[]; used: number } {
   const kept: ActiveLoreEntry[] = []
   let used = 0
   for (const item of lore) {
-    if (used + item.content.length > LORE_CHAR_BUDGET) continue
+    const cost = loreBlockCost(item)
+    if (used + cost > budget) continue
     kept.push(item)
-    used += item.content.length
+    used += cost
   }
-  return kept
+  return { kept, used }
 }
 
+/**
+ * Assemble the context for one generation, trimmed to fit a token budget.
+ *
+ * Allocation, in priority order: the system prompt, memory, author's note and
+ * instruction are fixed overhead — they are short, the writer chose them
+ * deliberately, and dropping them changes the model's job rather than its
+ * recall. Whatever is left after that goes to lore (greedy, priority order,
+ * capped at its share) and then to story prose, which absorbs both the prose
+ * share and lore's leftovers.
+ *
+ * The overhead is *measured*, not hand-counted: we render a probe context with
+ * no lore and no prose and take its length. That way every bracket label and
+ * separator is accounted for automatically and the arithmetic cannot drift out
+ * of sync when renderPrompt's block shapes change.
+ */
 export function composeContext(input: {
   story: Story
   lorebookEntries: LorebookEntry[]
   instruction?: string | null
   variant?: number
+  /**
+   * Token budget override — the model-clamped window. Defaults to the story's
+   * own setting. The override exists for the inspector, which knows the
+   * selected model's contextLength and shows a live meter before the slider is
+   * committed; this function stays pure and never looks a model up itself.
+   */
+  contextWindow?: number
 }): ComposedContext {
   const { story, lorebookEntries, instruction = null, variant = 0 } = input
-
-  const storyText = trimStoryText(
-    story.entries.map((entry) => entry.text).join(PARAGRAPH_SEPARATOR)
-  )
+  const contextWindow = input.contextWindow ?? story.settings.contextWindow
 
   const matches = matchActiveLorebookEntries(
     lorebookEntries,
     recentStoryText(story.entries)
   )
-  const lore = trimLore(
-    matches.map(({ entry, matchedKey }) => ({
+  const activeLore: ActiveLoreEntry[] = matches.map(
+    ({ entry, matchedKey }) => ({
       id: entry.id,
       name: entry.name,
       content: entry.content,
       priority: entry.priority,
       matchedKey,
-    }))
+    })
   )
 
   const trimmedInstruction = instruction?.trim() ?? ""
@@ -78,17 +129,55 @@ export function composeContext(input: {
   const context: ComposedContext = {
     systemPrompt: resolveSystemPrompt(story.systemPrompt),
     memory: story.memory,
-    lore,
-    storyText,
+    lore: [],
+    storyText: "",
     authorsNote: story.authorsNote,
     instruction: trimmedInstruction === "" ? null : trimmedInstruction,
     seed: story.entries.length + variant,
     approxTokens: 0,
   }
-  context.approxTokens = estimateTokens(
-    context.systemPrompt + renderPrompt(context)
+
+  // Probe: the same context with nothing budgeted into it yet. Its length is
+  // the overhead we cannot trim away.
+  const charBudget = contextWindow * CHARS_PER_TOKEN
+  const fixedChars = context.systemPrompt.length + renderPrompt(context).length
+  const remaining = Math.max(0, charBudget - fixedChars)
+
+  const { kept, used } = trimLore(
+    activeLore,
+    Math.floor(remaining * LORE_BUDGET_SHARE)
   )
+  context.lore = kept
+  context.storyText = trimStoryText(
+    story.entries.map((entry) => entry.text).join(PARAGRAPH_SEPARATOR),
+    remaining - used
+  )
+
+  // Reconcile. The probe renders the *empty* story shape (two blocks) while a
+  // real story renders three, so the estimate is off by a couple of separator
+  // chars — close enough to argue about, not close enough to promise. Drop
+  // leading paragraphs until the promise actually holds. This terminates on the
+  // paragraph count, and bottoms out at a single unsplittable paragraph: when
+  // the overhead alone exceeds the window — the ladder's 2k floor leaves room
+  // for the default system prompt, but a long memory plus a long author's note
+  // can still eat a small stop — nothing is left to drop and approxTokens
+  // legitimately overshoots. Hence "whenever achievable".
+  context.approxTokens = measure(context)
+  while (context.approxTokens > contextWindow) {
+    const boundary = context.storyText.indexOf(PARAGRAPH_SEPARATOR)
+    if (boundary === -1) break
+    context.storyText = context.storyText.slice(
+      boundary + PARAGRAPH_SEPARATOR.length
+    )
+    context.approxTokens = measure(context)
+  }
+
   return context
+}
+
+/** Tokens actually on the wire: system turn + user turn, exactly as sent. */
+function measure(ctx: ComposedContext): number {
+  return estimateTokens(ctx.systemPrompt + renderPrompt(ctx))
 }
 
 /** The exact prompt string a real provider would send. */
