@@ -307,7 +307,13 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
     <main
       data-slot="sidebar-inset"
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+        // min-w-0 is load-bearing: as a flex item this defaults to
+        // min-width:auto, which refuses to shrink below the min-content width
+        // of the workspace header. Beside the 256px sidebar rail that floors
+        // the document wider than a tablet viewport, and the whole UI — not
+        // just the prose — becomes pannable. The inset must shrink and let its
+        // own children scroll instead.
+        "relative flex w-full min-w-0 flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className
       )}
       {...props}
