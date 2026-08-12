@@ -30,16 +30,14 @@ export interface ComposedContext {
    */
   storyText: string
   authorsNote: string
-  /** Ephemeral instruction (instruction mode), else null. */
-  instruction: string | null
   /** Deterministic seed: entryCount at composition time + variant. Drives mock fixture choice. */
   seed: number
   /**
    * estimateTokens of the system prompt + renderPrompt(ctx) — for the inspector
    * context meter. composeContext trims until this is <= the story's
    * contextWindow; it can still exceed it when the fixed overhead (system
-   * prompt, memory, author's note, instruction) alone does not fit, since none
-   * of that is trimmable.
+   * prompt, memory, author's note) alone does not fit, since none of that is
+   * trimmable.
    */
   approxTokens: number
 }

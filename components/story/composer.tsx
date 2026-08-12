@@ -4,14 +4,15 @@ import * as React from "react"
 import {
   ArrowUp,
   FastForward,
-  Feather,
-  MessageSquareText,
+  MessageSquareQuote,
   RotateCcw,
   Square,
+  Swords,
   Undo2,
 } from "lucide-react"
 
-import type { ComposerMode, GenerationStatus } from "@/hooks/use-generation"
+import type { ActionKind } from "@/lib/types"
+import type { GenerationStatus } from "@/hooks/use-generation"
 import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import { Button } from "@/components/ui/button"
 import {
@@ -27,26 +28,31 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-const MODES = [
+/**
+ * The writer has exactly two moves, and which one is armed changes what every
+ * keystroke means — the same sentence is an action under one and dialogue under
+ * the other.
+ */
+const KINDS = [
   {
-    value: "story",
-    label: "Story",
-    icon: Feather,
-    placeholder: "Write what happens next…",
+    value: "do",
+    label: "Do",
+    icon: Swords,
+    placeholder: "What do you do?",
   },
   {
-    value: "instruction",
-    label: "Instruction",
-    icon: MessageSquareText,
-    placeholder: "Tell the model what to do next…",
+    value: "say",
+    label: "Say",
+    icon: MessageSquareQuote,
+    placeholder: "What do you say?",
   },
 ] as const
 
 export function Composer({
   value,
   onValueChange,
-  mode: modeValue,
-  onModeChange,
+  actionKind,
+  onActionKindChange,
   textareaRef,
   containerRef,
   status,
@@ -62,8 +68,8 @@ export function Composer({
   value: string
   onValueChange: (value: string) => void
   /** Owned by the workspace so switching stories doesn't reset it. */
-  mode: ComposerMode
-  onModeChange: (mode: ComposerMode) => void
+  actionKind: ActionKind
+  onActionKindChange: (kind: ActionKind) => void
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   /** The floating panel, measured by the workspace to reserve canvas padding. */
   containerRef?: React.RefObject<HTMLDivElement | null>
@@ -72,23 +78,23 @@ export function Composer({
   canUndo: boolean
   canRetry: boolean
   /** Returns true when the text was accepted — the textarea clears on true. */
-  onSend: (text: string, mode: ComposerMode) => boolean
+  onSend: (text: string, kind: ActionKind) => boolean
   onContinue: () => void
   onRetry: () => void
   onUndo: () => void
   onStop: () => void
 }) {
-  const mode = MODES.find((m) => m.value === modeValue) ?? MODES[0]
+  const active = KINDS.find((k) => k.value === actionKind) ?? KINDS[0]
   const markdownShortcuts = useMarkdownShortcuts()
 
   const generating = status !== "idle"
   const hasText = value.trim() !== ""
-  const ModeIcon = mode.icon
+  const ActiveIcon = active.icon
 
   const handleSend = React.useCallback(() => {
     if (busy || !hasText) return
-    if (onSend(value, mode.value)) onValueChange("")
-  }, [busy, hasText, mode.value, onSend, onValueChange, value])
+    if (onSend(value, actionKind)) onValueChange("")
+  }, [actionKind, busy, hasText, onSend, onValueChange, value])
 
   // Autofocus only where a hardware keyboard is likely: on touch devices it
   // would pop the software keyboard over the prose on every story open.
@@ -146,8 +152,8 @@ export function Composer({
             value={value}
             onChange={(event) => onValueChange(event.target.value)}
             onKeyDown={onTextareaKeyDown}
-            placeholder={mode.placeholder}
-            aria-label="Story input"
+            placeholder={active.placeholder}
+            aria-label={`${active.label} — write in first person`}
             className="max-h-52 min-h-14 resize-none overflow-y-auto border-0 bg-transparent px-3 font-serif text-base leading-7 shadow-none focus-visible:ring-0"
           />
           <div className="flex items-center gap-1 px-2 pb-2">
@@ -160,24 +166,24 @@ export function Composer({
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label={`Input mode: ${mode.label}`}
+                          aria-label={`Armed move: ${active.label}`}
                         />
                       }
                     />
                   }
                 >
-                  <ModeIcon />
+                  <ActiveIcon />
                 </TooltipTrigger>
-                <TooltipContent>{mode.label} mode</TooltipContent>
+                <TooltipContent>{active.label}</TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="start">
-                {MODES.map((m) => (
+                {KINDS.map((kind) => (
                   <DropdownMenuItem
-                    key={m.value}
-                    onClick={() => onModeChange(m.value)}
+                    key={kind.value}
+                    onClick={() => onActionKindChange(kind.value)}
                   >
-                    <m.icon />
-                    {m.label}
+                    <kind.icon />
+                    {kind.label}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>

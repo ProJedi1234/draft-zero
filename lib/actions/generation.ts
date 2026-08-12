@@ -10,23 +10,25 @@ import type { ProviderKind } from "@/lib/generation/provider"
 import type { ComposedContext } from "@/lib/generation/types"
 import {
   clampContextWindow,
+  type ActionKind,
   type ActionResult,
   type GenerationSettings,
 } from "@/lib/types"
 
-import { appendUserEntry } from "./entries"
+import { appendActionEntry } from "./entries"
 
 /**
  * One round-trip that prepares a generation:
- * - mode "story" with userText: appends the user passage first
- * - mode "story" without userText: plain Continue, appends nothing
- * - mode "instruction": userText required, NOT persisted — passed into context.instruction
+ * - `kind` + `userText`: the writer took a turn — it is translated and
+ *   persisted first, so the context is composed against a story that already
+ *   ends with it
+ * - neither: plain Continue, appends nothing
  * Then composes context from fresh DB state and returns it with the story's settings.
  * `variant` feeds the deterministic seed so Retry produces a different continuation.
  */
 export async function prepareGeneration(
   storyId: string,
-  opts: { mode: "story" | "instruction"; userText?: string; variant?: number }
+  opts: { kind?: ActionKind; userText?: string; variant?: number }
 ): Promise<
   ActionResult<{
     context: ComposedContext
@@ -35,15 +37,11 @@ export async function prepareGeneration(
     providerKind: ProviderKind
   }>
 > {
-  let instruction: string | null = null
-
-  if (opts.mode === "instruction") {
-    const trimmed = opts.userText?.trim() ?? ""
-    if (trimmed === "")
-      return { ok: false, error: "Write an instruction first." }
-    instruction = trimmed
-  } else if (opts.userText !== undefined) {
-    const appended = await appendUserEntry(storyId, opts.userText)
+  // A turn needs both halves: `kind` alone has nothing to translate, and
+  // `userText` alone cannot be translated without knowing which voice it is.
+  // Either way the honest reading is Continue, so nothing is appended.
+  if (opts.kind !== undefined && opts.userText !== undefined) {
+    const appended = await appendActionEntry(storyId, opts.kind, opts.userText)
     if (!appended.ok) return appended
   }
 
@@ -75,7 +73,6 @@ export async function prepareGeneration(
   const context = composeContext({
     story,
     lorebookEntries,
-    instruction,
     variant: opts.variant ?? 0,
     contextWindow: settings.contextWindow,
   })
