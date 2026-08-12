@@ -68,9 +68,14 @@ export function NewEntryDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger render={<Button size="sm" />}>
+      {/* Icon-only on a phone: the full-width label crowds the story title out
+          of a 390px header entirely. */}
+      <DialogTrigger
+        render={<Button size="sm" aria-label="New entry" />}
+        className="max-sm:size-9 max-sm:px-0"
+      >
         <Plus data-icon="inline-start" />
-        New entry
+        <span className="max-sm:hidden">New entry</span>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
