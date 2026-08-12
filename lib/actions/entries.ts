@@ -56,6 +56,10 @@ async function appendEntry(
     position: await nextPosition(db, storyId),
     source,
     text: trimmed,
+    // Nothing appends a player turn yet, so every row written here is ordinary
+    // prose and the pair stays null.
+    actionKind: null,
+    inputText: null,
     createdAt: now,
   }
 

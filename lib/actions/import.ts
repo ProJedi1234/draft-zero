@@ -76,7 +76,10 @@ export async function importScenario(input: {
         id: crypto.randomUUID(),
         storyId,
         position: 0,
-        // The prompt is authored text, not model output.
+        // The prompt is authored text, not model output — and not a player
+        // turn either, so action_kind and input_text stay NULL. That is what
+        // keeps the opening passage rendering verbatim instead of being read
+        // as something translateAction produced.
         source: "user",
         text: scenario.prompt,
         createdAt: now,

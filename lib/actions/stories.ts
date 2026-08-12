@@ -145,6 +145,9 @@ export async function duplicateStory(
     updatedAt: now,
   })
 
+  // actionKind/inputText travel with the copy: a player turn in the original is
+  // still a player turn here, and dropping the pair would silently demote every
+  // Say and Do in the copy to un-re-editable prose.
   if (entries.length > 0) {
     await db.insert(storyEntries).values(
       entries.map((entry, index) => ({
@@ -153,6 +156,8 @@ export async function duplicateStory(
         position: index,
         source: entry.source,
         text: entry.text,
+        actionKind: entry.actionKind,
+        inputText: entry.inputText,
         createdAt: now,
       }))
     )

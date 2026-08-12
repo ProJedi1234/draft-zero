@@ -14,8 +14,27 @@ export type ActionKind = "say" | "do"
 export interface StoryEntry {
   id: string
   source: EntrySource
-  /** Prose text. Paragraphs are separated by "\n\n". */
+  /**
+   * Prose text, paragraphs separated by "\n\n". For a player action this is
+   * the *translated* second-person prose — the only version the canvas renders
+   * and the only version composeContext sends to the model.
+   */
   text: string
+  /**
+   * Which move produced this passage, or null when it is not a player action.
+   * Null is the overwhelmingly common case and is not a defect: every
+   * generated passage, every user passage written before Say/Do existed, and
+   * the opening passage the NovelAI importer creates all predate or sidestep
+   * the two moves, and there is nothing to backfill them with that would not
+   * be a guess. Always null exactly when `inputText` is null.
+   */
+  actionKind: ActionKind | null
+  /**
+   * The writer's raw first-person input, kept verbatim beside the translation
+   * so the transform stays inspectable and a future edit-in-place can re-run
+   * it. Never shown in the manuscript and never sent to the model.
+   */
+  inputText: string | null
   /** ISO-8601 timestamp. */
   createdAt: string
 }

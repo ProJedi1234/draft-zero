@@ -60,7 +60,17 @@ export const storyEntries = pgTable(
     /** Per-story ordering key; next = MAX(position) + 1 (0 for the first). */
     position: integer("position").notNull(),
     source: text("source").notNull().$type<"user" | "generated">(),
+    // The prose the canvas renders and the model sees. For a player action it
+    // is the second-person translation, never the writer's raw input.
     text: text("text").notNull(),
+    // Both nullable, and deliberately without a default: NULL/NULL means "this
+    // row is not a player action", which is true of every generated passage,
+    // every user passage written before Say/Do existed, and the opening
+    // passage the NovelAI importer writes. A default would claim those rows
+    // were Do actions typed by the writer, so this column stays un-backfilled
+    // and the pair is always NULL together or set together.
+    actionKind: text("action_kind").$type<"say" | "do">(),
+    inputText: text("input_text"),
     createdAt: text("created_at").notNull(),
   },
   (table) => [
