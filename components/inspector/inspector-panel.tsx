@@ -4,6 +4,7 @@ import * as React from "react"
 import { ChevronsUpDown } from "lucide-react"
 import { toast } from "sonner"
 
+import { ContextWindowSlider } from "@/components/inspector/context-window-slider"
 import { LoreTab } from "@/components/inspector/lore-tab"
 import { ModelPicker } from "@/components/inspector/model-picker"
 import { SettingSlider } from "@/components/inspector/setting-slider"
@@ -24,15 +25,16 @@ import {
   updateGenerationSettings,
   updateStoryMeta,
 } from "@/lib/actions/stories"
-import { formatContextLength } from "@/lib/format"
 import { composeContext } from "@/lib/generation/context"
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/generation/system-prompt"
-import type {
-  GenerationSettings,
-  LorebookEntry,
-  OpenRouterModel,
-  Story,
-  ThinkingLevel,
+import {
+  clampContextWindow,
+  contextWindowLabel,
+  type GenerationSettings,
+  type LorebookEntry,
+  type OpenRouterModel,
+  type Story,
+  type ThinkingLevel,
 } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -156,6 +158,24 @@ function InspectorSections({
   const uid = React.useId()
   const [modelId, setModelId] = React.useState(story.settings.modelId)
   const [thinking, setThinking] = React.useState(story.settings.thinking)
+  // Lifted out of the slider because the model owns its ceiling: switching
+  // models has to be able to pull the value down (see handleModelChange). Still
+  // uncontrolled-after-mount in spirit — only `key={story.id}` reseeds it.
+  const [contextWindow, setContextWindow] = React.useState(() =>
+    // A window stored while another model was selected can be larger than this
+    // one allows; show the legal value immediately and let the next commit (or
+    // a model change) write it back, rather than saving during a render.
+    clampContextWindow(
+      story.settings.contextWindow,
+      models.find((m) => m.id === story.settings.modelId)?.contextLength ?? 0
+    )
+  )
+  // What the row is believed to hold, so a commit that lands back on the stored
+  // stop costs nothing. It lives here rather than inside ContextWindowSlider
+  // because the slider is not the only writer: handleModelChange and the
+  // mount-time clamp below both move the value behind its back, and a ref
+  // seeded once inside the slider would go stale the moment they did.
+  const savedContextWindowRef = React.useRef(story.settings.contextWindow)
   const [titleEmpty, setTitleEmpty] = React.useState(false)
   const [, startTransition] = React.useTransition()
 
@@ -218,24 +238,57 @@ function InspectorSections({
     systemPromptSave.status
   )
 
-  function saveSettings(patch: Partial<GenerationSettings>) {
-    startTransition(async () => {
-      const result = await updateGenerationSettings(story.id, patch)
-      if (!result.ok) toast.error(result.error)
-    })
-  }
+  const saveSettings = React.useCallback(
+    (patch: Partial<GenerationSettings>) => {
+      startTransition(async () => {
+        const result = await updateGenerationSettings(story.id, patch)
+        if (!result.ok) toast.error(result.error)
+      })
+    },
+    [story.id, startTransition]
+  )
+
+  // The clamp in the useState initializer above is display-only until it is
+  // written. The server generation path reads the *stored* window (see
+  // prepareGeneration), so a row left over from a larger model would keep
+  // assembling a prompt the selected model cannot accept while the meter
+  // cheerfully reported the clamped figure. Write the fix-up once, from an
+  // effect — saving during a render is not allowed, and `key={story.id}`
+  // guarantees this mounts fresh per story. Later clamps ride along with
+  // handleModelChange.
+  const mountContextWindowRef = React.useRef(contextWindow)
+  React.useEffect(() => {
+    const next = mountContextWindowRef.current
+    if (next === savedContextWindowRef.current) return
+    savedContextWindowRef.current = next
+    saveSettings({ contextWindow: next })
+  }, [saveSettings])
 
   function handleModelChange(nextModelId: string) {
     setModelId(nextModelId)
+    const nextModel = models.find((m) => m.id === nextModelId)
     // Thinking levels are per-model: a level the new model doesn't offer (or
     // any level at all, on a model that can't think) falls back to off.
-    const nextThinking = levelForModel(
-      models.find((m) => m.id === nextModelId)?.reasoning,
-      thinking
-    )
+    const nextThinking = levelForModel(nextModel?.reasoning, thinking)
     setThinking(nextThinking)
-    saveSettings({ modelId: nextModelId, thinking: nextThinking })
+    // Same story for the context window: a smaller model can't honour the stop
+    // the writer picked under a bigger one. Both dependent settings ride along
+    // in the one patch so the row is never briefly inconsistent.
+    const nextContextWindow = clampContextWindow(
+      contextWindow,
+      nextModel?.contextLength ?? 0
+    )
+    setContextWindow(nextContextWindow)
+    savedContextWindowRef.current = nextContextWindow
+    saveSettings({
+      modelId: nextModelId,
+      thinking: nextThinking,
+      contextWindow: nextContextWindow,
+    })
   }
+
+  // 0 means "model unknown to the catalog", i.e. no clamp.
+  const contextLength = models.find((m) => m.id === modelId)?.contextLength ?? 0
 
   function handleThinkingChange(next: ThinkingLevel) {
     setThinking(next)
@@ -295,6 +348,20 @@ function InspectorSections({
                   max={4096}
                   step={128}
                 />
+                <ContextWindowSlider
+                  value={contextWindow}
+                  contextLength={contextLength}
+                  onValueChange={setContextWindow}
+                  onValueCommitted={(next) => {
+                    setContextWindow(next)
+                    // A release that settled back on the stored stop is not a
+                    // change; anything else is, including a return to a stop
+                    // the model clamp moved us off earlier.
+                    if (next === savedContextWindowRef.current) return
+                    savedContextWindowRef.current = next
+                    saveSettings({ contextWindow: next })
+                  }}
+                />
                 <SettingSlider
                   storyId={story.id}
                   field="frequencyPenalty"
@@ -320,9 +387,7 @@ function InspectorSections({
           <ContextMeter
             story={story}
             lorebookEntries={lorebookEntries}
-            contextLength={
-              models.find((m) => m.id === modelId)?.contextLength ?? 0
-            }
+            contextWindow={contextWindow}
           />
         </div>
 
@@ -493,59 +558,61 @@ function InspectorSections({
   )
 }
 
-/** 812 -> "812"; 1234 -> "1.2K"; 24000 -> "24K". */
+/**
+ * 812 -> "812"; 1234 -> "1.2k"; 24000 -> "24k". Lowercase "k" so the numerator
+ * matches the ladder label it is printed against ("≈ 4.2k / 8k tokens").
+ */
 function formatApproxTokens(tokens: number): string {
-  if (tokens >= 10_000) return formatContextLength(tokens)
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`
+  if (tokens >= 10_000) return `${Math.round(tokens / 1_000)}k`
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`
   return `${tokens}`
 }
 
 /**
- * How much of the selected model's window the next request would occupy.
+ * How much of the selected context window the next request would occupy.
  * Composed client-side from the same pure function the server uses to build the
- * real prompt, so the number the writer sees is the number that gets sent.
+ * real prompt, and against the same budget — so the number the writer sees is
+ * the number that gets sent. The window is the *live* slider value, not
+ * story.settings, so the meter answers before the commit round-trips.
  */
 function ContextMeter({
   story,
   lorebookEntries,
-  contextLength,
+  contextWindow,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
-  /** Selected model's window; 0 when the model is unknown to the catalog. */
-  contextLength: number
+  /** Selected, model-clamped input budget in tokens. Always a ladder stop. */
+  contextWindow: number
 }) {
   const approxTokens = React.useMemo(
-    () => composeContext({ story, lorebookEntries }).approxTokens,
-    [story, lorebookEntries]
+    () =>
+      composeContext({ story, lorebookEntries, contextWindow }).approxTokens,
+    [story, lorebookEntries, contextWindow]
   )
-  const ratio =
-    contextLength > 0 ? Math.min(1, approxTokens / contextLength) : 0
+  // The smallest stops cannot fit the system prompt alone, so the bar can be
+  // pinned full while the readout honestly shows the overflow.
+  const ratio = Math.min(1, approxTokens / contextWindow)
 
   return (
     <div className="space-y-1.5">
       <p className="font-mono text-xs text-muted-foreground tabular-nums">
-        ≈ {formatApproxTokens(approxTokens)}
-        {contextLength > 0
-          ? ` / ${formatContextLength(contextLength)}`
-          : ""}{" "}
-        tokens
+        ≈ {formatApproxTokens(approxTokens)} /{" "}
+        {contextWindowLabel(contextWindow)} tokens
       </p>
-      {contextLength > 0 ? (
+      <div
+        className="h-0.5 w-full overflow-hidden bg-muted"
+        role="progressbar"
+        aria-label="Context used"
+        aria-valuemin={0}
+        aria-valuemax={contextWindow}
+        aria-valuenow={approxTokens}
+      >
         <div
-          className="h-0.5 w-full overflow-hidden bg-muted"
-          role="progressbar"
-          aria-label="Context used"
-          aria-valuemin={0}
-          aria-valuemax={contextLength}
-          aria-valuenow={approxTokens}
-        >
-          <div
-            className="h-full bg-primary transition-[width] duration-200"
-            style={{ width: `${ratio * 100}%` }}
-          />
-        </div>
-      ) : null}
+          className="h-full bg-primary transition-[width] duration-200"
+          style={{ width: `${ratio * 100}%` }}
+        />
+      </div>
     </div>
   )
 }
