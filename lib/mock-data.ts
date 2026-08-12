@@ -6,6 +6,7 @@ import type {
   GenerationSettings,
   LorebookCategory,
   LorebookEntry,
+  ModelEndpoint,
   OpenRouterModel,
   Story,
   StoryEntry,
@@ -109,9 +110,141 @@ export const MOCK_MODELS: OpenRouterModel[] = [
   },
 ]
 
+// ---------------------------------------------------------------------------
+// Endpoints (provider-routing stubs)
+// ---------------------------------------------------------------------------
+
+/**
+ * Stand-in upstream providers, roughly in the shape OpenRouter reports them:
+ * `throughput` is a tokens/sec p50 and `priceFactor` scales the model's own
+ * price, because the point of the picker is that these differ per endpoint.
+ * The lab that made the weights is not in the pool — it always serves its own
+ * models, so mockEndpoints() derives that entry from the model itself.
+ */
+const MOCK_ENDPOINT_POOL: ReadonlyArray<{
+  tag: string
+  providerName: string
+  throughput: number | null
+  uptime: number | null
+  quantization: string | null
+  priceFactor: number
+}> = [
+  {
+    tag: "groq",
+    providerName: "Groq",
+    throughput: 812,
+    uptime: 0.998,
+    quantization: "fp8",
+    priceFactor: 0.9,
+  },
+  {
+    tag: "cerebras",
+    providerName: "Cerebras",
+    throughput: 1_940,
+    uptime: 0.991,
+    quantization: "bf16",
+    priceFactor: 1.1,
+  },
+  {
+    tag: "fireworks",
+    providerName: "Fireworks",
+    throughput: 186,
+    uptime: 0.999,
+    quantization: "fp8",
+    priceFactor: 0.95,
+  },
+  {
+    tag: "deepinfra/turbo",
+    providerName: "DeepInfra",
+    throughput: 124,
+    uptime: 0.984,
+    quantization: "fp8",
+    priceFactor: 0.6,
+  },
+  {
+    tag: "together",
+    providerName: "Together",
+    throughput: 97,
+    uptime: 0.996,
+    quantization: "fp16",
+    priceFactor: 1.05,
+  },
+  {
+    tag: "novita",
+    providerName: "Novita",
+    throughput: null,
+    uptime: null,
+    quantization: null,
+    priceFactor: 0.7,
+  },
+]
+
+/** "$3.00" x 0.6 -> "$1.80". Display strings in, display string out. */
+function scalePrice(price: string, factor: number): string {
+  const n = Number(price.replace(/[^0-9.]/g, ""))
+  if (!Number.isFinite(n)) return price
+  return `$${(n * factor).toFixed(2)}`
+}
+
+/** Sum of char codes — enough to pick a stable pool slice per model id. */
+function hashString(value: string): number {
+  let hash = 0
+  for (let i = 0; i < value.length; i += 1)
+    hash = (hash + value.charCodeAt(i)) | 0
+  return Math.abs(hash)
+}
+
+/**
+ * Deterministic endpoint list for a model, used whenever the live catalog is
+ * unavailable (no key, or the endpoints fetch failed) so the provider picker is
+ * never empty and never differs between server and client render. The lab's own
+ * endpoint is always first; two to four pool endpoints follow, chosen by a hash
+ * of the model id so a given model always shows the same providers.
+ */
+export function mockEndpoints(model: OpenRouterModel): ModelEndpoint[] {
+  const firstParty: ModelEndpoint = {
+    tag: model.id.split("/")[0],
+    providerName: model.provider,
+    contextLength: model.contextLength,
+    pricing: model.pricing,
+    throughput: 68 + (hashString(model.id) % 40),
+    uptime: 0.997,
+    quantization: null,
+  }
+  const hash = hashString(model.id)
+  const count = 2 + (hash % 3)
+  const rest = Array.from({ length: count }, (_, i) => {
+    const pooled = MOCK_ENDPOINT_POOL[(hash + i) % MOCK_ENDPOINT_POOL.length]
+    return {
+      tag: pooled.tag,
+      providerName: pooled.providerName,
+      // Third-party hosts commonly serve a shorter window than the lab does.
+      contextLength: Math.min(model.contextLength, 131_072),
+      pricing: {
+        prompt: scalePrice(model.pricing.prompt, pooled.priceFactor),
+        completion: scalePrice(model.pricing.completion, pooled.priceFactor),
+      },
+      throughput: pooled.throughput,
+      uptime: pooled.uptime,
+      quantization: pooled.quantization,
+    }
+  })
+  // Closed models are single-source in reality; pretending Groq serves Claude
+  // would make the mock actively misleading.
+  return CLOSED_MODEL_PROVIDERS.has(model.provider)
+    ? [firstParty]
+    : [firstParty, ...rest]
+}
+
+/** Labs that only serve their own weights, so their models have one endpoint. */
+const CLOSED_MODEL_PROVIDERS = new Set(["Anthropic", "OpenAI", "Google"])
+
 export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   modelId: "anthropic/claude-sonnet-4.5",
   thinking: "off",
+  // Auto — OpenRouter picks the endpoint. Pinning one in the defaults would
+  // pin it for every new story, including stories on other models.
+  providerTag: null,
   temperature: 0.9,
   topP: 0.95,
   // A hard ceiling on the runaway case, not a target. The system prompt asks
@@ -317,6 +450,7 @@ export const MOCK_STORIES: Story[] = [
     settings: {
       modelId: "anthropic/claude-sonnet-4.5",
       thinking: "off",
+      providerTag: null,
       temperature: 0.9,
       topP: 0.95,
       maxTokens: 1024,
@@ -375,6 +509,7 @@ export const MOCK_STORIES: Story[] = [
     settings: {
       modelId: "openai/gpt-5.1",
       thinking: "off",
+      providerTag: null,
       temperature: 1.1,
       topP: 0.9,
       maxTokens: 800,
@@ -427,6 +562,7 @@ export const MOCK_STORIES: Story[] = [
     settings: {
       modelId: "anthropic/claude-opus-4.5",
       thinking: "off",
+      providerTag: null,
       temperature: 0.8,
       topP: 0.98,
       maxTokens: 1200,

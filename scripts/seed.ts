@@ -38,6 +38,7 @@ async function seed() {
       authorsNote: story.authorsNote,
       modelId: story.settings.modelId,
       thinking: story.settings.thinking,
+      providerTag: story.settings.providerTag,
       temperature: story.settings.temperature,
       topP: story.settings.topP,
       maxTokens: story.settings.maxTokens,

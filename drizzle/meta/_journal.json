@@ -57,6 +57,13 @@
       "when": 1786539390193,
       "tag": "0007_dazzling_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786566492403,
+      "tag": "0008_giant_lockjaw",
+      "breakpoints": true
     }
   ]
 }

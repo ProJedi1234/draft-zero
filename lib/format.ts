@@ -22,6 +22,28 @@ export function formatContextLength(tokens: number): string {
   return `${tokens}`
 }
 
+/**
+ * Output speed for a provider row: 41.6 -> "42 tps"; 1240 -> "1.2k tps"; null
+ * (OpenRouter has no recent measurement) -> "—". Rounded to whole tokens
+ * because the p50 moves by more than a decimal between refreshes anyway.
+ */
+export function formatThroughput(tokensPerSecond: number | null): string {
+  if (tokensPerSecond === null || !Number.isFinite(tokensPerSecond)) return "—"
+  if (tokensPerSecond >= 1_000)
+    return `${(tokensPerSecond / 1_000).toFixed(1)}k tps`
+  return `${Math.round(tokensPerSecond)} tps`
+}
+
+/**
+ * Uptime fraction as a whole percentage: 0.9987 -> "99%"; null -> "—". Rounded
+ * down, not nearest: a provider at 99.6% has had real failures this week and
+ * should not be advertised as a flat 100%.
+ */
+export function formatUptime(fraction: number | null): string {
+  if (fraction === null || !Number.isFinite(fraction)) return "—"
+  return `${Math.floor(fraction * 100)}%`
+}
+
 /** ISO -> "Aug 9, 2026" (UTC, deterministic). */
 export function formatDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {

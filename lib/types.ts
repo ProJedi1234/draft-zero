@@ -153,6 +153,14 @@ export interface GenerationSettings {
    * story — thinking is opt-in, and non-thinking models ignore it entirely.
    */
   thinking: ThinkingLevel
+  /**
+   * Which upstream endpoint serves the model, as an OpenRouter endpoint tag
+   * ("deepinfra/turbo", "groq"). NULL is Auto — OpenRouter's own routing — and
+   * is what every new story starts on. Model-specific by construction: the tag
+   * only means anything for the model whose endpoint list it came from, so
+   * changing models resets it (see the inspector's handleModelChange).
+   */
+  providerTag: string | null
   /** Range 0–2. */
   temperature: number
   /** Range 0–1. */
@@ -276,6 +284,53 @@ export interface OpenRouterModel {
   }
   /** Reasoning support, or null when the model cannot think. */
   reasoning: ModelReasoning | null
+}
+
+/**
+ * One upstream endpoint that serves a model — a single row of the provider
+ * picker. Every field is per-endpoint, not per-model: two providers hosting the
+ * same weights routinely differ in price, window and speed, which is the whole
+ * reason the picker exists.
+ */
+export interface ModelEndpoint {
+  /**
+   * OpenRouter endpoint tag — the value `provider.only` accepts, either a bare
+   * provider slug ("groq") or a slug with a variant suffix ("deepinfra/turbo").
+   * Unique within a model's endpoint list, so it doubles as the row key.
+   */
+  tag: string
+  /** Provider display name, e.g. "DeepInfra". */
+  providerName: string
+  contextLength: number
+  /** Display strings, USD per 1M tokens — same shape as OpenRouterModel.pricing. */
+  pricing: {
+    prompt: string
+    completion: string
+  }
+  /**
+   * Median output tokens/sec over the last 30 minutes, or null when OpenRouter
+   * has no recent measurement (a cold or brand-new endpoint). Null is rendered
+   * as an em dash rather than a zero — "not measured" is not "slow".
+   */
+  throughput: number | null
+  /** Fraction 0–1 of successful requests over the last day, or null when unmeasured. */
+  uptime: number | null
+  /** Weight quantization, e.g. "fp8". Null when the provider doesn't say. */
+  quantization: string | null
+}
+
+/**
+ * The endpoint a stored `providerTag` refers to, or null for Auto and for a tag
+ * that has since left the model's endpoint list. Callers treat null the same
+ * way either side of that distinction — Auto and "the provider you picked is
+ * gone" both mean "let OpenRouter route" — so the two are not separated here.
+ */
+export function endpointForTag(
+  endpoints: ModelEndpoint[],
+  tag: string | null
+): ModelEndpoint | null {
+  if (tag === null) return null
+  return endpoints.find((e) => e.tag === tag) ?? null
 }
 
 /** Ordered category metadata shared by the lorebook and inspector UIs. */

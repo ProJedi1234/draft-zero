@@ -4,12 +4,14 @@ import { revalidatePath } from "next/cache"
 
 import { getStory, listLorebookEntries } from "@/lib/db/queries"
 import { composeContext } from "@/lib/generation/context"
+import { listModelEndpoints } from "@/lib/generation/endpoints"
 import { resolveOpenRouterKey } from "@/lib/generation/key"
 import { listModels } from "@/lib/generation/models"
 import type { ProviderKind } from "@/lib/generation/provider"
 import type { ComposedContext } from "@/lib/generation/types"
 import {
   clampContextWindow,
+  endpointForTag,
   type ActionKind,
   type ActionResult,
   type GenerationSettings,
@@ -51,6 +53,12 @@ export async function prepareGeneration(
     // Cached for an hour in-process, so this is nearly free — see models.ts.
     listModels(),
   ])
+  // Only fetched when the story pins a provider, and cached five minutes per
+  // model when it does — see endpoints.ts.
+  const endpoints =
+    story?.settings.providerTag == null
+      ? []
+      : await listModelEndpoints(story.settings.modelId)
   const openRouterKey = resolveOpenRouterKey()
 
   if (!story) return { ok: false, error: "Story not found." }
@@ -62,11 +70,15 @@ export async function prepareGeneration(
   // path that actually builds the request — it clamps for itself rather than
   // trusting the row. The clamped value rides out in `settings` too, so callers
   // never see a window the assembled context wasn't built against.
+  // A pinned endpoint's window wins over the model's: a third-party host often
+  // serves a shorter one, and it is the host that will reject the request.
   const settings: GenerationSettings = {
     ...story.settings,
     contextWindow: clampContextWindow(
       story.settings.contextWindow,
-      models.find((m) => m.id === story.settings.modelId)?.contextLength ?? 0
+      endpointForTag(endpoints, story.settings.providerTag)?.contextLength ??
+        models.find((m) => m.id === story.settings.modelId)?.contextLength ??
+        0
     ),
   }
 

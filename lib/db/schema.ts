@@ -35,6 +35,11 @@ export const stories = pgTable("stories", {
   // Reasoning effort, or "off". Thinking is opt-in, so "off" is the default
   // for new stories and for every story that predates this column.
   thinking: text("thinking").notNull().default("off").$type<ThinkingLevel>(),
+  // OpenRouter endpoint tag, or NULL for Auto routing. Nullable rather than
+  // defaulted to "auto": Auto is the absence of a choice, and every story that
+  // predates this column has made no choice. Deliberately not a foreign key or
+  // enum — the set of endpoints is a live remote catalog, not our data.
+  providerTag: text("provider_tag"),
   // doublePrecision, not real: Postgres `real` is 4-byte and would silently
   // round the slider values that SQLite stored at 8-byte precision.
   temperature: doublePrecision("temperature").notNull(),

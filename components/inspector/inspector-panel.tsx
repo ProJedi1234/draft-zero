@@ -21,6 +21,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useAutosave, type SaveStatus } from "@/hooks/use-autosave"
+import { useModelEndpoints } from "@/hooks/use-model-endpoints"
 import {
   updateGenerationSettings,
   updateStoryMeta,
@@ -30,6 +31,7 @@ import { DEFAULT_SYSTEM_PROMPT } from "@/lib/generation/system-prompt"
 import {
   clampContextWindow,
   contextWindowLabel,
+  endpointForTag,
   type GenerationSettings,
   type LorebookEntry,
   type OpenRouterModel,
@@ -158,6 +160,10 @@ function InspectorSections({
   const uid = React.useId()
   const [modelId, setModelId] = React.useState(story.settings.modelId)
   const [thinking, setThinking] = React.useState(story.settings.thinking)
+  const [providerTag, setProviderTag] = React.useState(
+    story.settings.providerTag
+  )
+  const { endpoints } = useModelEndpoints(modelId)
   // Lifted out of the slider because the model owns its ceiling: switching
   // models has to be able to pull the value down (see handleModelChange). Still
   // uncontrolled-after-mount in spirit — only `key={story.id}` reseeds it.
@@ -266,6 +272,9 @@ function InspectorSections({
 
   function handleModelChange(nextModelId: string) {
     setModelId(nextModelId)
+    // A provider tag names an endpoint of the *old* model; the new one is served
+    // by a different set, so the pin cannot survive the switch. Back to Auto.
+    setProviderTag(null)
     const nextModel = models.find((m) => m.id === nextModelId)
     // Thinking levels are per-model: a level the new model doesn't offer (or
     // any level at all, on a model that can't think) falls back to off.
@@ -282,13 +291,37 @@ function InspectorSections({
     savedContextWindowRef.current = nextContextWindow
     saveSettings({
       modelId: nextModelId,
+      providerTag: null,
       thinking: nextThinking,
       contextWindow: nextContextWindow,
     })
   }
 
-  // 0 means "model unknown to the catalog", i.e. no clamp.
-  const contextLength = models.find((m) => m.id === modelId)?.contextLength ?? 0
+  // 0 means "neither the model nor the pinned endpoint is known to the catalog",
+  // i.e. no clamp. A pinned endpoint wins: a third-party host commonly serves a
+  // shorter window than the lab does, and that shorter window is the real ceiling.
+  const contextLength =
+    endpointForTag(endpoints, providerTag)?.contextLength ??
+    models.find((m) => m.id === modelId)?.contextLength ??
+    0
+
+  function handleProviderChange(nextProviderTag: string | null) {
+    setProviderTag(nextProviderTag)
+    // Same clamp as a model change, for the same reason: the endpoint owns the
+    // window, so pinning a smaller one has to pull the slider down with it.
+    const nextContextWindow = clampContextWindow(
+      contextWindow,
+      endpointForTag(endpoints, nextProviderTag)?.contextLength ??
+        models.find((m) => m.id === modelId)?.contextLength ??
+        0
+    )
+    setContextWindow(nextContextWindow)
+    savedContextWindowRef.current = nextContextWindow
+    saveSettings({
+      providerTag: nextProviderTag,
+      contextWindow: nextContextWindow,
+    })
+  }
 
   function handleThinkingChange(next: ThinkingLevel) {
     setThinking(next)
@@ -304,6 +337,9 @@ function InspectorSections({
               models={models}
               value={modelId}
               onValueChange={handleModelChange}
+              endpoints={endpoints}
+              providerTag={providerTag}
+              onProviderTagChange={handleProviderChange}
               thinking={thinking}
               onThinkingChange={handleThinkingChange}
             />

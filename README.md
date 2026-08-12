@@ -89,7 +89,8 @@ reads the file itself — drizzle-kit needs no flags.
 - `components/` — `ui/` is shadcn-generated, never hand-edited
 - `lib/db/` — `schema.ts` (Drizzle tables), `client.ts` (pool), `queries.ts` (reads), `mappers.ts` (row → domain)
 - `lib/actions/` — server actions (the only writers)
-- `lib/generation/` — provider interface + mock provider
+- `lib/generation/` — provider interface + mock provider, plus the two OpenRouter
+  catalogs: `models.ts` (every model) and `endpoints.ts` (who serves one model)
 - `lib/import/` — `novelai.ts` reads NovelAI `.scenario` files (see below)
 - `lib/story/` — `action-voice.ts` turns a player action into prose (see below)
 - `docs/` — milestone specs; `MILESTONE2.md` predates the Postgres move
@@ -123,6 +124,26 @@ and NULL for both means "not a player action" — every generated passage, every
 user passage written before this feature, and the opening passage the NovelAI
 importer writes. Those render verbatim, exactly as they always did; there is no
 backfill.
+
+### Provider routing
+
+Under the model picker sits a provider picker: which upstream host actually
+serves the model. Most open-weights models are served by several, and they are
+not interchangeable — the same weights can differ by an order of magnitude in
+output speed and by half in price, and a third-party host often serves a shorter
+context window than the lab does. So each row in the menu carries the numbers the
+choice turns on: median tokens/sec over the last half hour, price in/out per 1M,
+window, and quantization, with uptime shown only when it is bad enough to be a
+reason against.
+
+**Auto** is the default and the top row — OpenRouter's own ranking, which is the
+right answer until you have a reason it isn't. A pinned provider is stored on the
+story as `provider_tag` (NULL is Auto) and sent as `provider.only` with fallbacks
+off: pinning a provider and silently being served by another would make the
+picker a decoration. Tags are model-specific, so switching models resets the pin,
+and a tag that has since left the model's endpoint list falls back to Auto rather
+than failing the request. When a pinned endpoint has a shorter window than the
+model, that shorter window becomes the context ceiling.
 
 ## Importing NovelAI scenarios
 

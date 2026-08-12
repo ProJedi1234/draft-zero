@@ -64,6 +64,7 @@ export function toGenerationSettings(row: StoryRow): GenerationSettings {
   return {
     modelId: row.modelId,
     thinking: row.thinking,
+    providerTag: row.providerTag,
     temperature: row.temperature,
     topP: row.topP,
     maxTokens: row.maxTokens,
