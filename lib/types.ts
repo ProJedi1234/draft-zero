@@ -4,6 +4,12 @@
 /** Who produced a passage of story text. */
 export type EntrySource = "user" | "generated"
 
+/**
+ * The two moves a writer can make. Both are typed in first person and stored
+ * translated into second person; see lib/story/action-voice.ts.
+ */
+export type ActionKind = "say" | "do"
+
 /** One contiguous block of prose in a story (a "passage"). */
 export interface StoryEntry {
   id: string
