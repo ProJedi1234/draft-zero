@@ -9,6 +9,15 @@
 > `getDb()`/queries/mappers/actions structure are unchanged and still binding. See
 > the README for the current database setup.
 
+> **⚠️ Superseded in a second respect (Aug 12, 2026): the composer's modes are
+> now Do and Say.** Everything below about free-form Story mode, Instruction
+> mode, `appendUserEntry`, `prepareGeneration`'s `mode` option,
+> `ComposedContext.instruction` and the `[Instruction]` prompt block describes
+> the original implementation and no longer matches the code. The writer now
+> picks Do or Say and types first person; `appendActionEntry` translates it to
+> second person via `lib/story/action-voice.ts` and stores both halves. See the
+> README's "Do and Say" section.
+
 **Headline goal: usability.** The app must feel instantly responsive and polished — optimistic echoes, streaming text, debounced autosave, live save status, keyboard shortcuts — not merely "functional". Every interaction that was a dead button in milestone 1 now works against a real local SQLite database. The only thing that is fake is the model: a deterministic `MockGenerationProvider` behind an interface shaped for a future OpenRouter provider. **No network calls to any external service anywhere in the app.**
 
 ---

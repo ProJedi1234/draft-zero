@@ -126,6 +126,73 @@ export async function appendGeneratedEntry(
   return appendEntry(storyId, text, "generated")
 }
 
+/**
+ * Re-edits a player turn: the writer edits their own first-person input again,
+ * and both columns are rewritten from it so the stored prose stays exactly
+ * `translateAction(actionKind, inputText)`. Editing the translated text
+ * directly (updateEntryText) would break that pair, leaving an inputText that
+ * no longer explains the passage sitting beside it.
+ *
+ * The kind is read from the row rather than taken from the caller: it was
+ * chosen when the turn was written and an edit is not a place to silently turn
+ * a Do into a Say. A row without one is not a player turn at all — a generated
+ * passage, or a user passage from before this feature — and there is nothing to
+ * re-translate, so those go through updateEntryText.
+ */
+export async function updateActionEntry(
+  storyId: string,
+  entryId: string,
+  rawText: string
+): Promise<ActionResult> {
+  const raw = rawText.trim()
+  if (raw === "") return { ok: false, error: "A passage can't be empty." }
+
+  const db = await getDb()
+  const existing = await db
+    .select({ actionKind: storyEntries.actionKind })
+    .from(storyEntries)
+    .where(and(eq(storyEntries.id, entryId), eq(storyEntries.storyId, storyId)))
+    .limit(1)
+    .then((rows) => rows[0])
+
+  if (!existing) return { ok: false, error: "Passage not found." }
+  if (existing.actionKind === null)
+    return { ok: false, error: "This passage isn't a Say or Do." }
+
+  const translated = translateAction(existing.actionKind, raw)
+  if (translated.trim() === "")
+    return { ok: false, error: "A passage can't be empty." }
+
+  // The SELECT above read the kind, not a lock: the row can be deleted between
+  // the two statements (another tab's Delete, a retry-from-here), so the update
+  // has to prove it landed the same way every other mutator here does.
+  const now = new Date().toISOString()
+  const updated = await db
+    .update(storyEntries)
+    .set({ text: translated, inputText: raw })
+    .where(and(eq(storyEntries.id, entryId), eq(storyEntries.storyId, storyId)))
+    .returning({ id: storyEntries.id })
+
+  if (updated.length === 0) return { ok: false, error: "Passage not found." }
+
+  await touchStory(db, storyId, now)
+  revalidatePath("/", "layout")
+  return { ok: true, data: null }
+}
+
+/**
+ * Edits a passage's prose directly. Correct for generated passages and for
+ * user passages predating Say/Do; player turns use updateActionEntry so the
+ * translation and its raw input cannot drift apart.
+ *
+ * Writing prose here also clears actionKind/inputText, which is what the
+ * editor's "Edit prose instead" hatch relies on: the moment a writer hand-fixes
+ * the rendered sentence, the row stops being a translation of anything and
+ * becomes ordinary prose. Leaving the pair behind would strand an inputText
+ * that no longer explains the passage — and reopening the editor would seed
+ * from it and re-translate the hand-fix away on the next save. Unconditional is
+ * safe: both columns are already null on generated and legacy rows.
+ */
 export async function updateEntryText(
   storyId: string,
   entryId: string,
@@ -138,7 +205,7 @@ export async function updateEntryText(
   const now = new Date().toISOString()
   const updated = await db
     .update(storyEntries)
-    .set({ text: trimmed })
+    .set({ text: trimmed, actionKind: null, inputText: null })
     .where(and(eq(storyEntries.id, entryId), eq(storyEntries.storyId, storyId)))
     .returning({ id: storyEntries.id })
 

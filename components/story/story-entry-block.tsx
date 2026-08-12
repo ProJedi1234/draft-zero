@@ -64,7 +64,13 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
     {
       key: "edit",
       icon: Pencil,
-      label: "Edit passage",
+      // A player turn opens an editor seeded with the writer's first-person
+      // input, not the passage, so the label has to say which one it is —
+      // the same branch the editor's own label makes.
+      label:
+        entry.actionKind === null || entry.inputText === null
+          ? "Edit passage"
+          : `Edit your ${entry.actionKind === "say" ? "Say" : "Do"}`,
       onClick: () => setEditing(true),
     },
     ...(entry.source === "generated"
@@ -98,8 +104,7 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
         <PassageEditor
           key={entry.id}
           storyId={storyId}
-          entryId={entry.id}
-          initialText={entry.text}
+          entry={entry}
           onDone={() => setEditing(false)}
         />
       ) : (
