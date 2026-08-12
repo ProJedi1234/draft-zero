@@ -40,6 +40,10 @@ export const stories = pgTable("stories", {
   temperature: doublePrecision("temperature").notNull(),
   topP: doublePrecision("top_p").notNull(),
   maxTokens: integer("max_tokens").notNull(),
+  // Input-token budget for composeContext, not an output cap. Defaulted in the
+  // schema (not just in application code) so the generated ALTER TABLE
+  // backfills every story that predates the column with the same 8192.
+  contextWindow: integer("context_window").notNull().default(8192),
   frequencyPenalty: doublePrecision("frequency_penalty").notNull(),
   presencePenalty: doublePrecision("presence_penalty").notNull(),
   createdAt: text("created_at").notNull(),

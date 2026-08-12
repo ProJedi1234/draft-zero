@@ -349,7 +349,10 @@ function readLorebook(raw: unknown, warnings: string[]): NewLorebookEntry[] {
  * models, its repetition penalties use a different scale than OpenRouter's
  * frequency/presence penalties, and `max_length` is a per-step continuation
  * length (often 40 tokens) rather than a response budget — importing any of
- * them would silently produce worse generations than the app's defaults.
+ * them would silently produce worse generations than the app's defaults. The
+ * scenario's own context size is skipped for the same reason: NovelAI counts it
+ * against a different tokenizer and a different context layout, so the number
+ * means something else here. The imported story takes the app default window.
  */
 function readSettings(
   raw: unknown,

@@ -1,6 +1,7 @@
 // lib/mock-data.ts — Hardcoded fixture data for the static-scaffolding milestone.
 // Nothing here persists; nothing here calls a network.
 
+import { DEFAULT_CONTEXT_WINDOW } from "./types"
 import type {
   GenerationSettings,
   LorebookCategory,
@@ -103,6 +104,10 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   // for a single paragraph; this is what stops a model that ignores it from
   // filling most of a page before the writer can reach Stop.
   maxTokens: 400,
+  // Roughly 30k characters of assembled context: enough for memory, the active
+  // lore and several pages of recent prose without making every continuation
+  // an expensive re-read of the whole draft.
+  contextWindow: DEFAULT_CONTEXT_WINDOW,
   frequencyPenalty: 0.15,
   presencePenalty: 0.1,
 }
@@ -301,6 +306,7 @@ export const MOCK_STORIES: Story[] = [
       temperature: 0.9,
       topP: 0.95,
       maxTokens: 1024,
+      contextWindow: 16384,
       frequencyPenalty: 0.15,
       presencePenalty: 0.1,
     },
@@ -349,7 +355,8 @@ export const MOCK_STORIES: Story[] = [
     memory:
       "The salvage tug Magpie (crew: Ade Osei, pilot; Rhys, engineer; the narrator, comms) has intercepted a distress loop from the colony ship Meridian, lost 60 years ago. The loop's timestamp updates every day. Tone: quiet dread, hard-SF texture. First person present.",
     systemPrompt: null,
-    authorsNote: "Slow burn. Horror through procedure and radio protocol, not gore.",
+    authorsNote:
+      "Slow burn. Horror through procedure and radio protocol, not gore.",
     activeLorebookEntryIds: [],
     settings: {
       modelId: "openai/gpt-5.1",
@@ -357,6 +364,7 @@ export const MOCK_STORIES: Story[] = [
       temperature: 1.1,
       topP: 0.9,
       maxTokens: 800,
+      contextWindow: 8192,
       frequencyPenalty: 0.3,
       presencePenalty: 0.2,
     },
@@ -399,7 +407,8 @@ export const MOCK_STORIES: Story[] = [
     memory:
       "Esther Hale, recently widowed, has taken the winter keeper's post at Wren Point light. The previous three keepers each resigned on the 14th of February. The Trust's logbooks for that date are razored out. Tone: gothic, restrained. First person past, epistolary logbook entries.",
     systemPrompt: null,
-    authorsNote: "Every scene should be explainable two ways until the final act.",
+    authorsNote:
+      "Every scene should be explainable two ways until the final act.",
     activeLorebookEntryIds: [],
     settings: {
       modelId: "anthropic/claude-opus-4.5",
@@ -407,6 +416,7 @@ export const MOCK_STORIES: Story[] = [
       temperature: 0.8,
       topP: 0.98,
       maxTokens: 1200,
+      contextWindow: 12288,
       frequencyPenalty: 0.1,
       presencePenalty: 0.05,
     },

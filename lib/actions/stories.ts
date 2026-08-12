@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
 import { lorebookEntries, stories, storyEntries } from "@/lib/db/schema"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
+import { isContextWindow } from "@/lib/types"
 import type { ActionResult, GenerationSettings } from "@/lib/types"
 
 /**
@@ -36,6 +37,7 @@ export async function createStory(input?: {
     temperature: DEFAULT_GENERATION_SETTINGS.temperature,
     topP: DEFAULT_GENERATION_SETTINGS.topP,
     maxTokens: DEFAULT_GENERATION_SETTINGS.maxTokens,
+    contextWindow: DEFAULT_GENERATION_SETTINGS.contextWindow,
     frequencyPenalty: DEFAULT_GENERATION_SETTINGS.frequencyPenalty,
     presencePenalty: DEFAULT_GENERATION_SETTINGS.presencePenalty,
     createdAt: now,
@@ -199,6 +201,18 @@ export async function updateGenerationSettings(
   if (patch.temperature !== undefined) values.temperature = patch.temperature
   if (patch.topP !== undefined) values.topP = patch.topP
   if (patch.maxTokens !== undefined) values.maxTokens = patch.maxTokens
+  if (patch.contextWindow !== undefined) {
+    // The only settings field with a closed value set, so it is the only one
+    // worth guarding: a stop that is not on the ladder would render as a blank
+    // slider readout. The model-window clamp deliberately stays in the
+    // inspector — lib/generation/models.ts is a network-backed catalog, and
+    // paying for a catalog fetch on every slider commit to re-derive a limit
+    // the client already applied would be a poor trade.
+    if (!isContextWindow(patch.contextWindow)) {
+      return { ok: false, error: "Unsupported context window." }
+    }
+    values.contextWindow = patch.contextWindow
+  }
   if (patch.frequencyPenalty !== undefined)
     values.frequencyPenalty = patch.frequencyPenalty
   if (patch.presencePenalty !== undefined)

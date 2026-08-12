@@ -65,6 +65,7 @@ export function toGenerationSettings(row: StoryRow): GenerationSettings {
     temperature: row.temperature,
     topP: row.topP,
     maxTokens: row.maxTokens,
+    contextWindow: row.contextWindow,
     frequencyPenalty: row.frequencyPenalty,
     presencePenalty: row.presencePenalty,
   }
