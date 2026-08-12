@@ -23,10 +23,15 @@ import {
   type ProviderKind,
 } from "@/lib/generation/provider"
 import type { ComposedContext } from "@/lib/generation/types"
-import type { ActionResult, GenerationSettings, Story } from "@/lib/types"
+import { translateAction } from "@/lib/story/action-voice"
+import type {
+  ActionKind,
+  ActionResult,
+  GenerationSettings,
+  Story,
+} from "@/lib/types"
 
 export type GenerationStatus = "idle" | "pending" | "streaming"
-export type ComposerMode = "story" | "instruction"
 
 const GENERATION_ERROR = "Generation failed. Try again."
 const UNDO_ERROR = "Couldn't undo the last passage."
@@ -38,8 +43,9 @@ type Prepared = {
 }
 
 interface StartOptions {
-  mode: ComposerMode
-  /** Persisted as a user passage (story mode) or sent as an instruction. */
+  /** Which move the writer made. Omitted for Continue and Retry, which append nothing. */
+  kind?: ActionKind
+  /** The raw first-person text the writer typed; the server translates and persists it. */
   userText?: string
   /** Runs inside the same transition, just before prepareGeneration. */
   before?: () => Promise<ActionResult<unknown>>
@@ -65,7 +71,7 @@ export interface GenerationController {
   canUndo: boolean
   canRetry: boolean
   /** Returns true when the text was accepted (composer clears on true). */
-  send: (text: string, mode: ComposerMode) => boolean
+  send: (text: string, kind: ActionKind) => boolean
   continueStory: () => void
   retryLast: () => void
   retryFrom: (entryId: string) => void
@@ -76,9 +82,11 @@ export interface GenerationController {
 export interface GenerationOptions {
   /**
    * Called with text that the composer cleared optimistically but that the
-   * server never took ownership of — instruction-mode input, which is
-   * deliberately never persisted (§3.6). Story-mode text is not restored: the
-   * server already holds it as a user passage.
+   * server never took ownership of. Both Say and Do clear the composer the
+   * instant they dispatch, so if the append or prepare step fails there is no
+   * other copy of the writer's words anywhere — the row was never inserted and
+   * the textarea is already empty. This hands them back verbatim (untrimmed, as
+   * typed) instead of destroying them.
    */
   onRestoreDraft?: (text: string) => void
 }
@@ -183,9 +191,7 @@ export function useGeneration(
         // limit) when there is one; aborts stay silent as before.
         if (!controller.signal.aborted)
           toast.error(
-            err instanceof Error && err.message
-              ? err.message
-              : GENERATION_ERROR
+            err instanceof Error && err.message ? err.message : GENERATION_ERROR
           )
       }
       finalize(full)
@@ -228,7 +234,7 @@ export function useGeneration(
           }
 
           const prepared = await prepareGeneration(storyId, {
-            mode: options.mode,
+            kind: options.kind,
             userText: options.userText,
             variant,
           })
@@ -243,8 +249,8 @@ export function useGeneration(
             fail(prepared.error)
             return
           }
-          // The server has taken the text (persisted passage or consumed
-          // instruction) — there is nothing left to give back.
+          // The server has persisted the passage — there is nothing left to
+          // give back, so a later failure must not refill the composer.
           unownedTextRef.current = null
           if (controller.signal.aborted) {
             reset()
@@ -266,20 +272,37 @@ export function useGeneration(
   )
 
   const send = React.useCallback(
-    (text: string, mode: ComposerMode) => {
+    (text: string, kind: ActionKind) => {
       const trimmed = text.trim()
       if (trimmed === "") return false
-      return start(
-        mode === "instruction"
-          ? { mode, userText: trimmed, restoreOnFailure: text }
-          : { mode: "story", userText: trimmed, echo: trimmed }
-      )
+
+      // The echo runs the SAME transform on the SAME trimmed string the server
+      // will translate, so the second-person line the writer sees now and the
+      // persisted row that replaces it are byte-identical and the swap is
+      // invisible. Anything that makes these two diverge — echoing the raw
+      // first-person text, trimming differently, translating only on one side —
+      // shows up as the passage rewriting itself a beat after it appears.
+      const echo = translateAction(kind, trimmed)
+      // An input that translates to nothing (empty quotation marks, punctuation
+      // alone) is what the server rejects too, so refuse it here and keep the
+      // writer's text in the box. It has to say so: the box is not empty, so a
+      // silent false makes Send and Enter look broken.
+      if (echo === "") {
+        toast.error(
+          kind === "say"
+            ? "Nothing to say yet — those quotes are empty."
+            : "Nothing to send yet — write something first."
+        )
+        return false
+      }
+
+      return start({ kind, userText: trimmed, echo, restoreOnFailure: text })
     },
     [start]
   )
 
   const continueStory = React.useCallback(() => {
-    start({ mode: "story" })
+    start({})
   }, [start])
 
   const retryFrom = React.useCallback(
@@ -287,7 +310,6 @@ export function useGeneration(
       const index = entries.findIndex((entry) => entry.id === entryId)
       if (index === -1) return
       start({
-        mode: "story",
         isRetry: true,
         removing: entries.slice(index).map((entry) => entry.id),
         before: () => deleteEntriesFrom(storyId, entryId),

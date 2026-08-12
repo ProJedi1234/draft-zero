@@ -13,11 +13,11 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 
-const SUGGESTIONS = [
-  "Open on a storm rolling in",
-  "Start mid-argument",
-  "Describe the place your hero calls home",
-]
+// Written in the first person the description asks for, because the chips prime
+// the composer rather than sending it: the writer sees exactly what they would
+// have typed themselves, and the transform to "You look around." happens on
+// submit. They are Do openings, so clicking one arms Do.
+const SUGGESTIONS = ["I look around", "I check my pockets", "I call out"]
 
 export function CanvasEmptyState({
   story,
@@ -35,8 +35,8 @@ export function CanvasEmptyState({
         </EmptyMedia>
         <EmptyTitle>A blank page, full of possibility</EmptyTitle>
         <EmptyDescription>
-          Start &ldquo;{story.title}&rdquo; by writing an opening line below —
-          or describe a scene and let the model take it from there.
+          Open &ldquo;{story.title}&rdquo; with your first move. Write what you
+          do, or what you say, in first person — it lands on the page in second.
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>

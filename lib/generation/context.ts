@@ -82,12 +82,12 @@ function trimLore(
 /**
  * Assemble the context for one generation, trimmed to fit a token budget.
  *
- * Allocation, in priority order: the system prompt, memory, author's note and
- * instruction are fixed overhead — they are short, the writer chose them
- * deliberately, and dropping them changes the model's job rather than its
- * recall. Whatever is left after that goes to lore (greedy, priority order,
- * capped at its share) and then to story prose, which absorbs both the prose
- * share and lore's leftovers.
+ * Allocation, in priority order: the system prompt, memory and author's note
+ * are fixed overhead — they are short, the writer chose them deliberately, and
+ * dropping them changes the model's job rather than its recall. Whatever is
+ * left after that goes to lore (greedy, priority order, capped at its share)
+ * and then to story prose, which absorbs both the prose share and lore's
+ * leftovers.
  *
  * The overhead is *measured*, not hand-counted: we render a probe context with
  * no lore and no prose and take its length. That way every bracket label and
@@ -97,7 +97,6 @@ function trimLore(
 export function composeContext(input: {
   story: Story
   lorebookEntries: LorebookEntry[]
-  instruction?: string | null
   variant?: number
   /**
    * Token budget override — the model-clamped window. Defaults to the story's
@@ -107,7 +106,7 @@ export function composeContext(input: {
    */
   contextWindow?: number
 }): ComposedContext {
-  const { story, lorebookEntries, instruction = null, variant = 0 } = input
+  const { story, lorebookEntries, variant = 0 } = input
   const contextWindow = input.contextWindow ?? story.settings.contextWindow
 
   const matches = matchActiveLorebookEntries(
@@ -124,15 +123,12 @@ export function composeContext(input: {
     })
   )
 
-  const trimmedInstruction = instruction?.trim() ?? ""
-
   const context: ComposedContext = {
     systemPrompt: resolveSystemPrompt(story.systemPrompt),
     memory: story.memory,
     lore: [],
     storyText: "",
     authorsNote: story.authorsNote,
-    instruction: trimmedInstruction === "" ? null : trimmedInstruction,
     seed: story.entries.length + variant,
     approxTokens: 0,
   }
@@ -216,8 +212,6 @@ export function renderPrompt(ctx: ComposedContext): string {
     if (authorsNoteBlock) blocks.push(authorsNoteBlock)
     blocks.push(finalParagraph)
   }
-
-  if (ctx.instruction) blocks.push(`[Instruction]\n${ctx.instruction}`)
 
   return blocks.join(PARAGRAPH_SEPARATOR)
 }

@@ -7,7 +7,13 @@ import type { DrizzleDb } from "@/lib/db/client"
 import { getDb } from "@/lib/db/client"
 import { toStoryEntry } from "@/lib/db/mappers"
 import { stories, storyEntries } from "@/lib/db/schema"
-import type { ActionResult, EntrySource, StoryEntry } from "@/lib/types"
+import { translateAction } from "@/lib/story/action-voice"
+import type {
+  ActionKind,
+  ActionResult,
+  EntrySource,
+  StoryEntry,
+} from "@/lib/types"
 
 async function storyExists(db: DrizzleDb, storyId: string): Promise<boolean> {
   const row = await db
@@ -36,10 +42,23 @@ async function nextPosition(db: DrizzleDb, storyId: string): Promise<number> {
   return max === null || max === undefined ? 0 : max + 1
 }
 
+/**
+ * The one write path for an *appended* passage: position, story touch and
+ * revalidate live here so a caller can never append a row that the sidebar's
+ * updatedAt ordering or the manuscript's cache misses. (Two callers build rows
+ * of their own instead of appending to a live story — the importer writes
+ * position 0 inside its own transaction, and the seed script writes a whole
+ * story at once.)
+ *
+ * `action` carries the player-turn columns and is null for everything else.
+ * The pair travels together because actionKind and inputText are only ever
+ * both set or both null — see the StoryEntry doc comment.
+ */
 async function appendEntry(
   storyId: string,
   text: string,
-  source: EntrySource
+  source: EntrySource,
+  action: { kind: ActionKind; inputText: string } | null = null
 ): Promise<ActionResult<{ entry: StoryEntry }>> {
   const trimmed = text.trim()
   if (trimmed === "")
@@ -56,10 +75,8 @@ async function appendEntry(
     position: await nextPosition(db, storyId),
     source,
     text: trimmed,
-    // Nothing appends a player turn yet, so every row written here is ordinary
-    // prose and the pair stays null.
-    actionKind: null,
-    inputText: null,
+    actionKind: action?.kind ?? null,
+    inputText: action?.inputText ?? null,
     createdAt: now,
   }
 
@@ -70,12 +87,35 @@ async function appendEntry(
   return { ok: true, data: { entry: toStoryEntry(row) } }
 }
 
-/** Appends a user passage (next position). Rejects blank/whitespace-only text. */
-export async function appendUserEntry(
+/**
+ * Appends the writer's turn: they type first person, the page reads second.
+ *
+ * The translation runs *here* rather than arriving pre-translated from the
+ * client, because what the client sends is the one thing a user can forge and
+ * the stored prose is what the model is conditioned on for the rest of the
+ * story. The composer runs the same pure function purely for its optimistic
+ * echo; this row is the authority, and if the two ever disagree the client's
+ * copy is the one that gets replaced.
+ *
+ * Both blanks are rejected: an empty raw input is nothing to submit, and a raw
+ * input that translates to nothing (whitespace, punctuation the transform
+ * strips) would otherwise write an empty passage the writer can only find by
+ * scrolling into it.
+ */
+export async function appendActionEntry(
   storyId: string,
-  text: string
+  kind: ActionKind,
+  rawText: string
 ): Promise<ActionResult<{ entry: StoryEntry }>> {
-  return appendEntry(storyId, text, "user")
+  const raw = rawText.trim()
+  if (raw === "")
+    return { ok: false, error: "Nothing to add — write something first." }
+
+  const translated = translateAction(kind, raw)
+  if (translated.trim() === "")
+    return { ok: false, error: "Nothing to add — write something first." }
+
+  return appendEntry(storyId, translated, "user", { kind, inputText: raw })
 }
 
 /** Appends a generated passage — called by the client after streaming completes. */

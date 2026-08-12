@@ -37,7 +37,7 @@ export default async function StoryPage({ params }: StoryPageProps) {
 
   // No key here: the workspace keys its own editor subtree by story id, so
   // per-story state resets while the writer's UI preferences (inspector
-  // visibility, composer mode) survive navigation.
+  // visibility, the armed Say/Do move) survive navigation.
   return (
     <StoryWorkspace
       story={story}

@@ -2,9 +2,14 @@
 
 import * as React from "react"
 
-import type { LorebookEntry, OpenRouterModel, Story } from "@/lib/types"
+import type {
+  ActionKind,
+  LorebookEntry,
+  OpenRouterModel,
+  Story,
+} from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { useGeneration, type ComposerMode } from "@/hooks/use-generation"
+import { useGeneration } from "@/hooks/use-generation"
 import {
   InspectorContent,
   InspectorPanel,
@@ -29,9 +34,9 @@ const useIsomorphicLayoutEffect =
 
 /**
  * The workspace shell. Everything here is deliberately OUTSIDE the story-keyed
- * subtree: inspector visibility and composer mode are preferences of the writer,
- * not properties of the story, and remounting them on every navigation would
- * slam the inspector back open and silently flip Instruction mode back to Story.
+ * subtree: inspector visibility and the armed Say/Do move are preferences of the
+ * writer, not properties of the story, and remounting them on every navigation
+ * would slam the inspector back open and silently drop the writer back to Do.
  */
 export function StoryWorkspace({
   story,
@@ -44,7 +49,7 @@ export function StoryWorkspace({
 }) {
   const [inspectorOpen, setInspectorOpen] = useInspectorOpen()
   const [mobileInspectorOpen, setMobileInspectorOpen] = React.useState(false)
-  const [mode, setMode] = React.useState<ComposerMode>("story")
+  const [actionKind, setActionKind] = React.useState<ActionKind>("do")
 
   return (
     <div className="flex h-app min-w-0 flex-col">
@@ -60,8 +65,8 @@ export function StoryWorkspace({
         <StoryEditor
           key={story.id}
           story={story}
-          mode={mode}
-          onModeChange={setMode}
+          actionKind={actionKind}
+          onActionKindChange={setActionKind}
         />
         <InspectorPanel
           story={story}
@@ -93,12 +98,12 @@ export function StoryWorkspace({
 /** Canvas + composer + generation: the part that is per-story. */
 function StoryEditor({
   story,
-  mode,
-  onModeChange,
+  actionKind,
+  onActionKindChange,
 }: {
   story: Story
-  mode: ComposerMode
-  onModeChange: (mode: ComposerMode) => void
+  actionKind: ActionKind
+  onActionKindChange: (kind: ActionKind) => void
 }) {
   const [draft, setDraft] = React.useState("")
   const composerRef = React.useRef<HTMLTextAreaElement>(null)
@@ -106,8 +111,8 @@ function StoryEditor({
   const shellRef = React.useRef<HTMLDivElement>(null)
 
   const generation = useGeneration(story, {
-    // Instruction-mode text is never persisted, so a failed dispatch would
-    // otherwise destroy it — the composer is its only home.
+    // The composer clears the moment a move dispatches, so until the server has
+    // written the row the textarea is the only copy of what the writer typed.
     onRestoreDraft: setDraft,
   })
 
@@ -131,16 +136,22 @@ function StoryEditor({
   }, [])
 
   // Empty-state chips prime the composer; the writer still decides to send.
-  const handleSuggestion = React.useCallback((text: string) => {
-    setDraft(text)
-    const textarea = composerRef.current
-    if (!textarea) return
-    textarea.focus()
-    requestAnimationFrame(() => {
-      const end = textarea.value.length
-      textarea.setSelectionRange(end, end)
-    })
-  }, [])
+  // They are Do-shaped openings, so they arm Do too — priming "I look around"
+  // while Say is still armed would send You say, "I look around."
+  const handleSuggestion = React.useCallback(
+    (text: string) => {
+      onActionKindChange("do")
+      setDraft(text)
+      const textarea = composerRef.current
+      if (!textarea) return
+      textarea.focus()
+      requestAnimationFrame(() => {
+        const end = textarea.value.length
+        textarea.setSelectionRange(end, end)
+      })
+    },
+    [onActionKindChange]
+  )
 
   return (
     <div ref={shellRef} className="relative flex min-w-0 flex-1 flex-col">
@@ -157,8 +168,8 @@ function StoryEditor({
       <Composer
         value={draft}
         onValueChange={setDraft}
-        mode={mode}
-        onModeChange={onModeChange}
+        actionKind={actionKind}
+        onActionKindChange={onActionKindChange}
         textareaRef={composerRef}
         containerRef={composerBoxRef}
         status={generation.status}
