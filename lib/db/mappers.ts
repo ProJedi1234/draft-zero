@@ -61,6 +61,7 @@ export function toStoryEntry(row: StoryEntryRow): StoryEntry {
 export function toGenerationSettings(row: StoryRow): GenerationSettings {
   return {
     modelId: row.modelId,
+    thinking: row.thinking,
     temperature: row.temperature,
     topP: row.topP,
     maxTokens: row.maxTokens,

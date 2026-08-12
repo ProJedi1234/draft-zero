@@ -9,7 +9,11 @@ import { updateGenerationSettings } from "@/lib/actions/stories"
 import type { GenerationSettings } from "@/lib/types"
 
 /** The numeric generation-settings fields a slider can drive. */
-export type SliderSettingField = Exclude<keyof GenerationSettings, "modelId">
+export type SliderSettingField = {
+  [K in keyof GenerationSettings]: GenerationSettings[K] extends number
+    ? K
+    : never
+}[keyof GenerationSettings]
 
 export interface SettingSliderProps {
   storyId: string

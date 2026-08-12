@@ -1,0 +1,1 @@
+ALTER TABLE "stories" ADD COLUMN "thinking" text DEFAULT 'off' NOT NULL;

@@ -7,7 +7,12 @@ import { OpenRouter } from "@openrouter/sdk"
 import type { Model } from "@openrouter/sdk/models"
 
 import { MOCK_MODELS } from "@/lib/mock-data"
-import type { OpenRouterModel } from "@/lib/types"
+import {
+  REASONING_EFFORTS,
+  type ModelReasoning,
+  type OpenRouterModel,
+  type ReasoningEffort,
+} from "@/lib/types"
 
 import { resolveOpenRouterKey } from "./key"
 
@@ -19,6 +24,37 @@ function per1M(perToken: string | undefined): string {
   const n = Number(perToken)
   if (!Number.isFinite(n) || n <= 0) return "$0.00"
   return `$${(n * 1_000_000).toFixed(2)}`
+}
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return REASONING_EFFORTS.includes(value as ReasoningEffort)
+}
+
+/**
+ * Reasoning support for one catalog entry, or null when the model can't think.
+ *
+ * OpenRouter omits `reasoning` for non-reasoning models, but dynamic routers
+ * advertise the parameter without the block — those get the full effort ladder.
+ * `supportedEfforts` arrives highest-first and may include "none" (which is
+ * this app's "off", not a level), so it is filtered back into our own order.
+ */
+function toReasoning(m: Model): ModelReasoning | null {
+  const advertised = m.supportedParameters.some(
+    (p) => p === "reasoning" || p === "reasoning_effort"
+  )
+  if (!m.reasoning)
+    return advertised
+      ? { efforts: [...REASONING_EFFORTS], mandatory: false }
+      : null
+
+  const allowed = m.reasoning.supportedEfforts?.filter(isReasoningEffort) ?? []
+  const efforts = REASONING_EFFORTS.filter(
+    (e) => allowed.length === 0 || allowed.includes(e)
+  )
+  return {
+    efforts: efforts.length > 0 ? efforts : [...REASONING_EFFORTS],
+    mandatory: m.reasoning.mandatory,
+  }
 }
 
 function toDomainModel(m: Model): OpenRouterModel {
@@ -33,6 +69,7 @@ function toDomainModel(m: Model): OpenRouterModel {
       prompt: per1M(m.pricing.prompt),
       completion: per1M(m.pricing.completion),
     },
+    reasoning: toReasoning(m),
   }
 }
 

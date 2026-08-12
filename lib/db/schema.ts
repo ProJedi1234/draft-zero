@@ -17,6 +17,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core"
 
+import type { ThinkingLevel } from "@/lib/types"
+
 export const stories = pgTable("stories", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
@@ -26,6 +28,9 @@ export const stories = pgTable("stories", {
   authorsNote: text("authors_note").notNull().default(""),
   // Generation settings live inline (1:1 with the story).
   modelId: text("model_id").notNull(),
+  // Reasoning effort, or "off". Thinking is opt-in, so "off" is the default
+  // for new stories and for every story that predates this column.
+  thinking: text("thinking").notNull().default("off").$type<ThinkingLevel>(),
   // doublePrecision, not real: Postgres `real` is 4-byte and would silently
   // round the slider values that SQLite stored at 8-byte precision.
   temperature: doublePrecision("temperature").notNull(),
