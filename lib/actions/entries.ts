@@ -58,7 +58,13 @@ async function appendEntry(
   storyId: string,
   text: string,
   source: EntrySource,
-  action: { kind: ActionKind; inputText: string } | null = null
+  action: { kind: ActionKind; inputText: string } | null = null,
+  /**
+   * Off only for the writer's own turn — see appendActionEntry. Everything else
+   * revalidates here, because for every other caller this row is the last thing
+   * that happens and nothing else will refresh the tree.
+   */
+  revalidate = true
 ): Promise<ActionResult<{ entry: StoryEntry }>> {
   const trimmed = text.trim()
   if (trimmed === "")
@@ -83,7 +89,7 @@ async function appendEntry(
   await db.insert(storyEntries).values(row)
   await touchStory(db, storyId, now)
 
-  revalidatePath("/", "layout")
+  if (revalidate) revalidatePath("/", "layout")
   return { ok: true, data: { entry: toStoryEntry(row) } }
 }
 
@@ -101,6 +107,14 @@ async function appendEntry(
  * input that translates to nothing (whitespace, punctuation the transform
  * strips) would otherwise write an empty passage the writer can only find by
  * scrolling into it.
+ *
+ * Deliberately does NOT revalidate, and its one caller (prepareGeneration) owns
+ * that instead. This insert sits in the critical path between the writer
+ * pressing Send and the first token: revalidating here makes the server
+ * re-render the whole layout and ship it back before generation can even start,
+ * for a row the canvas is already showing a byte-identical echo of. useGeneration
+ * refreshes the tree exactly once, when the turn settles — and on every failure
+ * path too, so this row can never stay invisible.
  */
 export async function appendActionEntry(
   storyId: string,
@@ -115,7 +129,13 @@ export async function appendActionEntry(
   if (translated.trim() === "")
     return { ok: false, error: "Nothing to add — write something first." }
 
-  return appendEntry(storyId, translated, "user", { kind, inputText: raw })
+  return appendEntry(
+    storyId,
+    translated,
+    "user",
+    { kind, inputText: raw },
+    false
+  )
 }
 
 /** Appends a generated passage — called by the client after streaming completes. */

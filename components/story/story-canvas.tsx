@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import type { Story } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { formatDateShort } from "@/lib/format"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -27,6 +28,7 @@ export function StoryCanvas({
   busy,
   streamingText,
   optimisticUserText,
+  optimisticUserPending,
   removingEntryIds,
   onRetryFrom,
   onSuggestion,
@@ -36,6 +38,7 @@ export function StoryCanvas({
   busy: boolean
   streamingText: string
   optimisticUserText: string | null
+  optimisticUserPending: boolean
   removingEntryIds: string[]
   onRetryFrom: (entryId: string) => void
   onSuggestion: (text: string) => void
@@ -44,11 +47,16 @@ export function StoryCanvas({
   // Sticky by default; flipped off the moment the reader scrolls away.
   const stickToBottomRef = React.useRef(true)
 
-  const generating = status !== "idle"
+  // Live means the provider still owns the passage. `settling` is neither live
+  // nor idle: the prose is finished and rendered from the local buffer while its
+  // row is in flight, so the block stays but the caret and the Stop affordance
+  // go — and the hook empties the buffer in the commit that delivers the row.
+  const live = status === "pending" || status === "streaming"
+  const showTail = live || streamingText !== ""
   const removing = new Set(removingEntryIds)
   const entries = story.entries.filter((entry) => !removing.has(entry.id))
   const hasContent =
-    entries.length > 0 || optimisticUserText !== null || generating
+    entries.length > 0 || optimisticUserText !== null || showTail
 
   const getViewport = React.useCallback(
     () =>
@@ -71,18 +79,43 @@ export function StoryCanvas({
     if (!content) return
 
     stickToBottomRef.current = true
-    let live = true
-    const pin = () => {
-      if (!live || !stickToBottomRef.current) return
-      viewport.scrollTop = viewport.scrollHeight
+    let mounted = true
+    let frame: number | null = null
+
+    const pinNow = () => {
+      frame = null
+      if (!mounted || !stickToBottomRef.current) return
+      const target = viewport.scrollHeight - viewport.clientHeight
+      // A sub-pixel correction is not worth a scroll event, and writing
+      // scrollTop unconditionally on every chunk is what made following the
+      // prose feel like a series of yanks rather than a drift.
+      if (target - viewport.scrollTop < 1) return
+      viewport.scrollTop = target
     }
-    pin()
+
+    // Coalesced to one write per frame. Growth arrives in ~24 ms chunks, so
+    // without this a single frame can take several scrollTop writes, each one
+    // re-entering layout and re-firing the observers that scheduled it.
+    const pin = () => {
+      if (!mounted || !stickToBottomRef.current || frame !== null) return
+      frame = requestAnimationFrame(pinNow)
+    }
+
+    // The very first landing is synchronous: deferring it to a frame would let
+    // the browser paint the top of the manuscript first.
+    pinNow()
 
     // The landing height is wrong for longer than a frame: web fonts swap in
     // over the fallback metrics, and --composer-h (the canvas' bottom padding)
     // is published by the workspace's own ResizeObserver. Both grow the
     // document *after* the pin, leaving scrollTop stranded near the top — so
     // re-pin on every height change instead of guessing when it settles.
+    //
+    // This is also what follows the stream: the prose growing is a resize, so
+    // the scroll tracks the DOM directly rather than riding a React effect keyed
+    // on the chunk text. Same result, one commit's worth of latency earlier, and
+    // it keeps working for growth React didn't cause (a font swap, the composer
+    // autosizing under a long draft).
     const observer = new ResizeObserver(pin)
     observer.observe(content)
     observer.observe(viewport)
@@ -97,11 +130,42 @@ export function StoryCanvas({
       stickToBottomRef.current = distance <= STICK_THRESHOLD_PX
     }
 
+    // Reading back up mid-generation has to win on the first notch, not on the
+    // 120th pixel. Waiting for the scroll event to clear the threshold means
+    // competing with prose that is still growing underneath — the reader
+    // scrolls, the next chunk lands, the pin fires before they have travelled
+    // far enough to count, and the canvas snaps back. An upward gesture is
+    // unambiguous, so take it at face value and stop following immediately;
+    // scrolling back down re-arms sticky through onScroll as before.
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) stickToBottomRef.current = false
+    }
+
+    // The touch equivalent: a finger travelling *down* the screen pulls earlier
+    // prose into view. Keyed on movement rather than touchstart, so tapping a
+    // passage's action buttons doesn't count as walking away.
+    let touchStartY = 0
+    const onTouchStart = (event: TouchEvent) => {
+      touchStartY = event.touches[0]?.clientY ?? 0
+    }
+    const onTouchMove = (event: TouchEvent) => {
+      const y = event.touches[0]?.clientY
+      if (y !== undefined && y - touchStartY > 4)
+        stickToBottomRef.current = false
+    }
+
     viewport.addEventListener("scroll", onScroll, { passive: true })
+    viewport.addEventListener("wheel", onWheel, { passive: true })
+    viewport.addEventListener("touchstart", onTouchStart, { passive: true })
+    viewport.addEventListener("touchmove", onTouchMove, { passive: true })
     return () => {
-      live = false
+      mounted = false
+      if (frame !== null) cancelAnimationFrame(frame)
       observer.disconnect()
       viewport.removeEventListener("scroll", onScroll)
+      viewport.removeEventListener("wheel", onWheel)
+      viewport.removeEventListener("touchstart", onTouchStart)
+      viewport.removeEventListener("touchmove", onTouchMove)
     }
   }, [getViewport, story.id])
 
@@ -111,16 +175,12 @@ export function StoryCanvas({
   // whole of pending+streaming, so it is spoken exactly once per generation, and
   // clearing it on idle is silent: the finished passage is then ordinary page
   // content in a StoryEntryBlock.
-  const announcement = generating ? "Generating…" : ""
+  const announcement = live ? "Generating…" : ""
 
-  // Follow the prose as it grows — but only for a reader who was already at the
-  // bottom. Scrolling up during a generation is never overridden.
-  React.useEffect(() => {
-    if (!generating || !stickToBottomRef.current) return
-    const viewport = getViewport()
-    if (!viewport) return
-    viewport.scrollTop = viewport.scrollHeight
-  }, [generating, getViewport, optimisticUserText, streamingText])
+  // Following the prose is NOT driven from here. The ResizeObserver above owns
+  // it: growth is a resize, and letting the DOM report it keeps the scroll off
+  // React's commit schedule entirely — no effect firing per chunk, and no second
+  // scrollTop write racing the observer's.
 
   return (
     <ScrollArea className="min-h-0 flex-1">
@@ -178,27 +238,37 @@ export function StoryCanvas({
               ))}
 
               {/* Optimistic echo: the passage the reader just wrote, shown
-                  until revalidation hands back the persisted row. */}
+                  from the moment they send it until revalidation hands back the
+                  persisted row. It dims only for the round-trip that decides
+                  whether the server accepts it — once acknowledged it reads as
+                  finished prose, which is what it is, even though this element
+                  goes on standing in for the row for the rest of the
+                  generation. */}
               {optimisticUserText !== null && (
                 <div
                   data-source="user"
-                  className="relative -mx-4 border-l-2 border-primary/40 px-4 py-3"
+                  data-unacknowledged={optimisticUserPending || undefined}
+                  className={cn(
+                    "relative -mx-4 border-l-2 border-primary/40 px-4 py-3 transition-opacity duration-200",
+                    optimisticUserPending && "opacity-50"
+                  )}
                 >
                   <Prose text={optimisticUserText} />
                 </div>
               )}
 
-              {generating && (
+              {showTail && (
                 <StreamingBlock
                   text={streamingText}
                   pending={status === "pending"}
+                  caret={live}
                 />
               )}
             </div>
 
             {/* Idle insertion caret; while streaming the caret lives inline at
                 the end of the streamed text instead. */}
-            {!generating && (
+            {!showTail && (
               <div
                 aria-hidden
                 className="mt-6 h-5 w-0.5 animate-pulse bg-primary/50"

@@ -37,14 +37,24 @@ export async function prepareGeneration(
     settings: GenerationSettings
     /** Decided here, where the key is visible: real provider iff a key exists. */
     providerKind: ProviderKind
+    /**
+     * The row this call wrote for the writer's turn, or null for a Continue.
+     * The client holds its optimistic echo until an entry with this id shows up
+     * in the revalidated story — that is the only signal that tells the two
+     * apart, so the swap can happen in the commit that delivers the real row
+     * instead of a commit or two earlier (a gap) or later (a duplicate).
+     */
+    userEntryId: string | null
   }>
 > {
   // A turn needs both halves: `kind` alone has nothing to translate, and
   // `userText` alone cannot be translated without knowing which voice it is.
   // Either way the honest reading is Continue, so nothing is appended.
+  let userEntryId: string | null = null
   if (opts.kind !== undefined && opts.userText !== undefined) {
     const appended = await appendActionEntry(storyId, opts.kind, opts.userText)
     if (!appended.ok) return appended
+    userEntryId = appended.data.entry.id
   }
 
   const [story, lorebookEntries, models] = await Promise.all([
@@ -89,13 +99,31 @@ export async function prepareGeneration(
     contextWindow: settings.contextWindow,
   })
 
-  revalidatePath("/", "layout")
+  // No revalidation here on purpose: this response is what the writer is
+  // waiting on before a single token appears, and re-rendering the whole layout
+  // to deliver a row the canvas is already echoing buys nothing but latency.
+  // The client calls syncStoryTree (or persists the passage, which revalidates)
+  // once the turn settles — including when it fails.
   return {
     ok: true,
     data: {
       context,
       settings,
       providerKind: openRouterKey !== null ? "openrouter" : "mock",
+      userEntryId,
     },
   }
+}
+
+/**
+ * Refreshes the story tree without writing anything.
+ *
+ * The client needs this because prepareGeneration deliberately doesn't
+ * revalidate: on the paths where the turn ends without a generated passage
+ * (stopped before the first token, provider error, context composition failure)
+ * the writer's row is on disk and nothing else would ever fetch it, so the
+ * optimistic echo would be all that's holding the passage on screen.
+ */
+export async function syncStoryTree(): Promise<void> {
+  revalidatePath("/", "layout")
 }
