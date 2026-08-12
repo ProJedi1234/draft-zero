@@ -1,0 +1,1 @@
+ALTER TABLE "app_settings" ADD COLUMN "default_thinking" text DEFAULT 'off' NOT NULL;

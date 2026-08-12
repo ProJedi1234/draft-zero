@@ -20,6 +20,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     provider: "Anthropic",
     contextLength: 1_000_000,
     pricing: { prompt: "$3.00", completion: "$15.00" },
+    reasoning: { efforts: ["low", "medium", "high"], mandatory: false },
   },
   {
     id: "anthropic/claude-opus-4.5",
@@ -27,6 +28,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     provider: "Anthropic",
     contextLength: 200_000,
     pricing: { prompt: "$5.00", completion: "$25.00" },
+    reasoning: { efforts: ["low", "medium", "high"], mandatory: false },
   },
   {
     id: "openai/gpt-5.1",
@@ -34,6 +36,10 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     provider: "OpenAI",
     contextLength: 400_000,
     pricing: { prompt: "$1.25", completion: "$10.00" },
+    reasoning: {
+      efforts: ["minimal", "low", "medium", "high", "xhigh"],
+      mandatory: false,
+    },
   },
   {
     id: "openai/gpt-5-mini",
@@ -41,6 +47,10 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     provider: "OpenAI",
     contextLength: 400_000,
     pricing: { prompt: "$0.25", completion: "$2.00" },
+    reasoning: {
+      efforts: ["minimal", "low", "medium", "high"],
+      mandatory: false,
+    },
   },
   {
     id: "google/gemini-3-pro-preview",
@@ -48,6 +58,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     provider: "Google",
     contextLength: 1_000_000,
     pricing: { prompt: "$2.00", completion: "$12.00" },
+    reasoning: { efforts: ["low", "high"], mandatory: true },
   },
   {
     id: "google/gemini-2.5-flash",
@@ -55,6 +66,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     provider: "Google",
     contextLength: 1_000_000,
     pricing: { prompt: "$0.30", completion: "$2.50" },
+    reasoning: { efforts: ["low", "medium", "high"], mandatory: false },
   },
   {
     id: "meta-llama/llama-4-maverick",
@@ -62,6 +74,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     provider: "Meta",
     contextLength: 1_000_000,
     pricing: { prompt: "$0.20", completion: "$0.85" },
+    reasoning: null,
   },
   {
     id: "deepseek/deepseek-v3.2",
@@ -69,6 +82,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     provider: "DeepSeek",
     contextLength: 131_072,
     pricing: { prompt: "$0.25", completion: "$0.40" },
+    reasoning: { efforts: ["low", "high"], mandatory: false },
   },
   {
     id: "mistralai/mistral-medium-3",
@@ -76,11 +90,13 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     provider: "Mistral",
     contextLength: 131_072,
     pricing: { prompt: "$0.40", completion: "$2.00" },
+    reasoning: null,
   },
 ]
 
 export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   modelId: "anthropic/claude-sonnet-4.5",
+  thinking: "off",
   temperature: 0.9,
   topP: 0.95,
   // A hard ceiling on the runaway case, not a target. The system prompt asks
@@ -281,6 +297,7 @@ export const MOCK_STORIES: Story[] = [
     ],
     settings: {
       modelId: "anthropic/claude-sonnet-4.5",
+      thinking: "off",
       temperature: 0.9,
       topP: 0.95,
       maxTokens: 1024,
@@ -292,19 +309,19 @@ export const MOCK_STORIES: Story[] = [
         id: "entry-cart-1",
         source: "generated",
         createdAt: "2026-06-02T08:45:00Z",
-        text: "The river had been lying to maps for three hundred years, and Maren Kestrel was the first cartographer honest enough to write the lies down. She stood on the stone lip of Graywater Crossing with her drafting board strapped to her chest, watching the Ithren bend a way no river should bend — uphill, against its own current, toward the drowned quarter of the old city.\n\nHer Guild license said she surveyed floodplains. Her private ledger said something truer: eleven maps drawn, eleven debts accrued, one river god growing impatient.\n\n\"You're late,\" said the water.",
+        text: 'The river had been lying to maps for three hundred years, and Maren Kestrel was the first cartographer honest enough to write the lies down. She stood on the stone lip of Graywater Crossing with her drafting board strapped to her chest, watching the Ithren bend a way no river should bend — uphill, against its own current, toward the drowned quarter of the old city.\n\nHer Guild license said she surveyed floodplains. Her private ledger said something truer: eleven maps drawn, eleven debts accrued, one river god growing impatient.\n\n"You\'re late," said the water.',
       },
       {
         id: "entry-cart-2",
         source: "user",
         createdAt: "2026-06-02T09:10:00Z",
-        text: "Maren set down her board and unwrapped the bone needle from its oilcloth. It swung once, twice, and settled — pointing not north but down, through the causeway stone, toward whatever the Ithren kept beneath the crossing. \"I brought your payment,\" she said, and hated how small her voice sounded over the water.",
+        text: 'Maren set down her board and unwrapped the bone needle from its oilcloth. It swung once, twice, and settled — pointing not north but down, through the causeway stone, toward whatever the Ithren kept beneath the crossing. "I brought your payment," she said, and hated how small her voice sounded over the water.',
       },
       {
         id: "entry-cart-3",
         source: "generated",
         createdAt: "2026-06-02T09:12:00Z",
-        text: "The current folded in on itself, and out of the fold rose a shape that was mostly suggestion: a figure of green glass water, tall as a mast, wearing the surface of the river like a borrowed coat. Elathe did not have a face. It had, instead, a place where attention gathered, and all of it gathered now on the oilcloth in her hands.\n\n\"Payment,\" the god repeated, in a voice like a lock turning. \"You use that word the way drowning men use the word 'swimming.' Show me the twelfth map, Maren Kestrel.\"",
+        text: 'The current folded in on itself, and out of the fold rose a shape that was mostly suggestion: a figure of green glass water, tall as a mast, wearing the surface of the river like a borrowed coat. Elathe did not have a face. It had, instead, a place where attention gathered, and all of it gathered now on the oilcloth in her hands.\n\n"Payment," the god repeated, in a voice like a lock turning. "You use that word the way drowning men use the word \'swimming.\' Show me the twelfth map, Maren Kestrel."',
       },
       {
         id: "entry-cart-4",
@@ -316,7 +333,7 @@ export const MOCK_STORIES: Story[] = [
         id: "entry-cart-5",
         source: "generated",
         createdAt: "2026-06-02T09:32:00Z",
-        text: "The river went still. Not calm — still, the way a courtroom goes still. Along the whole length of the crossing the water stopped moving, and in that stillness Maren could see straight down through forty feet of green light to the drowned quarter: slate roofs furred with weed, a bell tower, a market square where pale shapes drifted between the stalls in an unhurried parody of errands.\n\n\"Cartographer,\" Elathe said softly, \"I taught you to draw true things. I did not teach you to say false ones. We will both pretend that mercy is why I let that pass.\"",
+        text: 'The river went still. Not calm — still, the way a courtroom goes still. Along the whole length of the crossing the water stopped moving, and in that stillness Maren could see straight down through forty feet of green light to the drowned quarter: slate roofs furred with weed, a bell tower, a market square where pale shapes drifted between the stalls in an unhurried parody of errands.\n\n"Cartographer," Elathe said softly, "I taught you to draw true things. I did not teach you to say false ones. We will both pretend that mercy is why I let that pass."',
       },
     ],
   },
@@ -336,6 +353,7 @@ export const MOCK_STORIES: Story[] = [
     activeLorebookEntryIds: [],
     settings: {
       modelId: "openai/gpt-5.1",
+      thinking: "off",
       temperature: 1.1,
       topP: 0.9,
       maxTokens: 800,
@@ -385,6 +403,7 @@ export const MOCK_STORIES: Story[] = [
     activeLorebookEntryIds: [],
     settings: {
       modelId: "anthropic/claude-opus-4.5",
+      thinking: "off",
       temperature: 0.8,
       topP: 0.98,
       maxTokens: 1200,

@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { ModelCombobox } from "@/components/model-combobox"
+import { levelForModel, ThinkingSelect } from "@/components/thinking-select"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,7 +19,7 @@ import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { updateAppSettings, verifyOpenRouterKey } from "@/lib/actions/settings"
-import type { AppSettings, OpenRouterModel } from "@/lib/types"
+import type { AppSettings, OpenRouterModel, ThinkingLevel } from "@/lib/types"
 
 function SettingsView({
   settings,
@@ -29,16 +30,40 @@ function SettingsView({
 }) {
   const [verifying, setVerifying] = React.useState(false)
   const [modelId, setModelId] = React.useState(settings.defaultModelId)
+  const [thinking, setThinking] = React.useState(settings.defaultThinking)
   const [isPending, startTransition] = React.useTransition()
 
   function handleModelChange(next: string) {
     if (next === "" || next === modelId) return
-    const previous = modelId
+    const previous = { modelId, thinking }
+    // Same rule as the inspector: a default level the new default model can't
+    // honour would be inherited by every story created afterwards.
+    const nextThinking = levelForModel(
+      models.find((m) => m.id === next)?.reasoning,
+      thinking
+    )
     setModelId(next)
+    setThinking(nextThinking)
     startTransition(async () => {
-      const result = await updateAppSettings({ defaultModelId: next })
+      const result = await updateAppSettings({
+        defaultModelId: next,
+        defaultThinking: nextThinking,
+      })
       if (!result.ok) {
-        setModelId(previous)
+        setModelId(previous.modelId)
+        setThinking(previous.thinking)
+        toast.error(result.error)
+      }
+    })
+  }
+
+  function handleThinkingChange(next: ThinkingLevel) {
+    const previous = thinking
+    setThinking(next)
+    startTransition(async () => {
+      const result = await updateAppSettings({ defaultThinking: next })
+      if (!result.ok) {
+        setThinking(previous)
         toast.error(result.error)
       }
     })
@@ -116,9 +141,17 @@ function SettingsView({
                   onValueChange={handleModelChange}
                   disabled={isPending}
                 />
+                <ThinkingSelect
+                  reasoning={
+                    models.find((m) => m.id === modelId)?.reasoning ?? null
+                  }
+                  value={thinking}
+                  onValueChange={handleThinkingChange}
+                  disabled={isPending}
+                />
                 <p className="text-xs text-muted-foreground">
-                  New stories start from this model; each story can override it
-                  in the inspector.
+                  New stories start from this model and thinking level; each
+                  story can override both in the inspector.
                 </p>
               </div>
             </CardContent>

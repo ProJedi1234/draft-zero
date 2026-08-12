@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { LoreTab } from "@/components/inspector/lore-tab"
 import { ModelPicker } from "@/components/inspector/model-picker"
 import { SettingSlider } from "@/components/inspector/setting-slider"
+import { levelForModel } from "@/components/thinking-select"
 import { Button } from "@/components/ui/button"
 import {
   Collapsible,
@@ -26,7 +27,13 @@ import {
 import { formatContextLength } from "@/lib/format"
 import { composeContext } from "@/lib/generation/context"
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/generation/system-prompt"
-import type { LorebookEntry, OpenRouterModel, Story } from "@/lib/types"
+import type {
+  GenerationSettings,
+  LorebookEntry,
+  OpenRouterModel,
+  Story,
+  ThinkingLevel,
+} from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 export function InspectorPanel({
@@ -148,6 +155,7 @@ function InspectorSections({
   // in the DOM at once, and duplicate ids would cross-wire the labels.
   const uid = React.useId()
   const [modelId, setModelId] = React.useState(story.settings.modelId)
+  const [thinking, setThinking] = React.useState(story.settings.thinking)
   const [titleEmpty, setTitleEmpty] = React.useState(false)
   const [, startTransition] = React.useTransition()
 
@@ -210,14 +218,28 @@ function InspectorSections({
     systemPromptSave.status
   )
 
-  function handleModelChange(nextModelId: string) {
-    setModelId(nextModelId)
+  function saveSettings(patch: Partial<GenerationSettings>) {
     startTransition(async () => {
-      const result = await updateGenerationSettings(story.id, {
-        modelId: nextModelId,
-      })
+      const result = await updateGenerationSettings(story.id, patch)
       if (!result.ok) toast.error(result.error)
     })
+  }
+
+  function handleModelChange(nextModelId: string) {
+    setModelId(nextModelId)
+    // Thinking levels are per-model: a level the new model doesn't offer (or
+    // any level at all, on a model that can't think) falls back to off.
+    const nextThinking = levelForModel(
+      models.find((m) => m.id === nextModelId)?.reasoning,
+      thinking
+    )
+    setThinking(nextThinking)
+    saveSettings({ modelId: nextModelId, thinking: nextThinking })
+  }
+
+  function handleThinkingChange(next: ThinkingLevel) {
+    setThinking(next)
+    saveSettings({ thinking: next })
   }
 
   return (
@@ -229,6 +251,8 @@ function InspectorSections({
               models={models}
               value={modelId}
               onValueChange={handleModelChange}
+              thinking={thinking}
+              onThinkingChange={handleThinkingChange}
             />
             <Collapsible>
               <CollapsibleTrigger

@@ -32,6 +32,7 @@ export async function createStory(input?: {
     // null, not "": new stories track the built-in narrator prompt.
     systemPrompt: null,
     modelId: appSettings.defaultModelId,
+    thinking: appSettings.defaultThinking,
     temperature: DEFAULT_GENERATION_SETTINGS.temperature,
     topP: DEFAULT_GENERATION_SETTINGS.topP,
     maxTokens: DEFAULT_GENERATION_SETTINGS.maxTokens,
@@ -128,10 +129,7 @@ export async function duplicateStory(
       .from(storyEntries)
       .where(eq(storyEntries.storyId, id))
       .orderBy(asc(storyEntries.position)),
-    db
-      .select()
-      .from(lorebookEntries)
-      .where(eq(lorebookEntries.storyId, id)),
+    db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
   ])
 
   const now = new Date().toISOString()
@@ -197,6 +195,7 @@ export async function updateGenerationSettings(
 ): Promise<ActionResult> {
   const values: Partial<typeof stories.$inferInsert> = {}
   if (patch.modelId !== undefined) values.modelId = patch.modelId
+  if (patch.thinking !== undefined) values.thinking = patch.thinking
   if (patch.temperature !== undefined) values.temperature = patch.temperature
   if (patch.topP !== undefined) values.topP = patch.topP
   if (patch.maxTokens !== undefined) values.maxTokens = patch.maxTokens

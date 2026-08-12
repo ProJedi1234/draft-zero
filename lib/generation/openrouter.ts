@@ -8,9 +8,15 @@ import { chatSend } from "@openrouter/sdk/funcs/chatSend.js"
 import { EventStream } from "@openrouter/sdk/lib/event-streams.js"
 import { OpenRouterError } from "@openrouter/sdk/models/errors"
 
-import type { GenerationSettings } from "@/lib/types"
+import type {
+  GenerationSettings,
+  OpenRouterModel,
+  ReasoningEffort,
+  ThinkingLevel,
+} from "@/lib/types"
 
 import { renderPrompt } from "./context"
+import { listModels } from "./models"
 import { resolveSystemPrompt } from "./system-prompt"
 import type { ComposedContext } from "./types"
 
@@ -54,6 +60,26 @@ export function mapOpenRouterError(err: unknown): {
 }
 
 /**
+ * The `reasoning` block for a request, or undefined to leave it off the wire.
+ *
+ * It is only ever sent to a model the catalog says can think — a plain model
+ * rejects the parameter outright. "off" is sent as `effort: "none"` so models
+ * that think by default (Gemini 3, GPT-5.x) actually stop, except where the
+ * catalog marks reasoning mandatory: there "none" is a 400, so the request
+ * omits the block and takes the provider's own default.
+ */
+export function reasoningParam(
+  model: OpenRouterModel | undefined,
+  thinking: ThinkingLevel
+): { effort: ReasoningEffort | "none" } | undefined {
+  if (!model?.reasoning) return undefined
+  if (thinking === "off") {
+    return model.reasoning.mandatory ? undefined : { effort: "none" }
+  }
+  return { effort: thinking }
+}
+
+/**
  * Streams a continuation. Two messages: the narrator instructions as a real
  * system turn, and renderPrompt(context) VERBATIM as the user turn — the same
  * pure function the ContextMeter uses, so the tokens the writer sees are the
@@ -68,6 +94,12 @@ export async function* streamCompletion(opts: {
 }): AsyncGenerator<string> {
   const { context, settings, key, signal } = opts
   const core = new OpenRouterCore({ apiKey: key, appTitle: "draft-zero" })
+  // The catalog is cached per process, so this is a lookup, not a round-trip.
+  const models = await listModels()
+  const reasoning = reasoningParam(
+    models.find((m) => m.id === settings.modelId),
+    settings.thinking
+  )
 
   const res = await chatSend(
     core,
@@ -87,6 +119,7 @@ export async function* streamCompletion(opts: {
         frequencyPenalty: settings.frequencyPenalty,
         presencePenalty: settings.presencePenalty,
         seed: context.seed,
+        reasoning,
         stream: true,
       },
     },
@@ -103,6 +136,8 @@ export async function* streamCompletion(opts: {
     if (chunk.error) {
       throw new Error(chunk.error.message ?? "Provider error mid-stream")
     }
+    // Reasoning deltas arrive on delta.reasoning and are deliberately dropped:
+    // the manuscript only ever receives prose.
     const text = chunk.choices[0]?.delta.content
     if (typeof text === "string" && text !== "") yield text
   }

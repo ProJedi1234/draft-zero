@@ -37,6 +37,7 @@ async function seed() {
       memory: story.memory,
       authorsNote: story.authorsNote,
       modelId: story.settings.modelId,
+      thinking: story.settings.thinking,
       temperature: story.settings.temperature,
       topP: story.settings.topP,
       maxTokens: story.settings.maxTokens,
@@ -80,6 +81,7 @@ async function seed() {
   await db.insert(appSettings).values({
     id: 1,
     defaultModelId: DEFAULT_GENERATION_SETTINGS.modelId,
+    defaultThinking: DEFAULT_GENERATION_SETTINGS.thinking,
   })
 
   console.log(

@@ -14,10 +14,44 @@ export interface StoryEntry {
   createdAt: string
 }
 
+/**
+ * Reasoning efforts OpenRouter accepts, lowest first. Sent as
+ * `reasoning.effort`; the catalog says per model which ones are allowed.
+ */
+export const REASONING_EFFORTS = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const
+
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number]
+
+/** What a story asks of a thinking model: an effort, or no thinking at all. */
+export type ThinkingLevel = ReasoningEffort | "off"
+
+/** Writer-facing labels for the thinking dropdown. */
+export const THINKING_LEVEL_LABELS: Record<ThinkingLevel, string> = {
+  off: "Off",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+}
+
 /** Generation parameters attached to a story (OpenRouter-shaped). */
 export interface GenerationSettings {
   /** OpenRouter model id, e.g. "anthropic/claude-sonnet-4.5". */
   modelId: string
+  /**
+   * How hard the model should think before writing. Always "off" for a new
+   * story — thinking is opt-in, and non-thinking models ignore it entirely.
+   */
+  thinking: ThinkingLevel
   /** Range 0–2. */
   temperature: number
   /** Range 0–1. */
@@ -98,11 +132,24 @@ export type NewLorebookEntry = Omit<
 /** App-level settings (settings page). */
 export interface AppSettings {
   defaultModelId: string
+  /** Thinking level new stories start from. "off" unless the writer says otherwise. */
+  defaultThinking: ThinkingLevel
 }
 
 /** Uniform server-action result. Actions never throw for expected failures. */
 export type ActionResult<T = null> =
   { ok: true; data: T } | { ok: false; error: string }
+
+/** A model's reasoning support, straight from the OpenRouter catalog. */
+export interface ModelReasoning {
+  /** Efforts this model accepts, lowest first. Never empty, never has "off". */
+  efforts: ReasoningEffort[]
+  /**
+   * The model always thinks: "off" can't be honoured, so it falls back to the
+   * provider's own default rather than being sent as `effort: "none"`.
+   */
+  mandatory: boolean
+}
 
 /** Minimal stub of an OpenRouter model listing. */
 export interface OpenRouterModel {
@@ -118,6 +165,8 @@ export interface OpenRouterModel {
     prompt: string
     completion: string
   }
+  /** Reasoning support, or null when the model cannot think. */
+  reasoning: ModelReasoning | null
 }
 
 /** Ordered category metadata shared by the lorebook and inspector UIs. */
