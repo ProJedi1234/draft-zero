@@ -43,6 +43,82 @@ export const THINKING_LEVEL_LABELS: Record<ThinkingLevel, string> = {
   max: "Max",
 }
 
+/**
+ * Selectable input-context sizes, ascending. A ladder rather than a free range
+ * because the control is a slider and every intermediate value would be a lie:
+ * the writer thinks in "how much story does the model see", not in single
+ * tokens. The 6k–16k band is where the interesting trade-offs live, so it is
+ * filled in; above it only the powers of two are worth offering. The floor is
+ * 2k because the system prompt alone is most of a 1k window — a stop that can
+ * carry the instructions but no story is not a setting, it is a bug report.
+ */
+export const CONTEXT_WINDOWS = [
+  2048, 4096, 6144, 8192, 10240, 12288, 16384, 32768, 65536, 131072,
+] as const
+
+export type ContextWindow = (typeof CONTEXT_WINDOWS)[number]
+
+/**
+ * Compact readouts for the slider, index-aligned with CONTEXT_WINDOWS. Written
+ * out rather than computed so the lowercase "k" and the exact rounding
+ * ("128k", not the 131K that lib/format.ts's formatContextLength produces for
+ * model catalog entries) stay stable and reviewable.
+ */
+export const CONTEXT_WINDOW_LABELS = [
+  "2k",
+  "4k",
+  "6k",
+  "8k",
+  "10k",
+  "12k",
+  "16k",
+  "32k",
+  "64k",
+  "128k",
+] as const
+
+/** The window new stories start from, and what pre-column rows were backfilled with. */
+export const DEFAULT_CONTEXT_WINDOW = 8192
+
+/**
+ * The compact readout for a ladder stop. Every surface that prints a *selected*
+ * window goes through here rather than lib/format.ts's formatContextLength —
+ * the slider and the context meter sit centimetres apart in the same panel, and
+ * "128k" above "131K" reads as two different settings. formatContextLength
+ * stays the right call for model catalog entries, which are not ladder stops.
+ */
+export function contextWindowLabel(value: number): string {
+  const index = (CONTEXT_WINDOWS as readonly number[]).indexOf(value)
+  return index === -1 ? `${value}` : CONTEXT_WINDOW_LABELS[index]
+}
+
+/** True when `value` is one of the ladder stops — the server-side write guard. */
+export function isContextWindow(value: number): value is ContextWindow {
+  return (CONTEXT_WINDOWS as readonly number[]).includes(value)
+}
+
+/**
+ * Largest ladder stop the model can actually accept.
+ *
+ * `contextLength` of 0 means "model unknown to the catalog" — we cannot prove
+ * the window is too big, so we don't clamp at all rather than silently
+ * shrinking the writer's setting. If even the smallest stop exceeds the
+ * model's window we still return that smallest stop: there is nothing lower to
+ * offer, and composeContext degrades gracefully when the budget is tiny.
+ */
+export function clampContextWindow(
+  value: number,
+  contextLength: number
+): number {
+  if (contextLength <= 0) return value
+  let allowed: number = CONTEXT_WINDOWS[0]
+  for (const step of CONTEXT_WINDOWS) {
+    if (step > contextLength) break
+    allowed = step
+  }
+  return Math.min(value, allowed)
+}
+
 /** Generation parameters attached to a story (OpenRouter-shaped). */
 export interface GenerationSettings {
   /** OpenRouter model id, e.g. "anthropic/claude-sonnet-4.5". */
@@ -58,6 +134,14 @@ export interface GenerationSettings {
   topP: number
   /** Max tokens generated per continuation. */
   maxTokens: number
+  /**
+   * Token budget for the assembled INPUT context — the ceiling composeContext
+   * (lib/generation/context.ts) trims memory, lore and story prose down to.
+   * Deliberately distinct from maxTokens, which caps OUTPUT: a writer wants a
+   * long memory of the story without paying for long continuations, and vice
+   * versa. Always one of CONTEXT_WINDOWS.
+   */
+  contextWindow: number
   /** Range -2–2. */
   frequencyPenalty: number
   /** Range -2–2. */

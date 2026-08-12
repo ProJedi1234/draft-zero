@@ -41,6 +41,7 @@ async function seed() {
       temperature: story.settings.temperature,
       topP: story.settings.topP,
       maxTokens: story.settings.maxTokens,
+      contextWindow: story.settings.contextWindow,
       frequencyPenalty: story.settings.frequencyPenalty,
       presencePenalty: story.settings.presencePenalty,
       createdAt: story.createdAt,
