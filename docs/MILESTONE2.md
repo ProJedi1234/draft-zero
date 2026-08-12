@@ -402,6 +402,8 @@ Aborted with **zero** text yielded → nothing is persisted. Errors at any stage
 
 Text inputs/textareas backed by the DB are **uncontrolled-after-mount**: initialize local state (or `defaultValue`) from the server prop once, never resync from props, and put **`key={record.id}`** on the field's component so switching records remounts fresh. This applies to memory, author's note, title/description/genre fields, lorebook editor fields, and the API key input.
 
+`components/ui/{input,textarea}.tsx` pin `defaultValue` to its mount value for you (`useInitialValue`), so passing a live server prop — `defaultValue={story.title}`, which changes on every revalidation — is safe and silent. Without the pin, Base UI's `FieldControl` warns *"A component is changing the default value state of an uncontrolled FieldControl after being initialized"*; the value never actually moved, only the prop. A field that genuinely needs to follow the server while mounted must reconcile imperatively (see `useServerSyncedField` in `components/inspector/inspector-panel.tsx`), not by switching to `value`.
+
 ### 4.3 Revalidation convention
 
 Every mutating server action ends with **`revalidatePath("/", "layout")`** (single blanket call — the sidebar lives in the root layout and nearly every mutation touches ordering/word counts; the app is local and single-user, so the cost is nil and staleness is zero). Client-side navigation after mutations uses `router.push`; no manual `router.refresh()` is needed on top of action revalidation.
