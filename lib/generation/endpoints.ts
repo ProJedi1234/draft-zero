@@ -54,6 +54,17 @@ function byThroughputDesc(a: ModelEndpoint, b: ModelEndpoint): number {
 }
 
 /**
+ * The concrete model id behind `modelId`: itself for an ordinary model, the
+ * alias target for a router alias. Unknown ids come back unchanged — the caller
+ * asks OpenRouter and falls back on its answer either way.
+ */
+async function resolveAlias(modelId: string): Promise<string> {
+  if (!modelId.startsWith("~")) return modelId
+  const model = (await listModels()).find((m) => m.id === modelId)
+  return model?.aliasTarget ?? modelId
+}
+
+/**
  * Mock list for `modelId`, or [] when even the model is unknown to the catalog.
  * Sorted here rather than in the fixture so both paths out of this module honour
  * the same "fastest first" promise.
@@ -79,7 +90,15 @@ export async function listModelEndpoints(
   if (hit && Date.now() - hit.at < TTL_MS) return hit.data
 
   const key = resolveOpenRouterKey()
-  const [author, ...rest] = modelId.split("/")
+  // A "~lab/family-latest" alias has no endpoints of its own — it is a router,
+  // and asking for its endpoints truthfully returns none. What serves a request
+  // against it is whatever currently sits behind it, so the alias is resolved to
+  // that target first and its endpoints are the ones offered. They are also the
+  // ones a pin lands on: `provider.only` applies after the redirect, verified
+  // against the live API. When the alias later moves to a new model, a tag that
+  // the new target does not serve falls back to Auto through endpointForTag,
+  // which is the intended cost of pinning a moving model.
+  const [author, ...rest] = (await resolveAlias(modelId)).split("/")
   const slug = rest.join("/")
   if (!key || !author || !slug) return fallbackEndpoints(modelId)
 
@@ -95,7 +114,11 @@ export async function listModelEndpoints(
       .filter((e) => (e.status ?? 0) >= 0)
       .map(toDomainEndpoint)
       .sort(byThroughputDesc)
-    if (data.length === 0) return fallbackEndpoints(modelId)
+    // An answered request with no endpoints is an answer, not a failure. Router
+    // models — the "~anthropic/claude-sonnet-latest" aliases that redirect to
+    // whatever is current — serve nothing themselves, so OpenRouter truthfully
+    // reports zero. Substituting the mock list here is what put Cerebras and
+    // Fireworks under Claude; [] is correct and the picker hides itself for it.
     cache.set(modelId, { at: Date.now(), data })
     return data
   } catch {

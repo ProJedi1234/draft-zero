@@ -284,6 +284,14 @@ export interface OpenRouterModel {
   }
   /** Reasoning support, or null when the model cannot think. */
   reasoning: ModelReasoning | null
+  /**
+   * For a "~lab/family-latest" router alias, the id of the concrete model it
+   * currently redirects to, e.g. "anthropic/claude-sonnet-5". Absent on ordinary
+   * models. An alias serves nothing itself, so this is the only id that has an
+   * endpoint list — and the endpoints it names are the ones a request against
+   * the alias will actually be routed through.
+   */
+  aliasTarget?: string
 }
 
 /**
