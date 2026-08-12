@@ -13,14 +13,9 @@ import {
 
 import type { ActionKind } from "@/lib/types"
 import type { GenerationStatus } from "@/hooks/use-generation"
+import { cn } from "@/lib/utils"
 import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Tooltip,
@@ -29,9 +24,9 @@ import {
 } from "@/components/ui/tooltip"
 
 /**
- * The writer has exactly two moves, and which one is armed changes what every
- * keystroke means — the same sentence is an action under one and dialogue under
- * the other.
+ * The writer has exactly two moves. They are a segmented pair rather than a
+ * dropdown because which one is armed changes what every keystroke means, and
+ * that has to be readable without opening anything.
  */
 const KINDS = [
   {
@@ -89,7 +84,18 @@ export function Composer({
 
   const generating = status !== "idle"
   const hasText = value.trim() !== ""
-  const ActiveIcon = active.icon
+
+  // A keyboard swap moves nothing and speaks nothing: focus stays in the
+  // textarea, so the changed aria-label and placeholder are never re-announced
+  // and the meaning of the next keystroke has silently inverted. The status
+  // region below fixes that — and stays empty until the first swap, because a
+  // live region rendered with content already in it gets read out on page load.
+  const [announceKind, setAnnounceKind] = React.useState(false)
+
+  const swapKind = React.useCallback(() => {
+    setAnnounceKind(true)
+    onActionKindChange(actionKind === "do" ? "say" : "do")
+  }, [actionKind, onActionKindChange])
 
   const handleSend = React.useCallback(() => {
     if (busy || !hasText) return
@@ -137,6 +143,34 @@ export function Composer({
       if (busy) return
       if (hasText) handleSend()
       else onContinue()
+      return
+    }
+
+    // Tab swaps Do/Say. Choosing the move is the most frequent thing a writer
+    // does mid-sentence, so it gets the cheapest key — and the cost is real and
+    // worth stating plainly: unmodified Tab is consumed unconditionally, so
+    // there is no forward focus escape from the textarea to the toolbar beside
+    // it. Shift+Tab is untouched, but the toolbar is *after* the textarea in
+    // DOM order, so backward focus lands in the manuscript's last action
+    // cluster, not on Send. A keyboard-only writer reaches the toolbar buttons
+    // by Shift+Tab into the canvas or out through the browser chrome.
+    // Cmd/Ctrl+/ is a second way to swap for anyone whose Tab is spoken for by
+    // an OS or extension binding; it does not restore Tab, and nothing does.
+    // Modified Tabs belong to the browser (window/tab switching), not to us.
+    if (
+      event.key === "Tab" &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.ctrlKey
+    ) {
+      event.preventDefault()
+      swapKind()
+      return
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key === "/") {
+      event.preventDefault()
+      swapKind()
     }
   }
 
@@ -156,38 +190,48 @@ export function Composer({
             aria-label={`${active.label} — write in first person`}
             className="max-h-52 min-h-14 resize-none overflow-y-auto border-0 bg-transparent px-3 font-serif text-base leading-7 shadow-none focus-visible:ring-0"
           />
+          <span role="status" aria-live="polite" className="sr-only">
+            {announceKind ? `${active.label} — ${active.placeholder}` : ""}
+          </span>
           <div className="flex items-center gap-1 px-2 pb-2">
-            <DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <DropdownMenuTrigger
+            <div className="flex items-center gap-0.5">
+              {KINDS.map((kind) => {
+                const selected = kind.value === active.value
+                return (
+                  <Tooltip key={kind.value}>
+                    <TooltipTrigger
                       render={
                         <Button
-                          variant="ghost"
+                          variant={selected ? "secondary" : "ghost"}
                           size="icon-sm"
-                          aria-label={`Armed move: ${active.label}`}
+                          // --secondary and --muted are the same value, so a
+                          // secondary fill alone is exactly what ghost:hover
+                          // looks like: hovering the unarmed move would make
+                          // both buttons identical at the moment of choosing.
+                          // The border and the full-contrast icon are the cues
+                          // hover cannot imitate.
+                          className={cn(
+                            selected
+                              ? "border-border text-foreground"
+                              : "text-muted-foreground"
+                          )}
+                          aria-label={kind.label}
+                          aria-pressed={selected}
+                          onClick={() => onActionKindChange(kind.value)}
                         />
                       }
-                    />
-                  }
-                >
-                  <ActiveIcon />
-                </TooltipTrigger>
-                <TooltipContent>{active.label}</TooltipContent>
-              </Tooltip>
-              <DropdownMenuContent align="start">
-                {KINDS.map((kind) => (
-                  <DropdownMenuItem
-                    key={kind.value}
-                    onClick={() => onActionKindChange(kind.value)}
-                  >
-                    <kind.icon />
-                    {kind.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    >
+                      <kind.icon />
+                    </TooltipTrigger>
+                    {/* Tab is what takes you to the *other* move, so only the
+                        unarmed one advertises it. */}
+                    <TooltipContent>
+                      {selected ? kind.label : `${kind.label} (Tab)`}
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              })}
+            </div>
 
             <div className="flex-1" />
 
