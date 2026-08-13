@@ -86,7 +86,10 @@ export function Composer({
   // is already final and waiting on its row, so offering Stop there would
   // promise something that can no longer happen. The Send button comes back
   // (disabled, via `busy`) for that sliver instead of a dead Stop.
-  const generating = status === "pending" || status === "streaming"
+  // `thinking` very much is stoppable, and is the state a writer is most likely
+  // to want out of — it is the long one.
+  const generating =
+    status === "pending" || status === "thinking" || status === "streaming"
   const hasText = value.trim() !== ""
 
   // A keyboard swap moves nothing and speaks nothing: focus stays in the
