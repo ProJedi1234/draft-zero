@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation"
+import Link from "next/link"
 import { Feather } from "lucide-react"
 
 import { ImportScenarioButton } from "@/components/sidebar/import-scenario-button"
@@ -12,33 +12,86 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 import { listStories } from "@/lib/db/queries"
+import { formatRelativeDate } from "@/lib/format"
 
+/**
+ * The library index, and — more load-bearing than it looks — the one URL in the
+ * app that is not a story.
+ *
+ * This route used to redirect to your most recent story. That was pleasant on
+ * desktop and quietly broke every installed copy: iOS saves whatever URL you
+ * are on when you add to the home screen and offers no way to edit it, so with
+ * no reachable non-story URL, an installed app was pinned forever to whichever
+ * story happened to be open that day. A manifest `start_url` does not rescue
+ * this — iOS keeps the saved URL, and pointing `start_url` at a redirect is its
+ * own way to fall out of standalone at launch.
+ *
+ * So the redirect is gone and this renders. "Resume where I left off" is still
+ * worth having, but it belongs behind an affordance on this page rather than in
+ * a redirect that costs the app a stable entry point.
+ */
 export default async function Page() {
+  // Server order is updatedAt DESC — the most recently touched story first.
   const stories = await listStories()
 
-  // The home route always lands on the story you touched last.
-  if (stories[0]) redirect(`/story/${stories[0].id}`)
+  if (stories.length === 0) {
+    return (
+      <div className="flex h-app items-center justify-center">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Feather />
+            </EmptyMedia>
+            <EmptyTitle>Write your first story</EmptyTitle>
+            <EmptyDescription>
+              draft zero keeps everything on this machine. Start a draft and the
+              library builds itself.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <div className="flex items-center gap-2">
+              <NewStoryButton size="sm" />
+              <ImportScenarioButton variant="button" />
+            </div>
+          </EmptyContent>
+        </Empty>
+      </div>
+    )
+  }
 
   return (
-    <div className="flex h-app items-center justify-center">
-      <Empty>
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Feather />
-          </EmptyMedia>
-          <EmptyTitle>Write your first story</EmptyTitle>
-          <EmptyDescription>
-            draft zero keeps everything on this machine. Start a draft and the
-            library builds itself.
-          </EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <div className="flex items-center gap-2">
-            <NewStoryButton size="sm" />
+    <div className="h-app overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
+        <header className="mb-8 flex items-end justify-between gap-4">
+          <h1 className="font-serif text-2xl tracking-tight">Library</h1>
+          <div className="flex shrink-0 items-center gap-2">
             <ImportScenarioButton variant="button" />
+            <NewStoryButton size="sm" />
           </div>
-        </EmptyContent>
-      </Empty>
+        </header>
+
+        <ul className="flex flex-col gap-2">
+          {stories.map((story) => (
+            <li key={story.id}>
+              <Link
+                href={`/story/${story.id}`}
+                className="block rounded-lg border border-border/60 bg-card/40 px-4 py-3 transition-colors hover:border-border hover:bg-card/80"
+              >
+                <span className="block truncate font-medium">
+                  {story.title}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                  {story.genre ? `${story.genre} · ` : ""}
+                  {formatRelativeDate(story.updatedAt)}
+                  {story.wordCount > 0
+                    ? ` · ${story.wordCount.toLocaleString()} words`
+                    : ""}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   )
 }

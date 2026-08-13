@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Settings2 } from "lucide-react"
+import { Library, Settings2 } from "lucide-react"
 
 import {
   SidebarGroup,
@@ -15,7 +15,13 @@ import {
 
 // No Lorebook entry: lore is scoped to a story, so it is reached from the
 // story header (/story/[storyId]/lorebook), not from the global sidebar.
-const items = [{ title: "Settings", href: "/settings", icon: Settings2 }]
+const items = [
+  // "/" only became reachable once it stopped redirecting to a story. It needs
+  // a way back from inside one — on a phone the sidebar is the only chrome
+  // there is, and an installed copy has no browser back button at all.
+  { title: "Library", href: "/", icon: Library },
+  { title: "Settings", href: "/settings", icon: Settings2 },
+]
 
 export function NavWorkspace() {
   const pathname = usePathname()
@@ -28,7 +34,13 @@ export function NavWorkspace() {
           {items.map((item) => (
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
-                isActive={pathname.startsWith(item.href)}
+                // "/" prefixes every route, so it has to match exactly or the
+                // Library row lights up on every page.
+                isActive={
+                  item.href === "/"
+                    ? pathname === "/"
+                    : pathname.startsWith(item.href)
+                }
                 render={<Link href={item.href} />}
               >
                 <item.icon />

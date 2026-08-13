@@ -4,12 +4,13 @@ import type { MetadataRoute } from "next"
  * Web app manifest — the thing that makes an installed copy behave like an app
  * rather than a bookmark.
  *
- * `start_url` is the load-bearing member here. iOS's "Add to Home Screen" sheet
- * saves whatever URL you happen to be on and offers no way to edit it, and `/`
- * redirects to your most recent story — so without a manifest every installed
- * copy is pinned forever to whichever story was open the day it was saved.
- * Declaring "/" makes the launcher re-run that redirect on every launch, so the
- * app follows the library instead of one frozen story.
+ * `start_url` is here for the platforms that honour it — iOS is not one of
+ * them. Its "Add to Home Screen" sheet saves whatever URL you are on, offers no
+ * way to edit it, and does not substitute this value. What actually fixes the
+ * pinned-to-one-story problem is that `/` renders the library instead of
+ * redirecting into a story, so there is finally a URL worth saving; declaring
+ * it here means it also resolves 200 rather than 307, which is what a start URL
+ * has to do to avoid falling out of standalone at launch.
  *
  * `scope` keeps same-origin navigation inside the installed app. Without it iOS
  * infers scope from the saved URL's path, and switching stories can read as
