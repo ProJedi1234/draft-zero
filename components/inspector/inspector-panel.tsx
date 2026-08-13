@@ -330,7 +330,8 @@ function InspectorSections({
 
   return (
     <ScrollArea className="min-h-0 flex-1">
-      <div className="space-y-6 p-4">
+      {/* Bottom pad clears the home indicator; see app/page.tsx. */}
+      <div className="space-y-6 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="space-y-3">
           <div className="space-y-1">
             <ModelPicker

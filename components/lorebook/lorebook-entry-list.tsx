@@ -138,7 +138,8 @@ export function LorebookEntryList(props: LorebookEntryListProps) {
         </div>
       </div>
       <Separator />
-      <ScrollArea className="min-h-0 flex-1">
+      {/* Bottom pad clears the home indicator; see app/page.tsx. */}
+      <ScrollArea className="min-h-0 flex-1 pb-[env(safe-area-inset-bottom)]">
         {visible.length === 0 ? (
           <div className="px-4 py-10 text-center text-xs text-muted-foreground">
             {needle === "" ? "Nothing in this category yet." : "No matches."}

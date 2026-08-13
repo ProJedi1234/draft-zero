@@ -199,7 +199,16 @@ function Sidebar({
             <SheetTitle>Sidebar</SheetTitle>
             <SheetDescription>Displays the mobile sidebar.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          {/*
+            Safe-area padding on the inner column, not on SheetContent: the
+            sheet paints bg-sidebar, so padding it would leave the strip under
+            the status bar unpainted and reintroduce the hard line this is
+            meant to remove. Padding inside means the background bleeds to the
+            top edge while the contents start below the clock.
+          */}
+          <div className="flex h-full w-full flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+            {children}
+          </div>
         </SheetContent>
       </Sheet>
     )
@@ -230,7 +239,13 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+          // No h-svh: inset-y-0 already pins this to both edges, and an
+          // explicit height overrides the bottom constraint rather than
+          // agreeing with it. Installed on iOS the app owns the whole screen,
+          // and 100svh comes back shorter than that — so the rail ended above
+          // the bottom edge and left a band of page background under it, while
+          // the content pane beside it reached the bottom correctly.
+          "fixed inset-y-0 z-10 hidden w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
@@ -242,7 +257,12 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-none group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          // Safe-area padding on both edges, for the same reason as the mobile
+          // sheet above: this element carries bg-sidebar, so the padding has to
+          // be inside it for the colour to reach the top and bottom of the
+          // screen. Bottom matters as much as top — the footer sits on the
+          // edge, which is where the home indicator is.
+          className="flex size-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] group-data-[variant=floating]:rounded-none group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
         >
           {children}
         </div>

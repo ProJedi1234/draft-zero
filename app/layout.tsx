@@ -31,6 +31,31 @@ export const metadata: Metadata = {
     template: "%s · draft zero",
   },
   description: "A local-first studio for AI-assisted fiction.",
+  /*
+   * `black-translucent` is what lets the app paint under the status bar.
+   *
+   * viewport-fit=cover alone is not enough when installed: under the default
+   * status bar style iOS hands the web view a viewport that *starts* below the
+   * status bar and fills the strip itself, so safe-area-inset-top is 0 and the
+   * sidebar's background stops in a hard line under the clock — the tell that
+   * this is a web page in a frame rather than an app. A single theme_color
+   * cannot paper over it either: the strip spans a sidebar and a content pane
+   * that are deliberately different colours, so whichever one it matched would
+   * be wrong above the other.
+   *
+   * With this, the web view becomes full-height, the inset turns non-zero, and
+   * the panels below pad themselves so their backgrounds bleed up while their
+   * contents stay clear of the clock.
+   *
+   * Cost: iOS draws the status bar glyphs in white for this style regardless of
+   * what is behind them, which is fine over the dark theme's sidebar and poor
+   * over the light one's near-white. Worth checking in light mode on device.
+   */
+  appleWebApp: {
+    capable: true,
+    title: "draft zero",
+    statusBarStyle: "black-translucent",
+  },
 }
 
 /**
@@ -43,6 +68,13 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // Two entries, not one: installed on iOS the status bar area is painted with
+  // this colour, and a single value would leave the bar light while the app is
+  // dark. Both match --background in globals.css.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 }
 
 /**
