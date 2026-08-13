@@ -21,7 +21,7 @@ import { renderPrompt } from "./context"
 import { listModelEndpoints } from "./endpoints"
 import { listModels } from "./models"
 import { resolveSystemPrompt } from "./system-prompt"
-import type { ComposedContext } from "./types"
+import type { ComposedContext, GenerationEvent } from "./types"
 
 /** Maps SDK/stream errors to { status, message } safe to show the writer. */
 export function mapOpenRouterError(err: unknown): {
@@ -102,18 +102,19 @@ export function providerParam(
 }
 
 /**
- * Streams a continuation. Two messages: the narrator instructions as a real
- * system turn, and renderPrompt(context) VERBATIM as the user turn — the same
- * pure function the ContextMeter uses, so the tokens the writer sees are the
- * tokens sent. Throws before the first yield for pre-stream errors (401, 402,
- * 429, ...) so the route can still answer with a JSON error status.
+ * Streams a continuation as GenerationEvents. Two messages: the narrator
+ * instructions as a real system turn, and renderPrompt(context) VERBATIM as the
+ * user turn — the same pure function the ContextMeter uses, so the tokens the
+ * writer sees are the tokens sent. Throws before the first yield for pre-stream
+ * errors (401, 402, 429, ...) so the route can still answer with a JSON error
+ * status.
  */
 export async function* streamCompletion(opts: {
   context: ComposedContext
   settings: GenerationSettings
   key: string
   signal: AbortSignal
-}): AsyncGenerator<string> {
+}): AsyncGenerator<GenerationEvent> {
   const { context, settings, key, signal } = opts
   const core = new OpenRouterCore({ apiKey: key, appTitle: "draft-zero" })
   // Both catalogs are cached per process, so these are lookups rather than
@@ -170,9 +171,34 @@ export async function* streamCompletion(opts: {
     if (chunk.error) {
       throw new Error(chunk.error.message ?? "Provider error mid-stream")
     }
-    // Reasoning deltas arrive on delta.reasoning and are deliberately dropped:
-    // the manuscript only ever receives prose.
+
+    // Reasoning deltas are still never forwarded as text — the manuscript only
+    // ever receives prose. What travels is their LENGTH, which is enough for the
+    // canvas to show that the model is thinking rather than stalled, and not
+    // enough to reconstruct a word of what it thought.
+    const reasoning = chunk.choices[0]?.delta.reasoning
+    if (typeof reasoning === "string" && reasoning !== "") {
+      yield { type: "reasoning", chars: reasoning.length }
+    }
+
     const text = chunk.choices[0]?.delta.content
-    if (typeof text === "string" && text !== "") yield text
+    if (typeof text === "string" && text !== "") {
+      yield { type: "text", value: text }
+    }
+
+    // Usage rides the final chunk and only the final chunk (OpenRouter sends it
+    // once, after the last delta), so this is the one place exact counts exist.
+    // Everything the UI shows before it is an estimate and has to look like one.
+    if (chunk.usage) {
+      yield {
+        type: "usage",
+        usage: {
+          promptTokens: chunk.usage.promptTokens,
+          completionTokens: chunk.usage.completionTokens,
+          reasoningTokens:
+            chunk.usage.completionTokensDetails?.reasoningTokens ?? 0,
+        },
+      }
+    }
   }
 }

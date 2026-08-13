@@ -48,7 +48,40 @@ export interface GenerationRequest {
   signal?: AbortSignal
 }
 
+/**
+ * Exact token counts, from the provider rather than estimated. OpenRouter sends
+ * these once, in the FINAL stream chunk, so nothing can show them mid-flight —
+ * see the `reasoning` event for what is available while the model is still
+ * working.
+ */
+export interface GenerationUsage {
+  promptTokens: number
+  completionTokens: number
+  /** Tokens spent thinking. 0 on a model that did not reason. */
+  reasoningTokens: number
+}
+
+/**
+ * One thing the provider has to say. The stream used to be bare strings, which
+ * left the client unable to tell "the request is in flight" from "the model has
+ * been reasoning for eight seconds" — both looked like silence, and the UI had
+ * nothing truthful to show for the wait.
+ *
+ * `reasoning` deliberately carries a CHARACTER COUNT and not the text. Hiding
+ * the model's reasoning from the manuscript and knowing that it is happening are
+ * separable concerns, and dropping the deltas outright gave up both. Nothing
+ * downstream can reconstruct the reasoning from a number, so the "the manuscript
+ * only ever receives prose" rule still holds by construction.
+ */
+export type GenerationEvent =
+  | { type: "reasoning"; chars: number }
+  | { type: "text"; value: string }
+  | { type: "usage"; usage: GenerationUsage }
+
 export interface GenerationProvider {
-  /** Yields plain-text chunks. Concatenation of all chunks = the full continuation. Stops promptly on signal abort. */
-  generate(request: GenerationRequest): AsyncIterable<string>
+  /**
+   * Yields generation events. Concatenating every `text` event's value gives the
+   * full continuation. Stops promptly on signal abort.
+   */
+  generate(request: GenerationRequest): AsyncIterable<GenerationEvent>
 }

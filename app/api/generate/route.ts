@@ -1,12 +1,14 @@
 // POST /api/generate — server-side streaming proxy. The only place the
-// OpenRouter key and the SDK meet a request. Plain-text chunked response;
-// pre-stream failures answer JSON { error } with a real status.
+// OpenRouter key and the SDK meet a request. NDJSON chunked response — one
+// GenerationEvent per line — because the stream now carries three kinds of
+// thing (reasoning ticks, prose, final usage) and bare text could only carry
+// one. Pre-stream failures answer JSON { error } with a real status.
 import { resolveOpenRouterKey } from "@/lib/generation/key"
 import {
   mapOpenRouterError,
   streamCompletion,
 } from "@/lib/generation/openrouter"
-import type { ComposedContext } from "@/lib/generation/types"
+import type { ComposedContext, GenerationEvent } from "@/lib/generation/types"
 import type { GenerationSettings } from "@/lib/types"
 
 export async function POST(req: Request): Promise<Response> {
@@ -37,9 +39,9 @@ export async function POST(req: Request): Promise<Response> {
 
   const gen = streamCompletion({ ...body, key, signal: upstream.signal })
 
-  // Pull the first chunk BEFORE building the Response so auth/credit/rate
+  // Pull the first event BEFORE building the Response so auth/credit/rate
   // errors still surface as JSON with a proper status code.
-  let first: IteratorResult<string>
+  let first: IteratorResult<GenerationEvent>
   try {
     first = await gen.next()
   } catch (err) {
@@ -48,11 +50,18 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const encoder = new TextEncoder()
+  // One JSON object per line. The trailing newline is the frame delimiter, so
+  // it is what lets the client split a read that landed mid-object — network
+  // reads do not respect our record boundaries and a half-written `{"type":"te`
+  // has to be held, not parsed.
+  const line = (event: GenerationEvent) =>
+    encoder.encode(JSON.stringify(event) + "\n")
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        if (!first.done) controller.enqueue(encoder.encode(first.value))
-        for await (const chunk of gen) controller.enqueue(encoder.encode(chunk))
+        if (!first.done) controller.enqueue(line(first.value))
+        for await (const event of gen) controller.enqueue(line(event))
         controller.close()
       } catch (err) {
         // Mid-stream failure: headers are gone; error the stream. The client
@@ -67,7 +76,7 @@ export async function POST(req: Request): Promise<Response> {
 
   return new Response(stream, {
     headers: {
-      "content-type": "text/plain; charset=utf-8",
+      "content-type": "application/x-ndjson; charset=utf-8",
       "cache-control": "no-store",
     },
   })

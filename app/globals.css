@@ -19,6 +19,30 @@
   padding-top: env(safe-area-inset-top);
 }
 
+/*
+ * The thinking indicator's dots (GenerationCaret). Its own keyframe rather than
+ * animate-bounce: bounce translates by a percentage of the element, which on a
+ * 3px dot is a sub-pixel move that renders as nothing at all. This travels a
+ * flat 3px. Applied under motion-safe, so reduced-motion leaves three static
+ * dots — still a legible "waiting" mark, just not a moving one.
+ */
+@keyframes dot-hop {
+  0%,
+  70%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@utility animate-dot-hop {
+  animation: dot-hop 1.2s ease-in-out infinite;
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: var(--font-sans);

@@ -51,7 +51,8 @@ export function StoryCanvas({
   // nor idle: the prose is finished and rendered from the local buffer while its
   // row is in flight, so the block stays but the caret and the Stop affordance
   // go — and the hook empties the buffer in the commit that delivers the row.
-  const live = status === "pending" || status === "streaming"
+  const live =
+    status === "pending" || status === "thinking" || status === "streaming"
   const showTail = live || streamingText !== ""
   const removing = new Set(removingEntryIds)
   const entries = story.entries.filter((entry) => !removing.has(entry.id))
@@ -171,11 +172,15 @@ export function StoryCanvas({
 
   // Screen-reader status. The streamed prose itself is NOT a live region — that
   // would re-announce the whole growing passage on every 3-word chunk — so the
-  // canvas announces the lifecycle instead. The text is the same string for the
-  // whole of pending+streaming, so it is spoken exactly once per generation, and
-  // clearing it on idle is silent: the finished passage is then ordinary page
-  // content in a StoryEntryBlock.
-  const announcement = live ? "Generating…" : ""
+  // canvas announces the lifecycle instead. Each string is constant for the
+  // whole of its phase, so a generation speaks at most twice: once when the
+  // model starts thinking and once when prose begins. The elapsed counter beside
+  // the dots is aria-hidden for the same reason the prose is — a live region
+  // that re-announced it would say "thinking 1s, thinking 2s" for the length of
+  // the wait. Clearing on idle is silent: the finished passage is then ordinary
+  // page content in a StoryEntryBlock.
+  const announcement =
+    status === "thinking" ? "Thinking…" : live ? "Generating…" : ""
 
   // Following the prose is NOT driven from here. The ResizeObserver above owns
   // it: growth is a resize, and letting the DOM report it keeps the scroll off
@@ -262,17 +267,19 @@ export function StoryCanvas({
                   text={streamingText}
                   pending={status === "pending"}
                   caret={live}
+                  status={status}
                 />
               )}
             </div>
 
-            {/* Idle insertion caret; while streaming the caret lives inline at
-                the end of the streamed text instead. */}
+            {/* A resting mark at the live edge of the manuscript. Deliberately
+                still: it used to pulse like a text cursor, which promised an
+                insertion point at the end of a canvas nobody can type into —
+                the composer is where you type. It stays as a place-marker for
+                where the next passage will begin, and the moment one starts the
+                inline GenerationCaret takes over. */}
             {!showTail && (
-              <div
-                aria-hidden
-                className="mt-6 h-5 w-0.5 animate-pulse bg-primary/50"
-              />
+              <div aria-hidden className="mt-6 h-5 w-0.5 bg-primary/30" />
             )}
           </>
         )}

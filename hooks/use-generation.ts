@@ -37,7 +37,7 @@ import {
   getGenerationProvider,
   type ProviderKind,
 } from "@/lib/generation/provider"
-import type { ComposedContext } from "@/lib/generation/types"
+import type { ComposedContext, GenerationUsage } from "@/lib/generation/types"
 import { translateAction } from "@/lib/story/action-voice"
 import type {
   ActionKind,
@@ -47,11 +47,18 @@ import type {
 } from "@/lib/types"
 
 /**
+ * `thinking` is the window where the model is reasoning and has produced no
+ * prose yet. It is distinct from `pending` — which now means only "the request
+ * is in flight and nothing has come back" — because those two look identical to
+ * a writer and are not the same thing at all: one of them is progress and the
+ * other might be a stall.
+ *
  * `settling` is the window between the last token and the persisted row
  * arriving: the prose is finished and final, still rendered from the local
  * buffer, and no longer stoppable.
  */
-export type GenerationStatus = "idle" | "pending" | "streaming" | "settling"
+export type GenerationStatus =
+  "idle" | "pending" | "thinking" | "streaming" | "settling"
 
 const GENERATION_ERROR = "Generation failed. Try again."
 const UNDO_ERROR = "Couldn't undo the last passage."
@@ -100,6 +107,14 @@ export interface GenerationController {
   busy: boolean
   /** In-flight prose, and then the finished passage until its row lands. */
   streamingText: string
+  /**
+   * Exact token counts for the last COMPLETED generation, or null before one has
+   * finished. Only ever set from the provider's final `usage` event — never
+   * estimated — so a caller can render it as an authoritative figure. Nothing
+   * displays it yet; putting it under the finished passage needs a column on the
+   * entry row, which is a separate change.
+   */
+  usage: GenerationUsage | null
   /** User passage echoed locally while the server round-trip runs. */
   optimisticUserText: string | null
   /** True while that echo is still unacknowledged by the server. */
@@ -143,6 +158,7 @@ export function useGeneration(
 
   const [status, setStatus] = React.useState<GenerationStatus>("idle")
   const [streamingText, setStreamingText] = React.useState("")
+  const [usage, setUsage] = React.useState<GenerationUsage | null>(null)
   const [echo, setEcho] = React.useState<Echo | null>(null)
   const [tailEntryId, setTailEntryId] = React.useState<string | null>(null)
   const [removingEntryIds, setRemovingEntryIds] = React.useState<string[]>([])
@@ -286,13 +302,30 @@ export function useGeneration(
       let full = ""
       try {
         const provider = getGenerationProvider(prepared.providerKind)
-        for await (const chunk of provider.generate({
+        for await (const event of provider.generate({
           context: prepared.context,
           settings: prepared.settings,
           signal: controller.signal,
         })) {
           if (controller.signal.aborted) break
-          full += chunk
+
+          if (event.type === "reasoning") {
+            // Only ever a promotion out of `pending`. Some models interleave
+            // reasoning with prose, and dropping back to `thinking` after the
+            // first word would make the indicator flicker between two states
+            // mid-passage — once prose is arriving, writing is the honest label.
+            setStatus((current) =>
+              current === "pending" ? "thinking" : current
+            )
+            continue
+          }
+
+          if (event.type === "usage") {
+            setUsage(event.usage)
+            continue
+          }
+
+          full += event.value
           setStreamingText(full)
           setStatus("streaming")
         }
@@ -330,6 +363,11 @@ export function useGeneration(
 
       setStatus("pending")
       setStreamingText("")
+      // Cleared here rather than in reset(): reset() runs when the row lands, and
+      // the totals for the passage that just finished are exactly what a caller
+      // wants at that moment. They belong to the last COMPLETED generation, and
+      // only a new one invalidates them.
+      setUsage(null)
       setTailEntryId(null)
       setEcho(options.echo ? { text: options.echo, entryId: null } : null)
       setRemovingEntryIds(options.removing ?? [])
@@ -473,6 +511,7 @@ export function useGeneration(
     status,
     busy,
     streamingText: tailLanded ? "" : streamingText,
+    usage,
     optimisticUserText: echo !== null && !echoLanded ? echo.text : null,
     optimisticUserPending: echo !== null && echo.entryId === null,
     removingEntryIds: stillRemoving,
