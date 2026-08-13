@@ -199,7 +199,16 @@ function Sidebar({
             <SheetTitle>Sidebar</SheetTitle>
             <SheetDescription>Displays the mobile sidebar.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          {/*
+            Safe-area padding on the inner column, not on SheetContent: the
+            sheet paints bg-sidebar, so padding it would leave the strip under
+            the status bar unpainted and reintroduce the hard line this is
+            meant to remove. Padding inside means the background bleeds to the
+            top edge while the contents start below the clock.
+          */}
+          <div className="flex h-full w-full flex-col pt-[env(safe-area-inset-top)]">
+            {children}
+          </div>
         </SheetContent>
       </Sheet>
     )
@@ -242,7 +251,10 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-none group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          // pt-[env(safe-area-inset-top)] for the same reason as the mobile
+          // sheet above: this element carries bg-sidebar, so the padding has to
+          // be inside it for the colour to reach the top of the screen.
+          className="flex size-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] group-data-[variant=floating]:rounded-none group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
         >
           {children}
         </div>
