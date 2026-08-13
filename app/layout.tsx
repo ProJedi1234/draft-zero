@@ -43,6 +43,13 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // Two entries, not one: installed on iOS the status bar area is painted with
+  // this colour, and a single value would leave the bar light while the app is
+  // dark. Both match --background in globals.css.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 }
 
 /**
