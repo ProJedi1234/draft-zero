@@ -66,8 +66,7 @@ function toDomainModel(m: Model): OpenRouterModel {
   return {
     id: m.id,
     name: rest.length > 0 ? rest.join(": ") : m.name,
-    provider:
-      rest.length > 0 ? provider : m.id.split("/")[0].replace(/^~/, ""),
+    provider: rest.length > 0 ? provider : m.id.split("/")[0].replace(/^~/, ""),
     contextLength: m.contextLength ?? 0,
     pricing: {
       prompt: per1M(m.pricing.prompt),
