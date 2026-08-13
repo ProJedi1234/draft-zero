@@ -64,6 +64,13 @@
       "when": 1786566492403,
       "tag": "0008_giant_lockjaw",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786639864627,
+      "tag": "0009_tricky_sunfire",
+      "breakpoints": true
     }
   ]
 }

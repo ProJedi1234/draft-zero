@@ -17,6 +17,17 @@ import * as schema from "./schema"
 export type DrizzleDb = NodePgDatabase<typeof schema>
 
 /**
+ * The handle `db.transaction(async (tx) => …)` hands its callback. Derived from
+ * DrizzleDb rather than named directly (drizzle exports it under a
+ * dialect-specific name) so it cannot drift from whatever `getDb` returns.
+ *
+ * Helpers that must run inside a caller's transaction — see lib/db/journal.ts —
+ * take this rather than calling `getDb()` themselves: a write and the op that
+ * records it have to commit together or not at all.
+ */
+export type DrizzleTx = Parameters<Parameters<DrizzleDb["transaction"]>[0]>[0]
+
+/**
  * Next's dev server re-evaluates modules on every HMR pass. Without stashing
  * the pool globally, each reload leaks a pool and its sockets until Postgres
  * refuses new connections.

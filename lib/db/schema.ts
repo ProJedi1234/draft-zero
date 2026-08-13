@@ -7,6 +7,7 @@
 // on ISO strings), and trigger keys are a JSON `text` blob rather than `jsonb`
 // (nothing queries inside them yet). Both are cheap to migrate later.
 
+import { sql } from "drizzle-orm"
 import {
   boolean,
   doublePrecision,
@@ -17,6 +18,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core"
 
+import type { OpKind } from "@/lib/history/ops"
 import type { ThinkingLevel } from "@/lib/types"
 
 export const stories = pgTable("stories", {
@@ -51,6 +53,13 @@ export const stories = pgTable("stories", {
   contextWindow: integer("context_window").notNull().default(8192),
   frequencyPenalty: doublePrecision("frequency_penalty").notNull(),
   presencePenalty: doublePrecision("presence_penalty").notNull(),
+  // Seq of the newest op that has been APPLIED to this story's rows; 0 means
+  // nothing has been applied yet. Every op above the cursor is the redo tail —
+  // still on disk, deliberately, because undo followed by redo must not have to
+  // reconstruct anything. Kept on the story rather than derived from the ops
+  // table because "which op is current" is a position, not a fact about any one
+  // op, and two undos in a row would otherwise be indistinguishable.
+  undoCursor: integer("undo_cursor").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
@@ -76,12 +85,94 @@ export const storyEntries = pgTable(
     // and the pair is always NULL together or set together.
     actionKind: text("action_kind").$type<"say" | "do">(),
     inputText: text("input_text"),
+    /**
+     * The slot this passage occupies in the manuscript. Every alternative take
+     * of the same passage shares it, which is what makes a retry an insert
+     * beside the old take rather than a destructive overwrite. Backfilled to
+     * the row's own id, so every passage that predates this column is simply a
+     * slot with one take in it.
+     */
+    variantGroupId: text("variant_group_id").notNull(),
+    /**
+     * Order among the slot's takes. The newest take always has the highest
+     * index, so `MAX(variant_index) + 1` is the next one and the writer's
+     * "2 / 3" readout is just a position in that ordering.
+     */
+    variantIndex: integer("variant_index").notNull().default(0),
+    /**
+     * Exactly one take per slot is active — the one the canvas renders and the
+     * one composeContext sends. The others are kept and remain reachable
+     * through the variant switcher; nothing here is ever destroyed.
+     */
+    isActive: boolean("is_active").notNull().default(true),
+    /**
+     * NULL means live. Deleting a passage is a soft delete that KEEPS
+     * `position`, so restoring it on undo is a plain UPDATE rather than a
+     * renumbering of everything after it.
+     */
+    deletedAt: text("deleted_at"),
+    // Provenance for generated rows: what produced this exact take, captured at
+    // generation time rather than read from the story's current settings, which
+    // the writer may since have changed. All null on user passages and on every
+    // row predating this migration — there is nothing truthful to backfill them
+    // with, and a guess here would be indistinguishable from a record.
+    genModelId: text("gen_model_id"),
+    genThinking: text("gen_thinking").$type<ThinkingLevel>(),
+    genTemperature: doublePrecision("gen_temperature"),
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
     createdAt: text("created_at").notNull(),
   },
   (table) => [
-    uniqueIndex("story_entries_story_id_position_idx").on(
+    // Partial, and keeping its original name: a position is only unique among
+    // the rows that are actually in the manuscript. Soft-deleted rows and the
+    // inactive takes of a slot both keep their `position`, so an unconditional
+    // unique index would reject the very first retry.
+    uniqueIndex("story_entries_story_id_position_idx")
+      .on(table.storyId, table.position)
+      .where(sql`"deleted_at" is null and "is_active"`),
+    index("story_entries_group_idx").on(table.storyId, table.variantGroupId),
+  ]
+)
+
+/**
+ * The undo journal: one row per reversible thing the writer did to a story.
+ *
+ * The payload is a JSON `text` blob rather than `jsonb` for the same reason the
+ * lorebook's trigger keys are — nothing queries inside it. The only reader is
+ * lib/history/ops.ts's `parsePayload`, which validates the shape and returns
+ * null on anything it does not recognise, so a corrupt row disables undo rather
+ * than breaking the story.
+ */
+export const storyOps = pgTable(
+  "story_ops",
+  {
+    id: text("id").primaryKey(),
+    storyId: text("story_id")
+      .notNull()
+      .references(() => stories.id, { onDelete: "cascade" }),
+    /** Per-story, contiguous from 1, and compared against `stories.undoCursor`. */
+    seq: integer("seq").notNull(),
+    kind: text("kind").notNull().$type<OpKind>(),
+    /**
+     * Set only on `turn` ops. A Send and the generation it triggers are two
+     * writes that must undo as one step, so both halves upsert on this key and
+     * the second one extends the op the first one wrote.
+     */
+    turnId: text("turn_id"),
+    /** Writer-facing description, e.g. "Retry" — what the undo tooltip says. */
+    summary: text("summary").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("story_ops_story_id_seq_idx").on(table.storyId, table.seq),
+    // Postgres treats NULLs as distinct in a unique index, so every non-turn op
+    // (which has no turn_id) sits outside this constraint and they do not
+    // collide with each other.
+    uniqueIndex("story_ops_story_id_turn_id_idx").on(
       table.storyId,
-      table.position
+      table.turnId
     ),
   ]
 )
@@ -122,5 +213,6 @@ export const appSettings = pgTable("app_settings", {
 
 export type StoryRow = typeof stories.$inferSelect
 export type StoryEntryRow = typeof storyEntries.$inferSelect
+export type StoryOpRow = typeof storyOps.$inferSelect
 export type LorebookEntryRow = typeof lorebookEntries.$inferSelect
 export type AppSettingsRow = typeof appSettings.$inferSelect

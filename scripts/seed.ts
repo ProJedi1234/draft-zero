@@ -53,10 +53,16 @@ async function seed() {
       await db.insert(storyEntries).values(
         // The fixtures are all prose, so action_kind and input_text are left
         // unset and land as NULL — none of these passages is a Say or a Do.
+        // Every fixture is likewise a one-take slot: the group is named after
+        // the entry itself, which is the same shape the migration backfills
+        // onto pre-existing rows, so seeded and migrated stories read alike.
         story.entries.map((entry, index) => ({
           id: entry.id,
           storyId: story.id,
           position: index,
+          variantGroupId: entry.id,
+          variantIndex: 0,
+          isActive: true,
           source: entry.source,
           text: entry.text,
           createdAt: entry.createdAt,

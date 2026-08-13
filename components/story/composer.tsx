@@ -5,6 +5,7 @@ import {
   ArrowUp,
   FastForward,
   MessageSquareQuote,
+  Redo2,
   RotateCcw,
   Square,
   Swords,
@@ -53,11 +54,15 @@ export function Composer({
   status,
   busy,
   canUndo,
+  canRedo,
   canRetry,
+  undoLabel,
+  redoLabel,
   onSend,
   onContinue,
   onRetry,
   onUndo,
+  onRedo,
   onStop,
 }: {
   value: string
@@ -71,12 +76,23 @@ export function Composer({
   status: GenerationStatus
   busy: boolean
   canUndo: boolean
+  canRedo: boolean
   canRetry: boolean
+  /**
+   * What the two buttons say they will do, named after the op at the cursor —
+   * "Undo · Retry", "Redo · Your turn". Undo now walks back through edits,
+   * deletions and take switches as well as generations, so a fixed label would
+   * be a guess about which of those is next; the controller derives these from
+   * the story's own history state instead.
+   */
+  undoLabel: string
+  redoLabel: string
   /** Returns true when the text was accepted — the textarea clears on true. */
   onSend: (text: string, kind: ActionKind) => boolean
   onContinue: () => void
   onRetry: () => void
   onUndo: () => void
+  onRedo: () => void
   onStop: () => void
 }) {
   const active = KINDS.find((k) => k.value === actionKind) ?? KINDS[0]
@@ -265,7 +281,7 @@ export function Composer({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Undo last passage"
+                    aria-label={undoLabel}
                     disabled={!canUndo}
                     onClick={onUndo}
                   />
@@ -273,7 +289,28 @@ export function Composer({
               >
                 <Undo2 />
               </TooltipTrigger>
-              <TooltipContent>Undo last passage</TooltipContent>
+              <TooltipContent>{undoLabel}</TooltipContent>
+            </Tooltip>
+
+            {/* Redo sits beside Undo rather than being keyboard-only: the redo
+                tail is invisible in the manuscript — an undone passage is gone
+                from the prose — so a writer who has just undone one step has
+                nothing on screen telling them it can be brought back. */}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={redoLabel}
+                    disabled={!canRedo}
+                    onClick={onRedo}
+                  />
+                }
+              >
+                <Redo2 />
+              </TooltipTrigger>
+              <TooltipContent>{redoLabel}</TooltipContent>
             </Tooltip>
 
             <Tooltip>

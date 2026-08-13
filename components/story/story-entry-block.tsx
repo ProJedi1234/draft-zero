@@ -24,23 +24,30 @@ import {
 } from "@/components/ui/tooltip"
 import { PassageEditor } from "@/components/story/passage-editor"
 import { Prose } from "@/components/story/prose"
+import { VariantSwitcher } from "@/components/story/variant-switcher"
 
 /**
  * Memoised: a generation pushes ~40 chunk updates through the canvas in about a
  * second, and none of these props change while it streams. Without this every
- * persisted passage (each carrying three Tooltip roots and a Dialog root)
- * re-renders on every chunk.
+ * persisted passage (each carrying three Tooltip roots and a Dialog root, plus
+ * the switcher's three once a slot has more than one take) re-renders on every
+ * chunk. `isLast` and `onRetry` are both stable for the same reason: only the
+ * final block ever sees `isLast` flip, and `onRetry` needs no entry id because
+ * the only retryable passage is that last one.
  */
 export const StoryEntryBlock = React.memo(function StoryEntryBlock({
   entry,
   storyId,
   busy,
-  onRetryFrom,
+  isLast,
+  onRetry,
 }: {
   entry: StoryEntry
   storyId: string
   busy: boolean
-  onRetryFrom: (entryId: string) => void
+  /** Last block in the manuscript — the only one that may be regenerated. */
+  isLast: boolean
+  onRetry: () => void
 }) {
   const [editing, setEditing] = React.useState(false)
   const [confirmOpen, setConfirmOpen] = React.useState(false)
@@ -73,13 +80,19 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
           : `Edit your ${entry.actionKind === "say" ? "Say" : "Do"}`,
       onClick: () => setEditing(true),
     },
-    ...(entry.source === "generated"
+    // Only the last generated passage can be retried, because the story never
+    // branches: regenerating anything earlier would have to decide what happens
+    // to the prose written after it, and every answer to that is a branch. A
+    // retry now keeps the old take beside the new one in the same slot, so the
+    // label is a plain "Retry" — nothing is thrown away and nothing "from here"
+    // is removed.
+    ...(isLast && entry.source === "generated"
       ? [
           {
             key: "retry",
             icon: RefreshCw,
-            label: "Retry from here",
-            onClick: () => onRetryFrom(entry.id),
+            label: "Retry",
+            onClick: onRetry,
           },
         ]
       : []),
@@ -111,6 +124,20 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
         <Prose text={entry.text} />
       )}
 
+      {/* Hidden while the editor is open: the switcher would swap the prose out
+          from under a half-written edit, and the editor's buffer is seeded once
+          and never resynced from props. */}
+      {/* Only the last block, for the same reason only the last block can be
+          regenerated: an earlier passage is settled, and everything after it
+          was written against the take that is showing. Swapping one out from
+          under that prose would leave the story following from something it no
+          longer says. Earlier takes are not lost — they are still on disk, and
+          undo still walks back through the retry that made them — they just
+          stop being a control on a block the story has already built on. */}
+      {!editing && isLast && entry.variantCount > 1 && (
+        <VariantSwitcher entry={entry} storyId={storyId} disabled={locked} />
+      )}
+
       {/* Revealed on hover, but never `display: none` — the same pattern as
           SidebarMenuAction, so the buttons stay in the tab order for keyboard
           users and are permanently visible on touch (no hover to give). */}
@@ -139,8 +166,13 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Delete this passage?</DialogTitle>
+            {/* Delete is a soft delete that records an op, so ⌘Z genuinely
+                brings the passage back — the copy has to say so. Telling the
+                writer the opposite is worse than saying nothing: it makes them
+                hesitate over a reversible action and, if they believe it, stops
+                them reaching for the undo that would fix a mistake. */}
             <DialogDescription>
-              The passage is removed from the story. This can&apos;t be undone.
+              The passage leaves the story. You can bring it back with undo.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

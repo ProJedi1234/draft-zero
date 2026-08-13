@@ -10,7 +10,9 @@ import {
 } from "@/lib/generation/lorebook"
 import type {
   AppSettings,
+  EntryGeneration,
   GenerationSettings,
+  HistoryState,
   LorebookCategory,
   LorebookEntry,
   Story,
@@ -49,13 +51,52 @@ export function serializeKeys(keys: string[]): string {
   return JSON.stringify(keys)
 }
 
-export function toStoryEntry(row: StoryEntryRow): StoryEntry {
+/**
+ * Provenance for one row, or null when the row does not carry it.
+ *
+ * All three settings columns are written together by the generation path, so
+ * requiring all three is not defensive noise: it is the difference between "we
+ * recorded this" and "we half-recorded this". A row missing any of them is a
+ * user passage or a pre-migration row, and inventing a temperature of 0 to fill
+ * the gap would be indistinguishable from a real recorded setting.
+ */
+function toEntryGeneration(row: StoryEntryRow): EntryGeneration | null {
+  if (
+    row.genModelId === null ||
+    row.genThinking === null ||
+    row.genTemperature === null
+  ) {
+    return null
+  }
+  return {
+    modelId: row.genModelId,
+    thinking: row.genThinking,
+    temperature: row.genTemperature,
+    promptTokens: row.promptTokens,
+    completionTokens: row.completionTokens,
+  }
+}
+
+/**
+ * `slot` is what the row's own columns cannot tell it: where this take sits
+ * among its siblings and how many there are. Both are facts about the whole
+ * slot, so they are resolved once in `toStory` and handed down rather than
+ * re-derived per row.
+ */
+export function toStoryEntry(
+  row: StoryEntryRow,
+  slot: { index: number; count: number }
+): StoryEntry {
   return {
     id: row.id,
     source: row.source,
     text: row.text,
     actionKind: row.actionKind,
     inputText: row.inputText,
+    variantGroupId: row.variantGroupId,
+    variantIndex: slot.index,
+    variantCount: slot.count,
+    generation: toEntryGeneration(row),
     createdAt: row.createdAt,
   }
 }
@@ -107,16 +148,42 @@ export function toStorySummary(
 }
 
 /**
- * Full domain story. `entryRows` must already be ordered by position ASC.
+ * Full domain story.
+ *
+ * `entryRows` is EVERY non-deleted row of the story — the active takes and the
+ * inactive alternatives alike — already ordered by position ASC, variant_index
+ * ASC. The alternatives are here only so each active take can be told how many
+ * siblings it has; they never reach the canvas. Everything derived below
+ * (wordCount, lorebook triggers) is computed from the ACTIVE list alone, which
+ * is what the manuscript actually says.
+ *
  * `lorebookRows` is this story's lorebook — active ids are recomputed by real
  * trigger matching against the recent story text.
  */
 export function toStory(
   row: StoryRow,
   entryRows: StoryEntryRow[],
-  lorebookRows: LorebookEntryRow[]
+  lorebookRows: LorebookEntryRow[],
+  history: HistoryState
 ): Story {
-  const entries = entryRows.map(toStoryEntry)
+  // Slot membership, in variant_index order — the caller's ORDER BY already
+  // guarantees that order, so pushing in arrival order preserves it.
+  const slots = new Map<string, StoryEntryRow[]>()
+  for (const entryRow of entryRows) {
+    const slot = slots.get(entryRow.variantGroupId)
+    if (slot) slot.push(entryRow)
+    else slots.set(entryRow.variantGroupId, [entryRow])
+  }
+
+  const entries = entryRows
+    .filter((entryRow) => entryRow.isActive)
+    .map((entryRow) => {
+      const slot = slots.get(entryRow.variantGroupId) ?? [entryRow]
+      return toStoryEntry(entryRow, {
+        index: slot.indexOf(entryRow),
+        count: slot.length,
+      })
+    })
   const lorebookEntries = lorebookRows.map(toLorebookEntry)
   const matches = matchActiveLorebookEntries(
     lorebookEntries,
@@ -137,6 +204,10 @@ export function toStory(
     authorsNote: row.authorsNote,
     systemPrompt: row.systemPrompt,
     activeLorebookEntryIds: matches.map((match) => match.entry.id),
+    canUndo: history.canUndo,
+    canRedo: history.canRedo,
+    undoSummary: history.undoSummary,
+    redoSummary: history.redoSummary,
   }
 }
 

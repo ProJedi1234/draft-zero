@@ -9,7 +9,10 @@ import type {
   Story,
 } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { useGeneration } from "@/hooks/use-generation"
+import {
+  useGeneration,
+  type GenerationController,
+} from "@/hooks/use-generation"
 import {
   InspectorContent,
   InspectorPanel,
@@ -118,6 +121,8 @@ function StoryEditor({
 
   useDraftPersistence(story.id, draft, setDraft)
 
+  useHistoryShortcuts(generation)
+
   // The composer floats over the prose and autosizes; a fixed padding reservation
   // hides the newest lines — including the ones being streamed — as soon as the
   // draft grows past a few lines. Publish its real height instead.
@@ -163,7 +168,7 @@ function StoryEditor({
         optimisticUserText={generation.optimisticUserText}
         optimisticUserPending={generation.optimisticUserPending}
         removingEntryIds={generation.removingEntryIds}
-        onRetryFrom={generation.retryFrom}
+        onRetry={generation.retryLast}
         onSuggestion={handleSuggestion}
       />
       <Composer
@@ -176,15 +181,62 @@ function StoryEditor({
         status={generation.status}
         busy={generation.busy}
         canUndo={generation.canUndo}
+        canRedo={generation.canRedo}
         canRetry={generation.canRetry}
+        undoLabel={generation.undoLabel}
+        redoLabel={generation.redoLabel}
         onSend={generation.send}
         onContinue={generation.continueStory}
         onRetry={generation.retryLast}
         onUndo={generation.undo}
+        onRedo={generation.redo}
         onStop={generation.stop}
       />
     </div>
   )
+}
+
+/**
+ * ⌘Z / ⌘⇧Z (Ctrl elsewhere) for the manuscript's own history.
+ *
+ * The guard is the important part, and it is the same one the composer's Esc
+ * handler uses: while the writer is inside a text field — the composer, the
+ * passage editor, a lorebook input — ⌘Z has to remain the browser's own text
+ * undo. Reaching past a half-typed sentence to reverse a whole turn of the
+ * story is a far worse bug than not having the shortcut at all, and the writer
+ * cannot get that sentence back afterwards.
+ */
+function useHistoryShortcuts(generation: GenerationController) {
+  const { canUndo, canRedo, undo, redo } = generation
+
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "z" && event.key !== "Z") return
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return
+
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement)
+      ) {
+        return
+      }
+
+      // Claimed either way once we are outside a text field, so the browser
+      // does not also run a document-level undo behind the shortcut.
+      event.preventDefault()
+      if (event.shiftKey) {
+        if (canRedo) redo()
+      } else if (canUndo) {
+        undo()
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [canRedo, canUndo, redo, undo])
 }
 
 /** Inspector visibility, remembered across stories and reloads. */
