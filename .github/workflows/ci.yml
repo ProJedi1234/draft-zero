@@ -1,0 +1,84 @@
+# .github/workflows/ci.yml — Two jobs, run in parallel.
+#
+# The split is drawn on cost, not on tidiness. This repo is private, so Actions
+# minutes are billed and every job rounds UP to a whole minute. Running the
+# checks serially in one job takes ~63s — which bills as two minutes anyway.
+# Two parallel jobs cost the same two minutes and finish in ~35s. Splitting
+# further would buy nothing and start costing a third minute.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+
+# A new push supersedes the run already in flight for the same branch. This is
+# the single biggest saving here: nobody reads the result of a run whose commit
+# is already two commits stale.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  check:
+    name: Lint, format, types, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # Ordered cheapest-first, and every step carries `!cancelled()` so one
+      # failure does not hide the others. A run that reports the lint error AND
+      # the type error is one round trip; a run that stops at the first is
+      # three.
+      - name: Tests
+        run: bun test
+
+      - name: Format
+        if: ${{ !cancelled() }}
+        run: bun run format:check
+
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: bun run lint
+
+      # `next build` in the other job runs tsc over this code *plus* the route
+      # types it generates, so that job is the authority on types. This step is
+      # here because it reports in ~10s instead of ~25s.
+      - name: Types
+        if: ${{ !cancelled() }}
+        run: bun run typecheck
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # MUST come before the install step: hashFiles globs the whole workspace,
+      # so once node_modules exists this would hash 652 packages' worth of .ts
+      # and produce a key that is both slow to compute and wrong.
+      - uses: actions/cache@v6
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '**/*.css') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
+            next-${{ runner.os }}-
+
+      - uses: ./.github/actions/setup
+
+      # No DATABASE_URL, deliberately. lib/db/client.ts connects lazily on the
+      # first getDb(), so a build needs no database — and if that ever stops
+      # being true, this job is where it will surface.
+      - name: Build
+        run: bun run build
