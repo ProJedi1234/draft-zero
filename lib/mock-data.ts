@@ -29,84 +29,125 @@ function proseEntry(
 // Models (OpenRouter stubs)
 // ---------------------------------------------------------------------------
 
+/**
+ * The fallback catalog, written as OpenRouter's "~lab/family-latest" router
+ * aliases rather than as pinned versions. A pinned id rots the moment the lab
+ * ships a successor — and this list is what the picker shows when there is no
+ * key, which is exactly when nobody is around to notice it has gone stale. The
+ * aliases keep pointing at whatever is current, so `aliasTarget` below records
+ * what each one redirected to when the fixture was written, not a promise.
+ */
 export const MOCK_MODELS: OpenRouterModel[] = [
   {
-    id: "anthropic/claude-sonnet-4.5",
-    name: "Claude Sonnet 4.5",
+    id: "~anthropic/claude-sonnet-latest",
+    name: "Claude Sonnet Latest",
     provider: "Anthropic",
     contextLength: 1_000_000,
-    pricing: { prompt: "$3.00", completion: "$15.00" },
-    reasoning: { efforts: ["low", "medium", "high"], mandatory: false },
+    pricing: { prompt: "$2.00", completion: "$10.00" },
+    reasoning: {
+      efforts: ["low", "medium", "high", "xhigh", "max"],
+      mandatory: false,
+    },
+    aliasTarget: "anthropic/claude-sonnet-5",
   },
   {
-    id: "anthropic/claude-opus-4.5",
-    name: "Claude Opus 4.5",
+    id: "~anthropic/claude-opus-latest",
+    name: "Claude Opus Latest",
+    provider: "Anthropic",
+    contextLength: 1_000_000,
+    pricing: { prompt: "$5.00", completion: "$25.00" },
+    reasoning: {
+      efforts: ["low", "medium", "high", "xhigh", "max"],
+      mandatory: false,
+    },
+    aliasTarget: "anthropic/claude-opus-5",
+  },
+  {
+    id: "~anthropic/claude-haiku-latest",
+    name: "Claude Haiku Latest",
     provider: "Anthropic",
     contextLength: 200_000,
-    pricing: { prompt: "$5.00", completion: "$25.00" },
-    reasoning: { efforts: ["low", "medium", "high"], mandatory: false },
-  },
-  {
-    id: "openai/gpt-5.1",
-    name: "GPT-5.1",
-    provider: "OpenAI",
-    contextLength: 400_000,
-    pricing: { prompt: "$1.25", completion: "$10.00" },
+    pricing: { prompt: "$1.00", completion: "$5.00" },
     reasoning: {
-      efforts: ["minimal", "low", "medium", "high", "xhigh"],
+      efforts: ["minimal", "low", "medium", "high", "xhigh", "max"],
       mandatory: false,
     },
+    aliasTarget: "anthropic/claude-haiku-4.5",
   },
   {
-    id: "openai/gpt-5-mini",
-    name: "GPT-5 Mini",
+    id: "~openai/gpt-latest",
+    name: "GPT Latest",
+    provider: "OpenAI",
+    contextLength: 1_050_000,
+    pricing: { prompt: "$5.00", completion: "$30.00" },
+    reasoning: {
+      efforts: ["low", "medium", "high", "xhigh", "max"],
+      mandatory: false,
+    },
+    aliasTarget: "openai/gpt-5.6-sol",
+  },
+  {
+    id: "~openai/gpt-mini-latest",
+    name: "GPT Mini Latest",
     provider: "OpenAI",
     contextLength: 400_000,
-    pricing: { prompt: "$0.25", completion: "$2.00" },
+    pricing: { prompt: "$0.75", completion: "$4.50" },
+    reasoning: {
+      efforts: ["low", "medium", "high", "xhigh"],
+      mandatory: false,
+    },
+    aliasTarget: "openai/gpt-5.4-mini",
+  },
+  {
+    id: "~google/gemini-pro-latest",
+    name: "Gemini Pro Latest",
+    provider: "Google",
+    contextLength: 1_048_576,
+    pricing: { prompt: "$2.00", completion: "$12.00" },
+    reasoning: { efforts: ["low", "medium", "high"], mandatory: true },
+    aliasTarget: "google/gemini-3.1-pro-preview",
+  },
+  {
+    id: "~google/gemini-flash-latest",
+    name: "Gemini Flash Latest",
+    provider: "Google",
+    contextLength: 1_048_576,
+    pricing: { prompt: "$1.50", completion: "$7.50" },
     reasoning: {
       efforts: ["minimal", "low", "medium", "high"],
-      mandatory: false,
+      mandatory: true,
     },
+    aliasTarget: "google/gemini-3.6-flash",
   },
   {
-    id: "google/gemini-3-pro-preview",
-    name: "Gemini 3 Pro",
-    provider: "Google",
-    contextLength: 1_000_000,
-    pricing: { prompt: "$2.00", completion: "$12.00" },
-    reasoning: { efforts: ["low", "high"], mandatory: true },
+    id: "~x-ai/grok-latest",
+    name: "Grok Latest",
+    provider: "xAI",
+    contextLength: 500_000,
+    pricing: { prompt: "$2.00", completion: "$6.00" },
+    reasoning: {
+      efforts: ["low", "medium", "high", "xhigh"],
+      mandatory: true,
+    },
+    aliasTarget: "x-ai/grok-4.6",
   },
   {
-    id: "google/gemini-2.5-flash",
-    name: "Gemini 2.5 Flash",
-    provider: "Google",
-    contextLength: 1_000_000,
-    pricing: { prompt: "$0.30", completion: "$2.50" },
-    reasoning: { efforts: ["low", "medium", "high"], mandatory: false },
+    id: "~moonshotai/kimi-latest",
+    name: "Kimi Latest",
+    provider: "MoonshotAI",
+    contextLength: 1_048_576,
+    pricing: { prompt: "$2.80", completion: "$14.00" },
+    reasoning: { efforts: ["low", "high", "max"], mandatory: false },
+    aliasTarget: "moonshotai/kimi-k3",
   },
   {
-    id: "meta-llama/llama-4-maverick",
-    name: "Llama 4 Maverick",
-    provider: "Meta",
-    contextLength: 1_000_000,
-    pricing: { prompt: "$0.20", completion: "$0.85" },
-    reasoning: null,
-  },
-  {
-    id: "deepseek/deepseek-v3.2",
-    name: "DeepSeek V3.2",
+    id: "~deepseek/deepseek-v4-flash-latest",
+    name: "DeepSeek V4 Flash Latest",
     provider: "DeepSeek",
-    contextLength: 131_072,
-    pricing: { prompt: "$0.25", completion: "$0.40" },
-    reasoning: { efforts: ["low", "high"], mandatory: false },
-  },
-  {
-    id: "mistralai/mistral-medium-3",
-    name: "Mistral Medium 3",
-    provider: "Mistral",
-    contextLength: 131_072,
-    pricing: { prompt: "$0.40", completion: "$2.00" },
-    reasoning: null,
+    contextLength: 1_048_576,
+    pricing: { prompt: "$0.08", completion: "$0.25" },
+    reasoning: { efforts: ["low", "high", "max"], mandatory: false },
+    aliasTarget: "deepseek/deepseek-v4-flash-0731",
   },
 ]
 
@@ -203,7 +244,9 @@ function hashString(value: string): number {
  */
 export function mockEndpoints(model: OpenRouterModel): ModelEndpoint[] {
   const firstParty: ModelEndpoint = {
-    tag: model.id.split("/")[0],
+    // The alias "~" belongs to the id, not to the provider: OpenRouter's own
+    // endpoint tags never carry it, so a mock endpoint must not either.
+    tag: model.id.split("/")[0].replace(/^~/, ""),
     providerName: model.provider,
     contextLength: model.contextLength,
     pricing: model.pricing,
@@ -235,7 +278,13 @@ export function mockEndpoints(model: OpenRouterModel): ModelEndpoint[] {
 }
 
 /** Labs that only serve their own weights, so their models have one endpoint. */
-const CLOSED_MODEL_PROVIDERS = new Set(["anthropic", "openai", "google"])
+const CLOSED_MODEL_PROVIDERS = new Set([
+  "anthropic",
+  "openai",
+  "google",
+  "x-ai",
+  "xai",
+])
 
 /**
  * Whether the lab behind `model` serves it alone. Matched on both the display
@@ -253,7 +302,10 @@ function isClosedLab(model: OpenRouterModel): boolean {
 }
 
 export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
-  modelId: "anthropic/claude-sonnet-4.5",
+  // The router alias, not a pinned version: a new story should start on
+  // whatever Sonnet currently is, without a release turning this constant into
+  // a slow drift toward an older model.
+  modelId: "~anthropic/claude-sonnet-latest",
   thinking: "off",
   // Auto — OpenRouter picks the endpoint. Pinning one in the defaults would
   // pin it for every new story, including stories on other models.
@@ -262,8 +314,11 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   topP: 0.95,
   // A hard ceiling on the runaway case, not a target. The system prompt asks
   // for a single paragraph; this is what stops a model that ignores it from
-  // filling most of a page before the writer can reach Stop.
-  maxTokens: 400,
+  // filling most of a page before the writer can reach Stop. Sized for a
+  // thinking model rather than for the paragraph: reasoning tokens are billed
+  // against the same budget, so a ceiling tight enough to fit only the prose
+  // truncates the answer before the prose starts.
+  maxTokens: 1024,
   // Roughly 30k characters of assembled context: enough for memory, the active
   // lore and several pages of recent prose without making every continuation
   // an expensive re-read of the whole draft.
@@ -461,7 +516,7 @@ export const MOCK_STORIES: Story[] = [
       "lore-concept-debt",
     ],
     settings: {
-      modelId: "anthropic/claude-sonnet-4.5",
+      modelId: "~anthropic/claude-sonnet-latest",
       thinking: "off",
       providerTag: null,
       temperature: 0.9,
@@ -520,7 +575,7 @@ export const MOCK_STORIES: Story[] = [
       "Slow burn. Horror through procedure and radio protocol, not gore.",
     activeLorebookEntryIds: [],
     settings: {
-      modelId: "openai/gpt-5.1",
+      modelId: "~openai/gpt-latest",
       thinking: "off",
       providerTag: null,
       temperature: 1.1,
@@ -573,7 +628,7 @@ export const MOCK_STORIES: Story[] = [
       "Every scene should be explainable two ways until the final act.",
     activeLorebookEntryIds: [],
     settings: {
-      modelId: "anthropic/claude-opus-4.5",
+      modelId: "~anthropic/claude-opus-latest",
       thinking: "off",
       providerTag: null,
       temperature: 0.8,
