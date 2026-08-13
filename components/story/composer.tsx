@@ -191,7 +191,24 @@ export function Composer({
             onChange={(event) => onValueChange(event.target.value)}
             onKeyDown={onTextareaKeyDown}
             placeholder={active.placeholder}
-            aria-label={`${active.label} — write in first person`}
+            // Deliberately avoids the word "person". Safari classifies fields
+            // by regexing their accessible name for tokens like name/person,
+            // and with no `name` or `id` on this textarea the aria-label is the
+            // only string it has — "write in first person" made it a contact
+            // field, which is what summoned the AutoFill Contact bar and turned
+            // autocorrect off. The guidance is worth keeping; it just cannot be
+            // phrased that way here.
+            aria-label={`${active.label} — write your next move`}
+            // Belt and braces, not the fix — the aria-label above is what
+            // actually stopped Safari classifying this as a name field, and
+            // `autocomplete="off"` alone did nothing there, because WebKit
+            // ignores it for autofill. These stay for the engines that do honour
+            // it, and to state outright that a field of prose wants autocorrect
+            // and sentence case rather than leaving it to be inferred again.
+            autoComplete="off"
+            autoCorrect="on"
+            autoCapitalize="sentences"
+            spellCheck
             className="max-h-52 min-h-14 resize-none overflow-y-auto border-0 bg-transparent px-3 font-serif text-base leading-7 shadow-none focus-visible:ring-0"
           />
           <span role="status" aria-live="polite" className="sr-only">
