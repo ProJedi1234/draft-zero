@@ -206,7 +206,7 @@ function Sidebar({
             meant to remove. Padding inside means the background bleeds to the
             top edge while the contents start below the clock.
           */}
-          <div className="flex h-full w-full flex-col pt-[env(safe-area-inset-top)]">
+          <div className="flex h-full w-full flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
             {children}
           </div>
         </SheetContent>
@@ -251,10 +251,12 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          // pt-[env(safe-area-inset-top)] for the same reason as the mobile
+          // Safe-area padding on both edges, for the same reason as the mobile
           // sheet above: this element carries bg-sidebar, so the padding has to
-          // be inside it for the colour to reach the top of the screen.
-          className="flex size-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] group-data-[variant=floating]:rounded-none group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          // be inside it for the colour to reach the top and bottom of the
+          // screen. Bottom matters as much as top — the footer sits on the
+          // edge, which is where the home indicator is.
+          className="flex size-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] group-data-[variant=floating]:rounded-none group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
         >
           {children}
         </div>

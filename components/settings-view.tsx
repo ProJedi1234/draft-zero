@@ -98,7 +98,8 @@ function SettingsView({
       </header>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto w-full max-w-2xl space-y-6 px-6 py-8">
+        {/* Bottom pad clears the home indicator; see app/page.tsx. */}
+        <div className="mx-auto w-full max-w-2xl space-y-6 px-6 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))]">
           <Card size="sm">
             <CardHeader>
               <CardTitle>OpenRouter</CardTitle>

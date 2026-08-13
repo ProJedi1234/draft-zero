@@ -61,7 +61,12 @@ export default async function Page() {
 
   return (
     <div className="h-app overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
+      {/*
+        The bottom pad clears the home indicator when installed: the app paints
+        edge to edge, so the last story in a scrolled list would otherwise sit
+        under it. max() keeps the ordinary spacing everywhere the inset is 0.
+      */}
+      <div className="mx-auto w-full max-w-3xl px-4 pt-10 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:px-6">
         {/*
           flex-wrap, and no shrink-0 on the actions: on a phone the heading and
           two labelled buttons are wider than the viewport, and a row that

@@ -162,7 +162,8 @@ export function LorebookView({
         <div className={cn("min-w-0 flex-1", !showEntry && "hidden md:block")}>
           {selected ? (
             <ScrollArea className="h-full">
-              <div className="mx-auto w-full max-w-xl px-6 py-8">
+              {/* Bottom pad clears the home indicator; see app/page.tsx. */}
+              <div className="mx-auto w-full max-w-xl px-6 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))]">
                 <LorebookEntryEditor key={selected.id} entry={selected} />
               </div>
             </ScrollArea>
