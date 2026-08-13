@@ -30,5 +30,32 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#ffffff",
     theme_color: "#ffffff",
     orientation: "any",
+    // The `any` icons are used as drawn, edge to edge. The maskable one is the
+    // same art inset into its own background, because a maskable icon is
+    // cropped to a platform shape and only the inner 80% circle is guaranteed
+    // to survive — at full bleed the scroll's corners fall outside it.
+    //
+    // iOS takes none of these: it uses app/apple-icon.png, which Next links as
+    // rel="apple-touch-icon". The tab favicon is app/icon.png, likewise.
+    icons: [
+      {
+        src: "/icons/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/icons/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/icons/icon-maskable-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
+      },
+    ],
   }
 }
