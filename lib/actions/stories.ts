@@ -1,6 +1,6 @@
 "use server"
 
-import { asc, eq } from "drizzle-orm"
+import { and, asc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/lib/db/client"
@@ -127,11 +127,22 @@ export async function duplicateStory(
 
   if (!source) return { ok: false, error: "Story not found." }
 
+  // Only the manuscript as it currently reads gets copied: deleted passages and
+  // the inactive alternative takes belong to the original's history, and the
+  // copy is deliberately given none (see below). Copying them would be worse
+  // than useless — with no ops to explain them they would have to land as
+  // ordinary active passages, so every retried block would appear twice.
   const [entries, lore] = await Promise.all([
     db
       .select()
       .from(storyEntries)
-      .where(eq(storyEntries.storyId, id))
+      .where(
+        and(
+          eq(storyEntries.storyId, id),
+          isNull(storyEntries.deletedAt),
+          eq(storyEntries.isActive, true)
+        )
+      )
       .orderBy(asc(storyEntries.position)),
     db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
   ])
@@ -143,6 +154,12 @@ export async function duplicateStory(
     ...source,
     id: copyId,
     title: `${source.title} (copy)`,
+    // No ops are copied, so the copy's cursor has to start where an untouched
+    // story's does. Undo history is a record of what the writer did to *this*
+    // manuscript; inheriting the original's would offer to reverse edits whose
+    // rows were never copied, and `...source` would otherwise carry a non-zero
+    // cursor pointing at ops that do not exist here.
+    undoCursor: 0,
     createdAt: now,
     updatedAt: now,
   })
@@ -152,16 +169,26 @@ export async function duplicateStory(
   // Say and Do in the copy to un-re-editable prose.
   if (entries.length > 0) {
     await db.insert(storyEntries).values(
-      entries.map((entry, index) => ({
-        id: crypto.randomUUID(),
-        storyId: copyId,
-        position: index,
-        source: entry.source,
-        text: entry.text,
-        actionKind: entry.actionKind,
-        inputText: entry.inputText,
-        createdAt: now,
-      }))
+      entries.map((entry, index) => {
+        // Each copied passage opens a fresh one-take slot named after itself.
+        // The original's variant groups are not carried over: their other takes
+        // were left behind above, so a shared group id would describe a slot
+        // that no longer has anything else in it.
+        const entryId = crypto.randomUUID()
+        return {
+          id: entryId,
+          storyId: copyId,
+          position: index,
+          variantGroupId: entryId,
+          variantIndex: 0,
+          isActive: true,
+          source: entry.source,
+          text: entry.text,
+          actionKind: entry.actionKind,
+          inputText: entry.inputText,
+          createdAt: now,
+        }
+      })
     )
   }
 

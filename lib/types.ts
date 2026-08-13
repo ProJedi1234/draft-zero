@@ -35,8 +35,42 @@ export interface StoryEntry {
    * it. Never shown in the manuscript and never sent to the model.
    */
   inputText: string | null
+  /**
+   * The slot this passage occupies. Alternative takes of the same passage all
+   * share it; a passage that has never been retried is a slot of one.
+   */
+  variantGroupId: string
+  /**
+   * 0-based position of this take among the slot's takes, in variantIndex
+   * order. Rendered as the left half of the switcher's "2 / 3" readout.
+   */
+  variantIndex: number
+  /** How many takes the slot holds. 1 for a passage that has never been retried. */
+  variantCount: number
+  /**
+   * What produced this passage, or null when nothing did — every user passage,
+   * and every generated passage written before provenance was recorded. Null is
+   * "we do not know", not "default settings".
+   */
+  generation: EntryGeneration | null
   /** ISO-8601 timestamp. */
   createdAt: string
+}
+
+/**
+ * The settings a particular take was actually generated under, frozen at
+ * generation time. Deliberately not the story's *current* settings: the whole
+ * point of showing provenance beside a take is to explain why two takes of the
+ * same passage read differently, which the live settings cannot do once the
+ * writer has moved the temperature slider.
+ */
+export interface EntryGeneration {
+  modelId: string
+  thinking: ThinkingLevel
+  temperature: number
+  /** Exact counts from the provider's final usage event, or null when it sent none. */
+  promptTokens: number | null
+  completionTokens: number | null
 }
 
 /**
@@ -203,6 +237,29 @@ export interface Story {
   systemPrompt: string | null
   /** LorebookEntry ids currently "triggered" for this story (mocked). */
   activeLorebookEntryIds: string[]
+  canUndo: boolean
+  canRedo: boolean
+  /**
+   * What ⌘Z would reverse, for the button's tooltip — "Retry", "Your turn".
+   * Null when there is nothing to undo. Carried on the story rather than
+   * fetched by the composer because the composer already re-renders on every
+   * story change, and a second round trip would let the label lag the button.
+   */
+  undoSummary: string | null
+  /** What ⌘⇧Z would reapply. Null when the redo tail is empty. */
+  redoSummary: string | null
+}
+
+/**
+ * What the undo/redo buttons need to know, read from the story's cursor. Kept
+ * as its own shape (rather than four loose fields) because lib/db/journal.ts
+ * computes all four in one query and `toStory` passes them straight through.
+ */
+export interface HistoryState {
+  canUndo: boolean
+  canRedo: boolean
+  undoSummary: string | null
+  redoSummary: string | null
 }
 
 /** Story metadata without entries — sidebar/library surface. */

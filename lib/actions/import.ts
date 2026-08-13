@@ -72,10 +72,17 @@ export async function importScenario(input: {
     })
 
     if (scenario.prompt !== "") {
+      // The id is minted up front because the row is its own variant group: an
+      // imported prompt is a one-take slot, and every slot names itself after
+      // the take that opened it.
+      const promptEntryId = crypto.randomUUID()
       await tx.insert(storyEntries).values({
-        id: crypto.randomUUID(),
+        id: promptEntryId,
         storyId,
         position: 0,
+        variantGroupId: promptEntryId,
+        variantIndex: 0,
+        isActive: true,
         // The prompt is authored text, not model output — and not a player
         // turn either, so action_kind and input_text stay NULL. That is what
         // keeps the opening passage rendering verbatim instead of being read

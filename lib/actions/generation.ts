@@ -27,10 +27,22 @@ import { appendActionEntry } from "./entries"
  * - neither: plain Continue, appends nothing
  * Then composes context from fresh DB state and returns it with the story's settings.
  * `variant` feeds the deterministic seed so Retry produces a different continuation.
+ * `turnId` ties the writer's row and the passage it produces into one undo step:
+ * the client mints it before the round-trip and hands the same value to
+ * appendGeneratedEntry, and the journal extends the op it already wrote here
+ * rather than recording a second one.
+ * `variantGroupId` marks this as a Retry, and the slot it names is left OUT of
+ * the composed context — see the filter below.
  */
 export async function prepareGeneration(
   storyId: string,
-  opts: { kind?: ActionKind; userText?: string; variant?: number }
+  opts: {
+    kind?: ActionKind
+    userText?: string
+    variant?: number
+    turnId?: string
+    variantGroupId?: string
+  }
 ): Promise<
   ActionResult<{
     context: ComposedContext
@@ -52,7 +64,12 @@ export async function prepareGeneration(
   // Either way the honest reading is Continue, so nothing is appended.
   let userEntryId: string | null = null
   if (opts.kind !== undefined && opts.userText !== undefined) {
-    const appended = await appendActionEntry(storyId, opts.kind, opts.userText)
+    const appended = await appendActionEntry(
+      storyId,
+      opts.kind,
+      opts.userText,
+      opts.turnId ?? null
+    )
     if (!appended.ok) return appended
     userEntryId = appended.data.entry.id
   }
@@ -92,8 +109,31 @@ export async function prepareGeneration(
     ),
   }
 
+  // A Retry is an ALTERNATIVE to a passage, not a continuation of it, so the
+  // slot being retried is dropped before the context is composed. Leave it in
+  // and the model is handed a story that ends with the very take it is meant to
+  // replace, and dutifully writes what comes next — which then gets stored as a
+  // second take of that same slot, so flipping between takes shows passage N
+  // and passage N+1 instead of two versions of passage N.
+  //
+  // Filtering by slot rather than by row id covers the inactive takes too: they
+  // are not in `story.entries` today, but the rule "this slot is not part of
+  // the story we are asking about" is the one that stays true if that changes.
+  // The old take is still on disk and untouched — this only decides what the
+  // model is shown. Note the seed moves with `entries.length`, and `variant` is
+  // bumped per retry on top of that, so successive takes stay distinct.
+  const storyForContext =
+    opts.variantGroupId === undefined
+      ? story
+      : {
+          ...story,
+          entries: story.entries.filter(
+            (entry) => entry.variantGroupId !== opts.variantGroupId
+          ),
+        }
+
   const context = composeContext({
-    story,
+    story: storyForContext,
     lorebookEntries,
     variant: opts.variant ?? 0,
     contextWindow: settings.contextWindow,

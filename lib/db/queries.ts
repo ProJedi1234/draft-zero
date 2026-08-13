@@ -1,7 +1,7 @@
 // lib/db/queries.ts — Read layer. Server-only: imported by server components
 // and server actions. Every call reads fresh from Postgres (no caching layer).
 
-import { asc, desc, eq } from "drizzle-orm"
+import { and, asc, desc, eq, isNull } from "drizzle-orm"
 
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type {
@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types"
 
 import { getDb } from "./client"
+import { readHistoryState } from "./journal"
 import {
   toAppSettings,
   toLorebookEntry,
@@ -25,9 +26,16 @@ export async function listStories(): Promise<StorySummary[]> {
   const db = await getDb()
   const [storyRows, entryRows] = await Promise.all([
     db.select().from(stories).orderBy(desc(stories.updatedAt)),
+    // Only the rows that are actually in the manuscript count towards the
+    // library's word count. Soft-deleted passages and the inactive takes of a
+    // retried slot are still on disk and would otherwise inflate the number
+    // with prose the writer cannot see.
     db
       .select({ storyId: storyEntries.storyId, text: storyEntries.text })
-      .from(storyEntries),
+      .from(storyEntries)
+      .where(
+        and(isNull(storyEntries.deletedAt), eq(storyEntries.isActive, true))
+      ),
   ])
 
   const textsByStory = new Map<string, { text: string }[]>()
@@ -54,16 +62,22 @@ export async function getStory(id: string): Promise<Story | null> {
 
   if (!storyRow) return null
 
-  const [entryRows, lorebookRows] = await Promise.all([
+  const [entryRows, lorebookRows, history] = await Promise.all([
+    // Every non-deleted row, active takes and alternatives alike. One flat
+    // query rather than a GROUP BY plus a join for the sibling counts: a
+    // manuscript is small and is already loaded whole on every request, so the
+    // extra inactive rows cost less than the second round trip would, and
+    // `toStory` gets everything it needs to fill in variantIndex/variantCount.
     db
       .select()
       .from(storyEntries)
-      .where(eq(storyEntries.storyId, id))
-      .orderBy(asc(storyEntries.position)),
+      .where(and(eq(storyEntries.storyId, id), isNull(storyEntries.deletedAt)))
+      .orderBy(asc(storyEntries.position), asc(storyEntries.variantIndex)),
     db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
+    readHistoryState(db, id),
   ])
 
-  return toStory(storyRow, entryRows, lorebookRows)
+  return toStory(storyRow, entryRows, lorebookRows, history)
 }
 
 /** One story's lorebook entries, ordered name ASC. */

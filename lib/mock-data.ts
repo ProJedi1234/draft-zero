@@ -18,11 +18,34 @@ import type {
  * writer typed into the Say/Do composer, so all of them carry the null pair.
  * The helper exists so the fixtures still read as prose rather than as twelve
  * repetitions of two nulls.
+ *
+ * It fills the variant fields the same way the migration backfills real rows:
+ * each fixture passage is a slot of its own holding exactly one take, so the
+ * group id is the entry's own id and the count is 1. That keeps the fixtures
+ * honest — a one-take slot renders no VariantSwitcher, which is what the
+ * scaffolding has always shown. `generation` is null because no model produced
+ * these; they were written by hand.
  */
 function proseEntry(
-  entry: Omit<StoryEntry, "actionKind" | "inputText">
+  entry: Omit<
+    StoryEntry,
+    | "actionKind"
+    | "inputText"
+    | "variantGroupId"
+    | "variantIndex"
+    | "variantCount"
+    | "generation"
+  >
 ): StoryEntry {
-  return { ...entry, actionKind: null, inputText: null }
+  return {
+    ...entry,
+    actionKind: null,
+    inputText: null,
+    variantGroupId: entry.id,
+    variantIndex: 0,
+    variantCount: 1,
+    generation: null,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -515,6 +538,13 @@ export const MOCK_STORIES: Story[] = [
       "lore-item-needle",
       "lore-concept-debt",
     ],
+    // The fixtures carry no op journal — they were never produced by turns the
+    // writer could reverse — so undo and redo are both dead here, and the
+    // summaries are null rather than invented labels for ops that do not exist.
+    canUndo: false,
+    canRedo: false,
+    undoSummary: null,
+    redoSummary: null,
     settings: {
       modelId: "~anthropic/claude-sonnet-latest",
       thinking: "off",
@@ -574,6 +604,10 @@ export const MOCK_STORIES: Story[] = [
     authorsNote:
       "Slow burn. Horror through procedure and radio protocol, not gore.",
     activeLorebookEntryIds: [],
+    canUndo: false,
+    canRedo: false,
+    undoSummary: null,
+    redoSummary: null,
     settings: {
       modelId: "~openai/gpt-latest",
       thinking: "off",
@@ -627,6 +661,10 @@ export const MOCK_STORIES: Story[] = [
     authorsNote:
       "Every scene should be explainable two ways until the final act.",
     activeLorebookEntryIds: [],
+    canUndo: false,
+    canRedo: false,
+    undoSummary: null,
+    redoSummary: null,
     settings: {
       modelId: "~anthropic/claude-opus-latest",
       thinking: "off",
@@ -671,6 +709,10 @@ export const MOCK_STORIES: Story[] = [
     systemPrompt: null,
     authorsNote: "",
     activeLorebookEntryIds: [],
+    canUndo: false,
+    canRedo: false,
+    undoSummary: null,
+    redoSummary: null,
     settings: { ...DEFAULT_GENERATION_SETTINGS },
     entries: [],
   },
