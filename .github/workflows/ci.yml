@@ -1,10 +1,15 @@
 # .github/workflows/ci.yml — Two jobs, run in parallel.
 #
 # The split is drawn on cost, not on tidiness. This repo is private, so Actions
-# minutes are billed and every job rounds UP to a whole minute. Running the
-# checks serially in one job takes ~63s — which bills as two minutes anyway.
-# Two parallel jobs cost the same two minutes and finish in ~35s. Splitting
-# further would buy nothing and start costing a third minute.
+# minutes are billed and every job rounds UP to a whole minute. Run serially in
+# one job the checks take ~75s, which bills as two minutes anyway. Two parallel
+# jobs cost the same two minutes and halve the wait. Splitting further would buy
+# nothing and start costing a third minute.
+#
+# There is almost no caching here, and that is a measured decision rather than
+# an oversight — see the notes in .github/actions/setup and on the build job.
+# Bun installs 652 packages in under a second, which is faster than restoring a
+# cache of having done so.
 
 name: CI
 
@@ -15,9 +20,10 @@ on:
   pull_request:
     paths-ignore: ["**.md", "docs/**"]
 
-# A new push supersedes the run already in flight for the same branch. This is
-# the single biggest saving here: nobody reads the result of a run whose commit
-# is already two commits stale.
+# A new push supersedes the run already in flight for the same branch. With the
+# caches removed as unprofitable, this is the only real optimisation left, and
+# it is the one that was always worth the most: nobody reads the result of a run
+# whose commit is already two commits stale.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -63,19 +69,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      # MUST come before the install step: hashFiles globs the whole workspace,
-      # so once node_modules exists this would hash 652 packages' worth of .ts
-      # and produce a key that is both slow to compute and wrong.
-      - uses: actions/cache@v6
-        with:
-          path: .next/cache
-          key: next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '**/*.css') }}
-          restore-keys: |
-            next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
-            next-${{ runner.os }}-
-
       - uses: ./.github/actions/setup
+
+      # No actions/cache over .next/cache here, though the first draft had one.
+      # Next 16 builds with Turbopack, whose filesystem cache is off by default
+      # for builds (experimental.turbopackFileSystemCacheForBuild, and the docs
+      # still call it experimental for production). So .next/cache holds nothing
+      # but a .tsbuildinfo and two metadata files — 120 KB that measurably did
+      # not shorten the build. Turning the flag on would trade a stale-build
+      # class of bug for ~15s; not worth it until it stabilises.
 
       # No DATABASE_URL, deliberately. lib/db/client.ts connects lazily on the
       # first getDb(), so a build needs no database — and if that ever stops

@@ -4,29 +4,22 @@
 # This lives in a composite action rather than being copy-pasted into each job
 # because the two copies would drift, and a job silently installing against a
 # different Bun than the other is the kind of CI bug that costs an afternoon.
+#
+# There is deliberately no actions/cache over ~/.bun/install/cache. We measured
+# it: restoring the 186 MB cache took 9.3s to save a `bun install` that takes
+# 0.9s warm. Bun is fast enough that caching its work costs more than the work.
+# setup-bun's own cache of the Bun binary (on by default) is the only one that
+# pays, and only just: ~2s to restore 32 MB it would otherwise download.
 
 name: Set up Bun and install dependencies
-description: Pins Bun to .bun-version, restores the module cache, installs from bun.lock.
+description: Pins Bun to .bun-version and installs from bun.lock.
 
 runs:
   using: composite
   steps:
-    # setup-bun caches the Bun binary itself by default, so this is a download
-    # only on the first run for a given version.
     - uses: oven-sh/setup-bun@v2
       with:
         bun-version-file: .bun-version
-
-    # Bun's global package cache. `bun install` is already fast (sub-second
-    # warm, a few seconds cold), so this is worth less than it looks — its real
-    # value is not depending on npm being up.
-    - uses: actions/cache@v6
-      with:
-        path: ~/.bun/install/cache
-        key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-        # A stale cache still holds most of the 652 packages when one dependency
-        # moves, so a partial hit beats a cold install.
-        restore-keys: bun-install-${{ runner.os }}-
 
     - run: bun install --frozen-lockfile
       shell: bash
