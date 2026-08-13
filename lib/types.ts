@@ -146,7 +146,7 @@ export function clampContextWindow(
 
 /** Generation parameters attached to a story (OpenRouter-shaped). */
 export interface GenerationSettings {
-  /** OpenRouter model id, e.g. "anthropic/claude-sonnet-4.5". */
+  /** OpenRouter model id, e.g. "~anthropic/claude-sonnet-latest". */
   modelId: string
   /**
    * How hard the model should think before writing. Always "off" for a new
@@ -270,9 +270,9 @@ export interface ModelReasoning {
 
 /** Minimal stub of an OpenRouter model listing. */
 export interface OpenRouterModel {
-  /** e.g. "anthropic/claude-sonnet-4.5" */
+  /** e.g. "anthropic/claude-sonnet-5" */
   id: string
-  /** Display name, e.g. "Claude Sonnet 4.5". */
+  /** Display name, e.g. "Claude Sonnet 5". */
   name: string
   /** Provider display name, e.g. "Anthropic". */
   provider: string
