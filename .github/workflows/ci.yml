@@ -1,0 +1,86 @@
+# .github/workflows/ci.yml — Two jobs, run in parallel.
+#
+# The split is drawn on cost, not on tidiness. This repo is private, so Actions
+# minutes are billed and every job rounds UP to a whole minute. Run serially in
+# one job the checks take ~75s, which bills as two minutes anyway. Two parallel
+# jobs cost the same two minutes and halve the wait. Splitting further would buy
+# nothing and start costing a third minute.
+#
+# There is almost no caching here, and that is a measured decision rather than
+# an oversight — see the notes in .github/actions/setup and on the build job.
+# Bun installs 652 packages in under a second, which is faster than restoring a
+# cache of having done so.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+
+# A new push supersedes the run already in flight for the same branch. With the
+# caches removed as unprofitable, this is the only real optimisation left, and
+# it is the one that was always worth the most: nobody reads the result of a run
+# whose commit is already two commits stale.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  check:
+    name: Lint, format, types, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # Ordered cheapest-first, and every step carries `!cancelled()` so one
+      # failure does not hide the others. A run that reports the lint error AND
+      # the type error is one round trip; a run that stops at the first is
+      # three.
+      - name: Tests
+        run: bun test
+
+      - name: Format
+        if: ${{ !cancelled() }}
+        run: bun run format:check
+
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: bun run lint
+
+      # `next build` in the other job runs tsc over this code *plus* the route
+      # types it generates, so that job is the authority on types. This step is
+      # here because it reports in ~10s instead of ~25s.
+      - name: Types
+        if: ${{ !cancelled() }}
+        run: bun run typecheck
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # No actions/cache over .next/cache here, though the first draft had one.
+      # Next 16 builds with Turbopack, whose filesystem cache is off by default
+      # for builds (experimental.turbopackFileSystemCacheForBuild, and the docs
+      # still call it experimental for production). So .next/cache holds nothing
+      # but a .tsbuildinfo and two metadata files — 120 KB that measurably did
+      # not shorten the build. Turning the flag on would trade a stale-build
+      # class of bug for ~15s; not worth it until it stabilises.
+
+      # No DATABASE_URL, deliberately. lib/db/client.ts connects lazily on the
+      # first getDb(), so a build needs no database — and if that ever stops
+      # being true, this job is where it will surface.
+      - name: Build
+        run: bun run build

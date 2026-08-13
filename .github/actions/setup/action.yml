@@ -1,0 +1,25 @@
+# .github/actions/setup/action.yml — Everything both CI jobs need before they
+# can run a script: the right Bun, and node_modules.
+#
+# This lives in a composite action rather than being copy-pasted into each job
+# because the two copies would drift, and a job silently installing against a
+# different Bun than the other is the kind of CI bug that costs an afternoon.
+#
+# There is deliberately no actions/cache over ~/.bun/install/cache. We measured
+# it: restoring the 186 MB cache took 9.3s to save a `bun install` that takes
+# 0.9s warm. Bun is fast enough that caching its work costs more than the work.
+# setup-bun's own cache of the Bun binary (on by default) is the only one that
+# pays, and only just: ~2s to restore 32 MB it would otherwise download.
+
+name: Set up Bun and install dependencies
+description: Pins Bun to .bun-version and installs from bun.lock.
+
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version-file: .bun-version
+
+    - run: bun install --frozen-lockfile
+      shell: bash

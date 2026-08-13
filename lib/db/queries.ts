@@ -60,10 +60,7 @@ export async function getStory(id: string): Promise<Story | null> {
       .from(storyEntries)
       .where(eq(storyEntries.storyId, id))
       .orderBy(asc(storyEntries.position)),
-    db
-      .select()
-      .from(lorebookEntries)
-      .where(eq(lorebookEntries.storyId, id)),
+    db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
   ])
 
   return toStory(storyRow, entryRows, lorebookRows)

@@ -23,9 +23,12 @@ export async function POST(req: Request): Promise<Response> {
     body = await req.json()
     if (!body?.context || !body?.settings?.modelId) throw new Error("bad body")
   } catch {
-    return Response.json({ error: "Malformed generation request." }, {
-      status: 400,
-    })
+    return Response.json(
+      { error: "Malformed generation request." },
+      {
+        status: 400,
+      }
+    )
   }
 
   const upstream = new AbortController()
