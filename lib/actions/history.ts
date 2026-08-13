@@ -11,30 +11,21 @@ import type { OpPayload } from "@/lib/history/ops"
 import { parsePayload, redoPlan, summarize, undoPlan } from "@/lib/history/ops"
 import type { ActionResult } from "@/lib/types"
 
-// The three moves that walk a story through its own history. All of them are
-// the same shape: open a transaction, work out which rows have to change, apply
-// the plan lib/history/ops.ts produced, move the cursor, touch the story,
-// revalidate. None of them destroys anything — undo flips flags back, and even
-// a retry that has been undone leaves its take on disk and reachable.
+// The three moves that walk a story through its history. Same shape each time:
+// transaction, apply the plan from lib/history/ops.ts, move the cursor, touch
+// the story, revalidate. Nothing is destroyed — undo only flips flags back.
 //
-// Each returns `{ summary }` on success so the client can say what it just did,
-// and `null` — still `ok` — when there was simply nothing to do. A dead end is
-// not a failure: ⌘Z at the beginning of a story should do nothing quietly, not
-// raise a toast.
+// Each returns `{ summary }` so the client can say what it did, and `null` —
+// still ok — when there was nothing to do. ⌘Z at the start of a story should do
+// nothing quietly rather than raise a toast.
 
 /**
- * The undo/redo pair below both need the story's cursor, and both have to fail
- * the same way when the story is gone. Returns null when there is no such
- * story; the callers turn that into an error, because unlike `recordOp` (which
- * runs inside somebody else's write) these actions have nothing else to
- * accomplish.
+ * The story's cursor, or null when the story is gone — callers turn that into
+ * an error, since unlike recordOp they have nothing else to accomplish.
  *
- * FOR UPDATE, and for the same reason `recordOp` locks: the cursor is read here
- * and written a few statements later, so without the lock a generation
- * finishing in another tab can append an op in between and this transaction
- * will move the cursor as if it never happened — leaving the new op stranded
- * above the cursor as a redo tail nobody asked for. The lock is per story and
- * every writer of a story's history takes it, so they simply queue.
+ * FOR UPDATE: the cursor is read here and written a few statements later, so
+ * without the lock a generation finishing in another tab can append an op in
+ * between and this transaction moves the cursor as if it never happened.
  */
 async function readCursor(
   tx: DrizzleTx,
@@ -69,11 +60,9 @@ async function readOp(
 }
 
 /**
- * Reverses the op at the cursor and steps the cursor back.
- *
- * The op is left on disk: it is now the head of the redo tail, which is the
- * whole reason the cursor is a position rather than a "delete the last op"
- * rule. Redo has to be able to reapply this without reconstructing it.
+ * Reverses the op at the cursor and steps back. The op stays on disk as the
+ * head of the redo tail — which is why the cursor is a position rather than a
+ * "delete the last op" rule.
  */
 export async function undoStoryOp(
   storyId: string
@@ -86,15 +75,12 @@ export async function undoStoryOp(
       const cursor = await readCursor(tx, storyId)
       if (cursor === null) return { ok: false, error: "Story not found." }
 
-      // Cursor 0 means nothing has been applied — the beginning of the story's
-      // history, and there is deliberately no op at seq 0 to reach for.
+      // Cursor 0 is the start of the history; there is no op at seq 0.
       if (cursor === 0) return { ok: true, data: null }
 
       const op = await readOp(tx, storyId, cursor)
-      // Either the op is missing (a history that has lost its own head) or its
-      // payload will not parse. Both are opaque walls rather than errors: undo
-      // simply stops here, and the button is already dark because
-      // readHistoryState gates on exactly the same parse.
+      // Missing or unparseable: an opaque wall, not an error. The button is
+      // already dark — readHistoryState gates on the same parse.
       if (!op) return { ok: true, data: null }
 
       await applyMutations(tx, undoPlan(op.payload))
@@ -123,9 +109,8 @@ export async function redoStoryOp(
       const cursor = await readCursor(tx, storyId)
       if (cursor === null) return { ok: false, error: "Story not found." }
 
-      // No op above the cursor means the redo tail is empty — either nothing
-      // has been undone, or the writer did something new after undoing and
-      // `recordOp` truncated the tail, exactly as a text editor would.
+      // Nothing above the cursor: either nothing was undone, or the writer did
+      // something new afterwards and recordOp truncated the tail.
       const op = await readOp(tx, storyId, cursor + 1)
       if (!op) return { ok: true, data: null }
 
@@ -144,19 +129,15 @@ export async function redoStoryOp(
 }
 
 /**
- * Switches which take is active in this entry's slot, by offset (-1 previous,
- * +1 next). A no-op at either end returns ok with null.
+ * Switches which take is active, by offset (-1 previous, +1 next). A no-op at
+ * either end returns ok with null.
  *
- * The neighbour is resolved server-side, from an offset rather than an id, so
- * the client never has to hold the sibling ids: the canvas only ever renders
- * the active take, and shipping the whole slot to it just so it could name the
- * one to switch to would put the manuscript's inactive prose in the page for no
- * other reason.
+ * An offset rather than an id, so the client never holds the sibling ids —
+ * shipping the whole slot to the page just to name the target would put the
+ * manuscript's inactive prose in the HTML for no other reason.
  *
- * Browsing takes is itself recorded as an op, so ⌘Z steps back through it like
- * anything else. That is deliberate: a writer who clicks past the take they
- * wanted should be able to undo their way back rather than having to work out
- * which direction they came from.
+ * The switch is itself recorded, so a writer who clicks past the take they
+ * wanted can undo back instead of working out which way they came.
  */
 export async function selectVariantByOffset(
   storyId: string,
@@ -186,12 +167,10 @@ export async function selectVariantByOffset(
 
       if (!anchor) return { ok: false, error: "Passage not found." }
 
-      // Only the story's last block may change which take it shows. The client
-      // renders the switcher on that block alone, but the rule is enforced here
-      // too: what the client sends is the one thing a user can forge, and this
-      // is the write that would silently rewrite a passage the rest of the
-      // story was built on. Same reasoning that keeps regeneration confined to
-      // the tail — an earlier block is settled prose, not a live choice.
+      // Only the last block may switch takes. The client renders the switcher
+      // there alone, but the client is the one thing a user can forge, and this
+      // write would otherwise rewrite a passage the rest of the story was built
+      // on. Earlier blocks are settled prose, not a live choice.
       const lastPosition = await tx
         .select({ position: storyEntries.position })
         .from(storyEntries)
@@ -213,9 +192,8 @@ export async function selectVariantByOffset(
         }
       }
 
-      // The slot's live takes, in the order the switcher shows them. Deleted
-      // takes are excluded: they are not part of the "2 / 3" the writer is
-      // reading, so stepping through them would make the readout lie.
+      // The live takes, in the order the switcher shows them. Deleted ones are
+      // excluded — they are not part of the "2 / 3" the writer is reading.
       const takes = await tx
         .select({ id: storyEntries.id, isActive: storyEntries.isActive })
         .from(storyEntries)
@@ -228,16 +206,14 @@ export async function selectVariantByOffset(
         )
         .orderBy(asc(storyEntries.variantIndex))
 
-      // Stepping is measured from whichever take is actually active, not from
-      // the id the client sent. They are normally the same row, but a client
-      // holding a render from before another tab's switch would otherwise move
-      // relative to a take that is no longer showing and jump two places.
+      // Measured from whichever take is actually active, not the id the client
+      // sent: a stale render would otherwise step from a take that has already
+      // stopped showing and jump two places.
       const fromIndex = takes.findIndex((take) => take.isActive)
       if (fromIndex === -1) return { ok: false, error: "Passage not found." }
 
       const toIndex = fromIndex + offset
-      // Off either end, or an offset of zero: nothing to do, and nothing worth
-      // telling the writer about — the arrow they pressed was already disabled.
+      // Off either end: nothing to do, and the arrow was already disabled.
       if (toIndex === fromIndex || toIndex < 0 || toIndex >= takes.length) {
         return { ok: true, data: null }
       }
@@ -249,10 +225,9 @@ export async function selectVariantByOffset(
         toEntryId: takes[toIndex].id,
       }
 
-      // `redoPlan` is the forward direction of an op, which is exactly what
-      // performing it for the first time is — and it deactivates before it
-      // activates, which the partial unique index on (story_id, position)
-      // requires of every take swap.
+      // redoPlan is the forward direction of an op, which is what doing it for
+      // the first time is — and it deactivates before activating, as the
+      // partial unique index requires.
       await applyMutations(tx, redoPlan(payload))
       await recordOp(tx, storyId, payload)
       await tx

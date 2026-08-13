@@ -199,12 +199,10 @@ function StoryEditor({
 /**
  * ⌘Z / ⌘⇧Z (Ctrl elsewhere) for the manuscript's own history.
  *
- * The guard is the important part, and it is the same one the composer's Esc
- * handler uses: while the writer is inside a text field — the composer, the
- * passage editor, a lorebook input — ⌘Z has to remain the browser's own text
- * undo. Reaching past a half-typed sentence to reverse a whole turn of the
- * story is a far worse bug than not having the shortcut at all, and the writer
- * cannot get that sentence back afterwards.
+ * The guard is the important part, and matches the composer's Esc handler:
+ * inside a text field ⌘Z stays the browser's own text undo. Reaching past a
+ * half-typed sentence to reverse a whole turn is worse than no shortcut, and
+ * the writer cannot get that sentence back.
  */
 function useHistoryShortcuts(generation: GenerationController) {
   const { canUndo, canRedo, undo, redo } = generation

@@ -14,16 +14,13 @@ import {
 } from "@/components/ui/tooltip"
 
 /**
- * The slot's take browser: "‹ 2 / 3 ›" under a passage that has been retried.
+ * The take browser: "‹ 2 / 3 ›" under a passage that has been retried.
  *
- * Unlike the block's action cluster, which is revealed on hover because the
- * writer already knows editing and deleting exist, this is ALWAYS visible. It is
- * the only evidence in the whole manuscript that the other takes were kept at
- * all — hiding it until hover would mean a writer who never hovers a passage
- * never learns that retrying no longer throws the old prose away.
- *
- * Rendered only when there is something to browse (`variantCount > 1`), so an
- * untouched manuscript looks exactly as it did before.
+ * Always visible, unlike the hover-revealed action cluster: it is the only
+ * evidence that the other takes were kept, and a writer who never hovers would
+ * otherwise never learn that retrying stopped throwing prose away. Rendered
+ * only when there is something to browse, so an untouched manuscript is
+ * unchanged.
  */
 export function VariantSwitcher({
   entry,
@@ -45,9 +42,8 @@ export function VariantSwitcher({
   function switchBy(offset: number) {
     startSwitching(async () => {
       const res = await selectVariantByOffset(storyId, entry.id, offset)
-      // Silent on success — the prose changing under the readout is the
-      // confirmation, and a toast for every arrow press would be noise while
-      // the writer flicks through takes comparing them.
+      // Silent on success: the prose changing is the confirmation, and a toast
+      // per arrow press would be noise while comparing takes.
       if (!res.ok) toast.error(res.error)
     })
   }

@@ -1,24 +1,16 @@
 // lib/id.ts — Random ids that survive an insecure context.
 
 /**
- * A v4 UUID, in the browser as well as on the server.
+ * A v4 UUID that works in the browser too.
  *
- * `crypto.randomUUID()` is **secure-context only**. It exists on HTTPS and on
- * localhost, and is `undefined` over plain HTTP to an IP address — which is
- * exactly how this app is reached when somebody tries it from another machine
- * on the LAN, because compose publishes the dev server on every interface. The
- * failure is invisible in ordinary local development and total the moment the
- * URL stops saying localhost: the composer throws "crypto.randomUUID is not a
- * function" the first time a writer presses Send or Continue.
+ * `crypto.randomUUID()` is secure-context only: it exists on HTTPS and on
+ * localhost, and is undefined over plain HTTP to an IP — which is how the app
+ * is reached from another machine on the LAN. Invisible in local development,
+ * and total the moment the URL stops saying localhost.
  *
- * Server code never needed this — Node's global always carries randomUUID — so
- * the call sites in lib/actions/* are correct as they stand and are left alone.
- * This exists for the one id the client mints, the per-turn id in
- * hooks/use-generation.ts.
- *
- * The fallback is a real v4 UUID rather than a Math.random string, because
- * `crypto.getRandomValues` carries no secure-context restriction and there is
- * no reason to weaken the id just because the page was served over HTTP.
+ * Server code doesn't need this (Node's global always has it), so the call
+ * sites in lib/actions/* are left alone. The fallback is a real v4 UUID because
+ * getRandomValues has no such restriction — no reason to weaken the id.
  */
 export function randomId(): string {
   if (

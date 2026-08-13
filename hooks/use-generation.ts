@@ -7,11 +7,10 @@
 // through the local provider outside of any transition so chunk updates stay
 // urgent; the finished text is persisted and the story tree revalidated.
 //
-// A retry no longer destroys anything: it starts a generation aimed at the last
-// passage's variant group, and the server deactivates the old take as it
-// inserts the new one. The old take therefore leaves `story.entries` exactly
-// the way a deleted row used to, which is why the optimistic-hide machinery
-// below needed no changes at all for it.
+// A retry no longer destroys anything: the server deactivates the old take as
+// it inserts the new one, so the old take leaves `story.entries` exactly as a
+// deleted row used to — which is why the optimistic-hide machinery below needed
+// no changes for it.
 //
 // Everything the canvas shows ahead of the server — the echoed player turn, the
 // streamed passage, the entries a retry is about to delete — is held until the
@@ -97,12 +96,10 @@ interface StartOptions {
   /** Echoed locally until revalidation delivers the persisted passage. */
   echo?: string
   /**
-   * Retries only: the slot the finished passage joins as a new take. It is used
-   * at both ends of the round-trip — prepareGeneration composes the context
-   * with this slot excluded, so the model writes an alternative rather than a
-   * continuation, and appendGeneratedEntry then deactivates the slot's current
-   * take in the same transaction that inserts the new one, so the old prose
-   * leaves `story.entries` without any row being destroyed.
+   * Retries only: the slot the finished passage joins as a new take. Used at
+   * both ends — the context is composed with this slot excluded so the model
+   * writes an alternative rather than a continuation, and the insert then
+   * deactivates the slot's current take in the same transaction.
    */
   variantGroupId?: string
   /** Entry ids hidden locally until the deactivated take stops being delivered. */
@@ -188,12 +185,10 @@ export function useGeneration(
   const lastWasRetryRef = React.useRef(false)
   // Text the composer cleared on dispatch that only this hook can give back.
   const unownedTextRef = React.useRef<string | null>(null)
-  // The in-flight turn's identity and provenance. These are refs and not state
-  // because finalize() runs from the streaming callback, not from a render: it
-  // would close over whatever `usage` and settings were current when the
-  // callback was created, which is before the request was even prepared. The
-  // usage event in particular always arrives after that closure exists, so
-  // reading it from state there would persist null every single time.
+  // Refs, not state: finalize() runs from the streaming callback and would
+  // close over whatever was current when that closure was created — before the
+  // request was even prepared. The usage event always arrives afterwards, so
+  // reading it from state there would persist null every time.
   const turnIdRef = React.useRef<string | null>(null)
   const variantGroupRef = React.useRef<string | null>(null)
   const settingsRef = React.useRef<GenerationSettings | null>(null)
@@ -279,11 +274,9 @@ export function useGeneration(
       setStreamingText(trimmed)
       setStatus("settling")
 
-      // Provenance for the row about to be written. The settings are the ones
-      // the server actually composed with, not whatever the inspector shows by
-      // the time this lands — the writer is free to change the model mid-stream
-      // and the passage would then claim to have come from a model that never
-      // saw it. Counts are the provider's own; null when it sent no usage event.
+      // The settings the server actually composed with, not whatever the
+      // inspector shows by the time this lands: the writer can change the model
+      // mid-stream, and the passage would then name one that never saw it.
       const settings = settingsRef.current
       const usage = usageRef.current
       const generation: EntryGeneration | null = settings
@@ -414,13 +407,11 @@ export function useGeneration(
       abortRef.current = controller
       unownedTextRef.current = options.restoreOnFailure ?? null
 
-      // One id for the whole turn, minted here and handed to both halves. The
-      // server upserts the `turn` op on it, which is what makes the writer's
-      // move and the passage it produced a single ⌘Z rather than two.
+      // One id for the whole turn, handed to both halves; the server upserts
+      // the `turn` op on it so the move and its passage are a single ⌘Z.
       //
-      // randomId, not crypto.randomUUID: this runs in the browser, and
-      // randomUUID is undefined outside a secure context — so over plain HTTP
-      // to a LAN address every Send and Continue threw here. See lib/id.ts.
+      // randomId, not crypto.randomUUID — this runs in the browser, where
+      // randomUUID is undefined outside a secure context. See lib/id.ts.
       const turnId = randomId()
       turnIdRef.current = turnId
       variantGroupRef.current = options.variantGroupId ?? null
@@ -445,12 +436,10 @@ export function useGeneration(
             userText: options.userText,
             variant,
             turnId,
-            // Retries only, and it is needed on the way OUT as well as on the
-            // way back: the server composes the context without this slot, so
-            // the model writes an alternative to the passage rather than a
-            // continuation of it. The old take is still active in the story at
-            // this point — it is only deactivated when the new one is inserted,
-            // long after the prompt has been built.
+            // Needed on the way OUT as well as back: the context is composed
+            // without this slot, so the model writes an alternative rather than
+            // a continuation. The old take is still active here — it is only
+            // deactivated when the new one is inserted.
             variantGroupId: options.variantGroupId,
           })
 
@@ -526,27 +515,24 @@ export function useGeneration(
     start({})
   }, [start])
 
-  // Only the LAST passage can be retried, and it is retried in place: the new
-  // take joins the slot the old one occupies. There is no retry-from-here any
-  // more, because rewriting the middle of a manuscript would branch it, and a
-  // branch is a shape neither the history nor the reader can follow.
+  // Only the LAST passage can be retried, in place: the new take joins the slot
+  // the old one occupies. No retry-from-here any more — rewriting the middle
+  // would branch the manuscript.
   const retryLast = React.useCallback(() => {
     const last = entries[entries.length - 1]
     if (!last || last.source !== "generated") return
     start({
       isRetry: true,
       variantGroupId: last.variantGroupId,
-      // The old take stays on disk and merely goes inactive, which drops it out
-      // of `story.entries` the same way a delete did — so this hides it until
-      // that lands and `stillRemoving` retires the id on its own.
+      // The old take goes inactive, dropping out of `story.entries` as a
+      // delete did, so `stillRemoving` retires this id on its own.
       removing: [last.id],
     })
   }, [entries, start])
 
-  // Undo and redo are history moves, not entry moves: what they reverse might
-  // be an edit or a take switch, so there is nothing sensible to hide locally
-  // and the revalidated tree is the only truth. The re-entry guard is the same
-  // one generation uses, so neither can start while the other is running.
+  // History moves, not entry moves: what they reverse might be an edit or a
+  // take switch, so there is nothing sensible to hide locally and the
+  // revalidated tree is the only truth. Shares generation's re-entry guard.
   const runHistory = React.useCallback(
     (
       run: (
@@ -594,9 +580,8 @@ export function useGeneration(
     optimisticUserText: echo !== null && !echoLanded ? echo.text : null,
     optimisticUserPending: echo !== null && echo.entryId === null,
     removingEntryIds: stillRemoving,
-    // What is undoable is now the server's answer, not "are there any entries":
-    // an empty manuscript can still have a redo tail, and a manuscript full of
-    // imported entries has no history to reverse at all.
+    // The server's answer, not "are there any entries": an empty manuscript can
+    // have a redo tail, and an imported one has no history to reverse.
     canUndo: !busy && story.canUndo,
     canRedo: !busy && story.canRedo,
     canRetry: !busy && lastEntry?.source === "generated",
