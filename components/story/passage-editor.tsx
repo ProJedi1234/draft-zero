@@ -121,6 +121,14 @@ export function PassageEditor({
             ? `Edit what you typed for this ${action.kind === "say" ? "Say" : "Do"}`
             : "Edit passage"
         }
+        // Precautionary, and untested against the bug: this editor's labels
+        // never contained the token that tripped Safari on the composer, so it
+        // was probably never misclassified. Prose is prose, though, and it costs
+        // nothing to say so here too. See the note on the composer.
+        autoComplete="off"
+        autoCorrect="on"
+        autoCapitalize="sentences"
+        spellCheck
         className="min-h-0 border-0 bg-transparent p-0 font-serif text-[1.0625rem] leading-8 text-foreground shadow-none disabled:opacity-100 md:text-[1.0625rem]"
       />
       <div className="mt-3 flex items-center justify-end gap-1.5">
