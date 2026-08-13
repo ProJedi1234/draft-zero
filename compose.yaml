@@ -6,7 +6,8 @@
 #   docker compose up -d                 # Postgres only (the usual case)
 #   bun run db:migrate && bun run dev    # ...with the app on the host
 #
-#   docker compose --profile app up      # everything, including the app
+#   docker compose --profile app up      # everything: migrate, then the app
+#   docker compose run --rm migrate      # just apply pending migrations
 #
 # Port 5433, not 5432: the shared `devpg` container already owns 5432 on argos,
 # and this stack is meant to coexist with it rather than replace it.
@@ -39,6 +40,45 @@ services:
       retries: 20
       start_period: 10s
 
+  # One-shot: applies pending migrations and exits. `app` waits for it to exit 0,
+  # so `--profile app up` can never serve a stale schema. Deliberately a separate
+  # service rather than part of the app's startup command — `app` restarts
+  # unless-stopped, and a failing migration folded into that command would replay
+  # on every restart, burying the error in dev-server output instead of stopping.
+  #
+  # Also usable on its own, for the host-dev path or without a host toolchain.
+  # `run` ignores profiles, so no --profile flag is needed:
+  #
+  #   docker compose run --rm migrate
+  #
+  migrate:
+    # In `app` so it runs as part of the full stack, and in `migrate` so
+    # `--profile migrate up` brings up Postgres and migrates without the app.
+    profiles: [app, migrate]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    # A one-shot must not come back after it exits 0; the default would be fine
+    # here but is stated so it survives a future top-level default.
+    restart: "no"
+    environment:
+      # Same in-network URL as `app` — see the note there. This also shadows the
+      # bind-mounted .env.local, which points at the host's devpg on 5432:
+      # drizzle.config.ts prefers process.env.DATABASE_URL over the file, so the
+      # container's own Postgres wins. Migrating the wrong database is the
+      # failure mode if that precedence ever flips.
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+    volumes:
+      # Load-bearing, not just for parity with `app`: migrations live in
+      # ./drizzle, so without the bind mount every `db:generate` would need a
+      # --build before it could be applied.
+      - .:/app
+      - /app/node_modules
+    command: ["bun", "run", "db:migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # Opt-in — `docker compose up` alone stays Postgres-only, since running the
   # dev server on the host gives faster HMR and a working editor toolchain.
   app:
@@ -70,6 +110,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # Blocks on a clean exit, so a failed migration stops the stack here
+      # rather than letting `next dev` start against a stale schema.
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres-data:

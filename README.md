@@ -28,6 +28,18 @@ and a working editor toolchain; plain `docker compose up` stays Postgres-only.
 Source is bind-mounted, so edits still hot-reload, but `node_modules` and
 `.next` are container-local volumes and the two dev servers do not share them.
 
+That profile also brings up a one-shot `migrate` service, which the app waits on
+(`service_completed_successfully`), so the Docker path never serves a stale
+schema and a failed migration stops the stack instead of being buried in
+dev-server logs. To apply migrations without starting the app — handy for the
+host-dev path, or on a machine with no bun installed:
+
+```bash
+docker compose run --rm migrate
+```
+
+`run` ignores profiles, so that works from a plain `docker compose up -d` stack.
+
 `Dockerfile.dev` is a Node base with the bun binary copied in, not the
 `oven/bun` image: bun is the package manager and script runner, but Next has to
 run under real Node. `oven/bun`'s `node` is a bun shim, and under it Turbopack
@@ -59,14 +71,21 @@ ever changes.
 `docker compose down -v` drops the data volume, which is the fastest way back
 to a clean database (`db:migrate` and `db:seed` to refill it).
 
-**Migrations are not applied automatically.** `getDb()` only connects; it never
-migrates. Against a shared server, two app instances racing `migrate()` corrupt
-the migration bookkeeping, so schema changes are an explicit step:
+**The app never migrates itself.** `getDb()` only connects; it never calls
+`migrate()`. Against a shared server, two app instances racing `migrate()`
+corrupt the migration bookkeeping, so applying migrations stays a separate step
+with exactly one runner:
 
 ```bash
 bun run db:generate   # write a migration from lib/db/schema.ts changes
 bun run db:migrate    # apply pending migrations
 ```
+
+Writing a migration is always manual. Applying one is automatic *only* under
+`docker compose --profile app up`, where the `migrate` service is that single
+runner and finishes before the app starts. Re-running it costs one query —
+`drizzle-kit migrate` is a no-op when `__drizzle_migrations` is already current
+— so it runs on every `up` rather than trying to detect whether it is needed.
 
 `next dev`/`next build` and `bun scripts/*.ts` read `.env.local` automatically.
 `bun run` does *not* forward it to spawned binaries, so `drizzle.config.ts`
