@@ -62,9 +62,18 @@ export default async function Page() {
   return (
     <div className="h-app overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
-        <header className="mb-8 flex items-end justify-between gap-4">
-          <h1 className="font-serif text-2xl tracking-tight">Library</h1>
-          <div className="flex shrink-0 items-center gap-2">
+        {/*
+          flex-wrap, and no shrink-0 on the actions: on a phone the heading and
+          two labelled buttons are wider than the viewport, and a row that
+          cannot shrink or wrap makes the whole page wider than the screen. That
+          costs a horizontal scroll on the one screen the app opens to. Below
+          ~sm the actions take their own line instead.
+        */}
+        <header className="mb-8 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+          <h1 className="min-w-0 font-serif text-2xl tracking-tight">
+            Library
+          </h1>
+          <div className="flex items-center gap-2">
             <ImportScenarioButton variant="button" />
             <NewStoryButton size="sm" />
           </div>
