@@ -17,7 +17,17 @@ import * as React from "react"
  * animation runs they transiently disagree with no keyboard on screen — and a
  * height-only heuristic pinned --app-h to a stale short value until the next
  * resize event, leaving a dead strip along the bottom edge.
+ *
+ * The focus gate alone is not enough: iOS can also leave visualViewport.height
+ * stale-short after a dismissal that keeps focus in the field, and then never
+ * fire another event. Two backstops cover that. A real keyboard shortens the
+ * viewport by hundreds of px, so a shortfall under 15% of the window is never
+ * treated as one — a stale remainder unpins instead of sticking. And any touch
+ * re-runs the sync, because touching is what makes iOS refresh the geometry,
+ * so a stale pin heals on first contact rather than waiting for a lucky drag.
  */
+
+const KEYBOARD_MIN_FRACTION = 0.15
 
 const isEditable = (el: Element | null): boolean =>
   el instanceof HTMLElement &&
@@ -37,7 +47,8 @@ export function ViewportHeightSync() {
 
       const keyboardUp =
         isEditable(document.activeElement) &&
-        window.innerHeight - viewport.height > 1
+        window.innerHeight - viewport.height >
+          window.innerHeight * KEYBOARD_MIN_FRACTION
       if (keyboardUp) {
         root.style.setProperty("--app-h", `${viewport.height}px`)
         window.scrollTo(0, 0)
@@ -60,11 +71,13 @@ export function ViewportHeightSync() {
     window.addEventListener("resize", onChange)
     window.addEventListener("focusin", onChange)
     window.addEventListener("focusout", onChange)
+    window.addEventListener("touchend", onChange, { passive: true })
     return () => {
       viewport.removeEventListener("resize", onChange)
       window.removeEventListener("resize", onChange)
       window.removeEventListener("focusin", onChange)
       window.removeEventListener("focusout", onChange)
+      window.removeEventListener("touchend", onChange)
       if (settle !== undefined) window.clearTimeout(settle)
       root.style.removeProperty("--app-h")
     }
