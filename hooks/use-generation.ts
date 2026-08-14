@@ -1,11 +1,15 @@
 "use client"
 
-// hooks/use-generation.ts — The single owner of story generation state.
+// hooks/use-generation.ts — The single owner of story generation STATE.
 //
-// Flow (MILESTONE2 §3.6): a trigger opens a transition that calls
-// prepareGeneration on the server; the returned context is then streamed
-// through the local provider outside of any transition so chunk updates stay
-// urgent; the finished text is persisted and the story tree revalidated.
+// The generation itself now lives on the server: startGeneration persists the
+// writer's turn, launches the provider loop as a detached task, and returns a
+// runId; the server persists the finished passage and only then emits the
+// terminal frame. This hook is a subscriber — it renders where the run IS and
+// watches it move, exactly like every other device on the story. Closing the
+// subscribe stream detaches a listener and nothing else; stopGeneration() is
+// the only way to abort the model, which is why a dead tab no longer kills a
+// passage mid-sentence.
 //
 // A retry no longer destroys anything: the server deactivates the old take as
 // it inserts the new one, so the old take leaves `story.entries` exactly as a
@@ -24,29 +28,29 @@
 // whichever commit carries the real row is, by construction, the commit that
 // stops rendering the stand-in.
 //
-// prepareGeneration no longer revalidates (see its comment), so `syncRef` tracks
-// the window where a persisted player turn exists that the client hasn't been
-// handed yet, and every terminal path refreshes the tree if it is still open.
+// startGeneration doesn't revalidate (the writer is waiting on it before a
+// single token appears), so `syncRef` tracks the window where a persisted
+// player turn exists that the client hasn't been handed yet, and every terminal
+// path refreshes the tree if it is still open.
 
 import * as React from "react"
 import { toast } from "sonner"
 
-import { appendGeneratedEntry } from "@/lib/actions/entries"
-import { prepareGeneration, syncStoryTree } from "@/lib/actions/generation"
-import { redoStoryOp, undoStoryOp } from "@/lib/actions/history"
 import {
-  getGenerationProvider,
-  type ProviderKind,
-} from "@/lib/generation/provider"
-import type { ComposedContext, GenerationUsage } from "@/lib/generation/types"
+  startGeneration,
+  stopGeneration,
+  syncStoryTree,
+} from "@/lib/actions/generation"
+import { redoStoryOp, undoStoryOp } from "@/lib/actions/history"
+import type { GenerationUsage } from "@/lib/generation/types"
 import { randomId } from "@/lib/id"
 import { translateAction } from "@/lib/story/action-voice"
+import { localRefresh, subscribeRun } from "@/lib/sync/client"
+import type { RunEndFrame, RunFrame, RunWireEvent } from "@/lib/sync/types"
 import type {
   ActionKind,
   ActionResult,
-  EntryGeneration,
   GenerationRequestKind,
-  GenerationSettings,
   Story,
 } from "@/lib/types"
 
@@ -93,12 +97,23 @@ const SETTLE_TIMEOUT_MS = 6000
  */
 const RECONCILE_SETTLE_MS = 17_000
 
-type Prepared = {
-  context: ComposedContext
-  settings: GenerationSettings
-  providerKind: ProviderKind
-  userEntryId: string | null
-}
+/**
+ * Re-attach cadence after the subscribe socket dies under a live run. Short and
+ * flat rather than the sync channel's 1s/2s/5s: the caret is visibly frozen for
+ * exactly this long, and the snapshot frame makes every re-attach lossless, so
+ * eagerness costs nothing but a cheap 204.
+ */
+const REATTACH_BACKOFF_MS = [500, 1000, 2000]
+
+/**
+ * Consecutive subscribe failures before the reader stops retrying. A subscribe
+ * that keeps failing outright (a proxy answering 502, the server half-down) is
+ * not a blip the next attempt will ride out, and a loop that retries it
+ * forever holds the composer busy with no sign of trouble. Past the cap the
+ * writer gets a toast and their composer back; the sync channel's reconnect
+ * probe re-attaches if the run turns out to still be live.
+ */
+const SUBSCRIBE_FAILURE_LIMIT = 5
 
 /** What the server calls a generation that arrived with no move attached. */
 const DEFAULT_REQUEST_KIND: GenerationRequestKind = "generate"
@@ -106,7 +121,7 @@ const DEFAULT_REQUEST_KIND: GenerationRequestKind = "generate"
 /** The player's turn, shown from here until its own row lands. */
 type Echo = {
   text: string
-  /** Null until prepareGeneration comes back — i.e. while unacknowledged. */
+  /** Null until startGeneration comes back — i.e. while unacknowledged. */
   entryId: string | null
 }
 
@@ -121,13 +136,13 @@ interface StartOptions {
    * Retries only: the slot the finished passage joins as a new take. Used at
    * both ends — the context is composed with this slot excluded so the model
    * writes an alternative rather than a continuation, and the insert then
-   * deactivates the slot's current take in the same transaction.
+   * deactivates the slot's current take in the same transaction. The retry
+   * seed is the server's business: it derives the take ordinal from the slot
+   * itself, which a per-tab counter cannot see across devices.
    */
   variantGroupId?: string
   /** Entry ids hidden locally until the deactivated take stops being delivered. */
   removing?: string[]
-  /** Retries bump the fixture variant; every other trigger resets it. */
-  isRetry?: boolean
   /** Which move this is, recorded on the spend ledger row. */
   requestKind?: GenerationRequestKind
   /** Composer text to hand back if the dispatch fails before the server owns it. */
@@ -142,9 +157,9 @@ export interface GenerationController {
   streamingText: string
   /**
    * Exact token counts for the last COMPLETED generation, or null before one has
-   * finished. Only ever set from the provider's final `usage` event — never
-   * estimated — so a caller can render it as an authoritative figure. The same
-   * counts are persisted onto the row, which is what the variant switcher's
+   * finished. Only ever set from the run's `usage` event — never estimated — so
+   * a caller can render it as an authoritative figure. The same counts are
+   * persisted onto the row server-side, which is what the variant switcher's
    * provenance tooltip reads; this stays for anything that wants them live.
    */
   usage: GenerationUsage | null
@@ -174,12 +189,21 @@ export interface GenerationOptions {
   /**
    * Called with text that the composer cleared optimistically but that the
    * server never took ownership of. Both Say and Do clear the composer the
-   * instant they dispatch, so if the append or prepare step fails there is no
+   * instant they dispatch, so if the append or start step fails there is no
    * other copy of the writer's words anywhere — the row was never inserted and
    * the textarea is already empty. This hands them back verbatim (untrimmed, as
    * typed) instead of destroying them.
    */
   onRestoreDraft?: (text: string) => void
+  /**
+   * Written BY the hook, read by whoever holds the sync channel: calling it
+   * with a runId (from a `run-started` event) attaches this device to that run
+   * mid-flight. A ref rather than a return-value method because the
+   * GenerationController surface is the writer's controls, and "another device
+   * started something" is not one of them. Null is the re-probe — "did I miss
+   * a run-started while my socket was down?" — fired on sync reconnect.
+   */
+  attachRef?: { current: ((runId: string | null) => void) | null }
 }
 
 export function useGeneration(
@@ -203,30 +227,41 @@ export function useGeneration(
   const [isPending, startTransition] = React.useTransition()
 
   // Synchronous re-entry guard: state lands a tick too late for fast clicks.
+  // True from the moment this device owns or mirrors a run until it settles.
   const activeRef = React.useRef(false)
+  // Aborts the SUBSCRIBE stream only — a detach, never a stop. The model does
+  // not know or care that this listener left (invariant: only stopGeneration
+  // aborts a generation).
   const abortRef = React.useRef<AbortController | null>(null)
-  const variantRef = React.useRef(0)
-  const lastWasRetryRef = React.useRef(false)
+  // The run this device is attached to; guards against adopting it twice when
+  // the run-started event for our own start echoes back over the sync channel.
+  const runIdRef = React.useRef<string | null>(null)
   // Text the composer cleared on dispatch that only this hook can give back.
   const unownedTextRef = React.useRef<string | null>(null)
-  // Refs, not state: finalize() runs from the streaming callback and would
-  // close over whatever was current when that closure was created — before the
-  // request was even prepared. The usage event always arrives afterwards, so
-  // reading it from state there would persist null every time.
-  const turnIdRef = React.useRef<string | null>(null)
-  const variantGroupRef = React.useRef<string | null>(null)
-  const settingsRef = React.useRef<GenerationSettings | null>(null)
-  const usageRef = React.useRef<GenerationUsage | null>(null)
-  // The spend-ledger row the route opened for this generation, from its `meta`
-  // event. Same reason as usageRef: finalize() closes over state from before the
-  // request existed, and meta arrives long afterwards. Null on the offline mock,
-  // and null for anything the route failed to record — the link is an extra, and
-  // a passage must never fail to save because the bookkeeping did.
-  const callIdRef = React.useRef<string | null>(null)
-  const requestKindRef =
-    React.useRef<GenerationRequestKind>(DEFAULT_REQUEST_KIND)
+  // The turnId of THIS device's own start, live from the moment start() mints
+  // it until reset(). It is the token a bare Stop (runId still unknown)
+  // presents server-side, so the stop can only ever reach the run or
+  // reservation that start created — never a foreign run this device missed
+  // the run-started for.
+  const startTurnIdRef = React.useRef<string | null>(null)
+  // Stop pressed while the start round-trip was still in flight. The server
+  // latches that intent against the start's reservation, but the stop POST
+  // can outrace the start's own reserveRun and find nothing to latch; this
+  // flag makes start() re-fire the stop by name the moment the runId exists.
+  const stopDuringStartRef = React.useRef(false)
+  // True when THIS device started the run it is attached to. Passive mirrors
+  // skip the settle refresh — the bus `change` from finishRun is theirs.
+  const originRef = React.useRef(false)
+  // A run-started that arrived while attach() had to refuse (mid-settle, probe
+  // in flight). Drained by reset(), so the handoff is deferred, never dropped.
+  const pendingAttachRef = React.useRef<string | null>(null)
+  // reset() re-probes through this ref because attach() is declared below it —
+  // the two genuinely call each other, and a ref breaks the cycle.
+  const attachFnRef = React.useRef<((runId: string | null) => void) | null>(
+    null
+  )
   // True while a persisted player turn is invisible to the client, because
-  // prepareGeneration wrote it without revalidating. Cleared by whichever
+  // startGeneration wrote it without revalidating. Cleared by whichever
   // terminal path refreshes the tree.
   const syncRef = React.useRef(false)
   // The pending post-reconciliation refresh, if any. See RECONCILE_SETTLE_MS.
@@ -236,7 +271,12 @@ export function useGeneration(
 
   React.useEffect(
     () => () => {
+      // Unmount detaches the listener. The run — if any — keeps going, and the
+      // server persists its prose; that is the whole point of the inversion.
+      // Nulled as well as aborted: dev StrictMode remounts, and a dead
+      // controller left in the ref would make attach() refuse forever.
       abortRef.current?.abort()
+      abortRef.current = null
       if (costRefreshRef.current !== null) clearTimeout(costRefreshRef.current)
     },
     []
@@ -258,26 +298,50 @@ export function useGeneration(
 
   const busy = isPending || status !== "idle"
 
-  const reset = React.useCallback(() => {
+  /**
+   * The one way the re-entry slot is ever given back. Every holder must free
+   * it through here, because freeing is only half the job: a run-started that
+   * arrived while the slot was held (attach() had to refuse) is latched, has
+   * no second delivery, and must be chased NOW — a holder that just flipped
+   * activeRef would orphan it, leaving an idle composer under a live run. With
+   * nothing latched this re-probes, which an idle story answers with one
+   * cheap 204.
+   */
+  const releaseSlot = React.useCallback(() => {
     activeRef.current = false
+    const pending = pendingAttachRef.current
+    pendingAttachRef.current = null
+    attachFnRef.current?.(pending)
+  }, [])
+
+  const reset = React.useCallback(() => {
     abortRef.current = null
+    runIdRef.current = null
+    originRef.current = false
+    startTurnIdRef.current = null
+    stopDuringStartRef.current = false
     setStatus("idle")
     setStreamingText("")
     setEcho(null)
     setTailEntryId(null)
     setRemovingEntryIds([])
-  }, [])
+    releaseSlot()
+  }, [releaseSlot])
 
   /** Refreshes the tree if a player turn is still only on disk. */
   const syncIfOwed = React.useCallback(() => {
     if (!syncRef.current) return
     syncRef.current = false
     startTransition(async () => {
+      // Gated so a bus change landing mid-refresh doesn't refresh again.
+      localRefresh.pending += 1
       try {
         await syncStoryTree()
       } catch {
         // The echo is already gone or about to be; a failed refresh is not
         // worth a toast on top of whatever else went wrong.
+      } finally {
+        localRefresh.pending -= 1
       }
     })
   }, [])
@@ -314,69 +378,60 @@ export function useGeneration(
     [reset, syncIfOwed]
   )
 
-  const finalize = React.useCallback(
-    (text: string) => {
-      const trimmed = text.trim()
+  /**
+   * The terminal frame. By the time it arrives the server has already committed
+   * the persist — entryId is a fact — so everything here is display: square the
+   * local buffer with the row that now exists, enter `settling`, and refresh the
+   * tree so that row (and the player's turn) get delivered. Passive mirrors run
+   * the same path; their refresh is what swaps their buffer for the row.
+   */
+  const runEnded = React.useCallback(
+    (end: RunEndFrame) => {
       abortRef.current = null
+      runIdRef.current = null
 
-      // Aborted before a single word arrived: persist nothing, but the player's
-      // turn may already be on disk and unseen.
-      if (trimmed === "") {
+      if (end.status === "error" && end.error !== null) toast.error(end.error)
+      if (end.usage !== null) setUsage(end.usage)
+
+      if (end.entryId !== null) {
+        // The server persisted the TRIMMED text; trimming the buffer to match
+        // makes the block on screen byte-identical to the row about to replace
+        // it, so the swap is invisible.
+        setStreamingText((text) => text.trim())
+        setTailEntryId(end.entryId)
+      } else {
+        // Nothing survived to persist — but the player's turn may already be
+        // on disk and unseen.
         setStreamingText("")
-        setStatus("settling")
-        syncIfOwed()
-        return
       }
-
-      // The buffer is squared with what is about to be persisted and then left
-      // alone — the block on screen IS the final passage, and it stays put until
-      // its row can replace it invisibly.
-      setStreamingText(trimmed)
       setStatus("settling")
 
-      // The settings the server actually composed with, not whatever the
-      // inspector shows by the time this lands: the writer can change the model
-      // mid-stream, and the passage would then name one that never saw it.
-      const settings = settingsRef.current
-      const usage = usageRef.current
-      const generation: EntryGeneration | null = settings
-        ? {
-            modelId: settings.modelId,
-            thinking: settings.thinking,
-            temperature: settings.temperature,
-            promptTokens: usage?.promptTokens ?? null,
-            completionTokens: usage?.completionTokens ?? null,
+      // The settle refresh is the ORIGIN device's (and it owes one whenever a
+      // persisted turn is still invisible — syncRef). A passive mirror rides
+      // the bus instead: finishRun touched the story before this frame was
+      // sent, so its refresh is already scheduled, and refreshing here too
+      // would fan N devices' redundant round-trips out across every run end.
+      if (originRef.current || syncRef.current) {
+        syncRef.current = false
+        startTransition(async () => {
+          localRefresh.pending += 1
+          try {
+            await syncStoryTree()
+          } catch {
+            // The settle timeout is the backstop; a lost refresh cannot lock
+            // the composer for good.
+          } finally {
+            localRefresh.pending -= 1
           }
-        : null
+        })
+      }
 
-      startTransition(async () => {
-        try {
-          const res = await appendGeneratedEntry(storyId, trimmed, {
-            turnId: turnIdRef.current,
-            // Undefined, not null: with no slot this is an ordinary append at
-            // the end, and with one it is a new take inside that slot.
-            variantGroupId: variantGroupRef.current ?? undefined,
-            generation,
-            // Links the money to the passage. The insert stamps it on the
-            // ledger row inside its own transaction; a stale or absent one just
-            // leaves the row unlinked, which is what an aborted call looks like.
-            callId: callIdRef.current,
-          })
-          if (!res.ok) {
-            toast.error(res.error)
-            reset()
-            return
-          }
-          // That insert revalidated, so the player's turn is covered too.
-          syncRef.current = false
-          setTailEntryId(res.data.entry.id)
-        } catch {
-          toast.error(GENERATION_ERROR)
-          reset()
-        }
-      })
+      // Exactly the two endings the server reconciles — a stop and a mid-stream
+      // failure. A call that finished told us its cost on the way past, and its
+      // figures are already in the tree the refresh above delivers.
+      if (end.status !== "ok") scheduleCostRefresh()
     },
-    [reset, storyId, syncIfOwed]
+    [scheduleCostRefresh]
   )
 
   // Settling ends when everything this turn is waiting on has arrived. Nothing
@@ -404,84 +459,254 @@ export function useGeneration(
     return () => clearTimeout(timer)
   }, [reset, settled, status])
 
-  const stream = React.useCallback(
-    async (prepared: Prepared, controller: AbortController) => {
+  /**
+   * Consumes one subscribe stream. Returns "ended" when the terminal frame
+   * arrived, "adopted"/"cold" when the stream died without one — the caller
+   * re-attaches, and the snapshot frame makes that lossless.
+   */
+  const consume = React.useCallback(
+    async (
+      events: AsyncGenerator<RunWireEvent>,
+      controller: AbortController
+    ): Promise<{ ended: boolean; adopted: boolean }> => {
+      // The frame's text seeds the accumulator, so a mid-flight attach and the
+      // origin device converge on identical buffers by construction.
       let full = ""
-      let failed = false
-      try {
-        const provider = getGenerationProvider(prepared.providerKind)
-        for await (const event of provider.generate({
-          context: prepared.context,
-          settings: prepared.settings,
-          signal: controller.signal,
-          storyId,
-          requestKind: requestKindRef.current,
-        })) {
-          if (controller.signal.aborted) break
+      let adopted = false
+      for await (const event of events) {
+        if (controller.signal.aborted) return { ended: false, adopted }
 
-          if (event.type === "meta") {
-            // Ref only, and never rendered: this is bookkeeping identity, not
-            // anything the writer has a reason to see.
-            callIdRef.current = event.callId
-            continue
-          }
-
-          if (event.type === "reasoning") {
-            // Only ever a promotion out of `pending`. Some models interleave
-            // reasoning with prose, and dropping back to `thinking` after the
-            // first word would make the indicator flicker between two states
-            // mid-passage — once prose is arriving, writing is the honest label.
-            setStatus((current) =>
-              current === "pending" ? "thinking" : current
-            )
-            continue
-          }
-
-          if (event.type === "usage") {
-            // Ref and state both: the ref is what finalize() persists (see its
-            // comment), the state is what renders.
-            usageRef.current = event.usage
-            setUsage(event.usage)
-            continue
-          }
-
+        if (event.type === "run") {
+          adopted = true
+          adoptFrame(event)
+          full = event.text
+          continue
+        }
+        if (event.type === "text") {
           full += event.value
           setStreamingText(full)
           setStatus("streaming")
+          continue
         }
-      } catch (err) {
-        failed = true
-        // Surface the provider's specific message (bad key, credits, rate
-        // limit) when there is one; aborts stay silent as before.
-        if (!controller.signal.aborted)
-          toast.error(
-            err instanceof Error && err.message ? err.message : GENERATION_ERROR
-          )
+        if (event.type === "reasoning") {
+          // Only ever a promotion out of `pending`. Some models interleave
+          // reasoning with prose, and dropping back to `thinking` after the
+          // first word would make the indicator flicker between two states
+          // mid-passage — once prose is arriving, writing is the honest label.
+          setStatus((current) => (current === "pending" ? "thinking" : current))
+          continue
+        }
+        if (event.type === "usage") {
+          setUsage(event.usage)
+          continue
+        }
+        if (event.type === "end") {
+          runEnded(event)
+          return { ended: true, adopted }
+        }
+        // `ping` (and anything a newer server might add) falls through here.
       }
-      finalize(full)
-      // Exactly the two endings the server reconciles — a stop and a mid-stream
-      // failure. A call that finished told us its cost on the way past, and its
-      // figures are already in the tree the persisted passage revalidated.
-      if (failed || controller.signal.aborted) scheduleCostRefresh()
+      return { ended: false, adopted }
+
+      function adoptFrame(frame: RunFrame) {
+        // The echo of our own start coming back over run-started, or a
+        // re-attach after a blip: same run, and activeRef is already ours.
+        activeRef.current = true
+        runIdRef.current = frame.runId
+        // Stale by definition once adopted: a latched handoff for this same
+        // run must not be chased into the linger map after it settles.
+        if (pendingAttachRef.current === frame.runId) {
+          pendingAttachRef.current = null
+        }
+        setStreamingText(frame.text)
+        setRemovingEntryIds(frame.removingEntryIds)
+        // Status is read off the snapshot, not assumed: a device can attach at
+        // any point in the run's life and must land in the honest phase.
+        setStatus(
+          frame.text !== ""
+            ? "streaming"
+            : frame.reasoningChars > 0
+              ? "thinking"
+              : "pending"
+        )
+      }
     },
-    [finalize, scheduleCostRefresh, storyId]
+    [runEnded]
   )
+
+  /**
+   * Attach loop: subscribe, mirror, and re-attach on failure until the run
+   * ends. `runId` narrows the first subscribe to a specific run (origin start,
+   * run-started event); null is the mount probe — "is anything running?".
+   *
+   * A 204 before anything was adopted is the ordinary idle answer. A 204 (or a
+   * silent stream-end) AFTER adopting means the run finished while this device
+   * wasn't listening: the persist already happened server-side, so the honest
+   * move is to settle and refresh — the row is in the tree, not on this wire.
+   */
+  const runReader = React.useCallback(
+    async (runId: string | null, controller: AbortController) => {
+      let adopted = false
+      let attempt = 0
+      while (!controller.signal.aborted) {
+        let events: AsyncGenerator<RunWireEvent> | null
+        try {
+          events = await subscribeRun(
+            storyId,
+            runIdRef.current ?? runId,
+            controller.signal
+          )
+        } catch {
+          if (controller.signal.aborted) return
+          attempt += 1
+          if (attempt >= SUBSCRIBE_FAILURE_LIMIT) {
+            if (adopted || runIdRef.current !== null) {
+              // This device is showing (or started) a run it can no longer
+              // reach. Same synthetic ending as the missed-204 path below —
+              // the refresh delivers whatever the tree holds — but with a
+              // toast, because unlike a clean 204 this is a failure the
+              // writer should hear about.
+              toast.error("Lost the connection to the generation.")
+              runEnded({
+                type: "end",
+                status: "aborted",
+                entryId: null,
+                error: null,
+                usage: null,
+              })
+            } else if (abortRef.current === controller) {
+              // A probe that cannot get an answer gives the slot back
+              // quietly; the sync channel's reconnect probe retries later.
+              abortRef.current = null
+              const pending = pendingAttachRef.current
+              pendingAttachRef.current = null
+              if (pending !== null) attachFnRef.current?.(pending)
+            }
+            return
+          }
+          await delay(
+            REATTACH_BACKOFF_MS[
+              Math.min(attempt - 1, REATTACH_BACKOFF_MS.length - 1)
+            ],
+            controller.signal
+          )
+          continue
+        }
+
+        if (events === null) {
+          if (controller.signal.aborted) return
+          // runIdRef counts as proof of adoption too: consume() can THROW
+          // after adopting (the stall guard fires mid-stream on a woken tab)
+          // and its return value — the only place `adopted` is set — is lost.
+          // Missing that here would leave activeRef true against a 204 forever:
+          // a frozen "streaming" composer nothing can ever reset.
+          if (adopted || runIdRef.current !== null) {
+            // Missed the ending entirely. entryId is unknown, so the settle
+            // derivation can't hold the buffer against its row — the refresh
+            // delivers the row and reset clears the stand-in. "aborted", not
+            // "ok": the real status is unknown, and aborted is the honest
+            // shape — no toast, but the cost refresh a cut-short run needs
+            // (a Stop from another device is exactly how a device ends up
+            // here) still gets scheduled.
+            runEnded({
+              type: "end",
+              status: "aborted",
+              entryId: null,
+              error: null,
+              usage: null,
+            })
+          } else if (abortRef.current === controller) {
+            // Probe answered "idle": release the slot without touching state.
+            abortRef.current = null
+            // A run-started can land while the probe is in flight and get
+            // refused; with the slot free again, chase it now.
+            const pending = pendingAttachRef.current
+            pendingAttachRef.current = null
+            if (pending !== null) attachFnRef.current?.(pending)
+          }
+          return
+        }
+
+        attempt = 0
+        try {
+          const result = await consume(events, controller)
+          if (result.ended || controller.signal.aborted) return
+          adopted ||= result.adopted
+        } catch {
+          if (controller.signal.aborted) return
+        }
+        // Stream died mid-run (blip, HMR, backgrounded tab): re-attach. The
+        // next snapshot frame replays nothing and loses nothing.
+        await delay(
+          REATTACH_BACKOFF_MS[
+            Math.min(attempt, REATTACH_BACKOFF_MS.length - 1)
+          ],
+          controller.signal
+        )
+        attempt += 1
+      }
+    },
+    [consume, runEnded, storyId]
+  )
+
+  /**
+   * Attach without owning: the mount probe (runId null) and the run-started
+   * handoff. Deliberately does NOT set activeRef up front — a probe that finds
+   * nothing must not have blocked the writer's Continue for a round-trip — so
+   * adoption happens when the first frame proves a run exists.
+   */
+  const attach = React.useCallback(
+    (runId: string | null) => {
+      // Already attached (possibly to this very run — our own start echoing
+      // back over the sync channel) or mid-start: refuse, but keep a FOREIGN
+      // runId for later. During the settle window activeRef is still true, and
+      // a run started elsewhere in that window (Retry the instant a run ends)
+      // gets exactly one run-started — dropping it here would leave this
+      // device blind to the whole run. reset() drains the latch.
+      if (activeRef.current || abortRef.current !== null) {
+        if (runId !== null && runId !== runIdRef.current) {
+          pendingAttachRef.current = runId
+        }
+        return
+      }
+      const controller = new AbortController()
+      abortRef.current = controller
+      void runReader(runId, controller)
+    },
+    [runReader]
+  )
+
+  // reset() re-probes through this ref (see its declaration for why).
+  React.useEffect(() => {
+    attachFnRef.current = attach
+  }, [attach])
+
+  // The magic moment: a device that merely OPENS the story while a run is live
+  // adopts it — caret moving, Stop armed — with no interaction and no UI.
+  React.useEffect(() => {
+    attach(null)
+  }, [attach])
+
+  // The sync channel's run-started handoff (see GenerationOptions.attachRef).
+  React.useEffect(() => {
+    const ref = optionsRef.current.attachRef
+    if (!ref) return
+    ref.current = attach
+    return () => {
+      ref.current = null
+    }
+  }, [attach])
 
   const start = React.useCallback(
     (options: StartOptions) => {
       if (activeRef.current) return false
       activeRef.current = true
+      originRef.current = true
 
-      if (options.isRetry) {
-        variantRef.current = lastWasRetryRef.current
-          ? variantRef.current + 1
-          : 1
-      } else {
-        variantRef.current = 0
-      }
-      lastWasRetryRef.current = Boolean(options.isRetry)
-      const variant = variantRef.current
-
+      // A mount probe may still be in flight; this start supersedes it. If a
+      // run really is live, startGeneration answers ok:false and fail() cleans
+      // up — the server is the arbiter of "busy", not this tab's timing.
+      abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
       unownedTextRef.current = options.restoreOnFailure ?? null
@@ -492,12 +717,8 @@ export function useGeneration(
       // randomId, not crypto.randomUUID — this runs in the browser, where
       // randomUUID is undefined outside a secure context. See lib/id.ts.
       const turnId = randomId()
-      turnIdRef.current = turnId
-      variantGroupRef.current = options.variantGroupId ?? null
-      settingsRef.current = null
-      usageRef.current = null
-      callIdRef.current = null
-      requestKindRef.current = options.requestKind ?? DEFAULT_REQUEST_KIND
+      startTurnIdRef.current = turnId
+      stopDuringStartRef.current = false
 
       setStatus("pending")
       setStreamingText("")
@@ -511,31 +732,49 @@ export function useGeneration(
       setRemovingEntryIds(options.removing ?? [])
 
       startTransition(async () => {
+        // Bracketed like every other local transition: startGeneration's turn
+        // persist touches the bus, and that echo arriving back over the sync
+        // channel mid-start must not trigger a full-tree refresh on the one
+        // device already echoing the turn locally.
+        localRefresh.pending += 1
         try {
-          const prepared = await prepareGeneration(storyId, {
+          const res = await startGeneration(storyId, {
             kind: options.kind,
             userText: options.userText,
-            variant,
             turnId,
-            // Needed on the way OUT as well as back: the context is composed
-            // without this slot, so the model writes an alternative rather than
-            // a continuation. The old take is still active here — it is only
-            // deactivated when the new one is inserted.
             variantGroupId: options.variantGroupId,
+            removingEntryIds: options.removing,
+            requestKind: options.requestKind ?? DEFAULT_REQUEST_KIND,
           })
 
-          if (!prepared.ok) {
-            fail(prepared.error)
+          if (!res.ok) {
+            fail(res.error)
             return
           }
-          // The server has persisted the passage — there is nothing left to
+          // The server owns the turn AND the run now — there is nothing left to
           // give back, so a later failure must not refill the composer.
           unownedTextRef.current = null
-          settingsRef.current = prepared.data.settings
 
           // Acknowledged: the echo stops looking provisional now, even though
           // it goes on being rendered from here until its row is delivered.
-          const { userEntryId } = prepared.data
+          const { runId, userEntryId } = res.data
+          // Known the moment the server says so, not first at the snapshot
+          // frame: the run-started echo of THIS run can beat this response
+          // over the sync channel, and attach() needs runIdRef to recognize
+          // it as ours rather than latching it as a foreign run to chase.
+          runIdRef.current = runId
+          if (pendingAttachRef.current === runId)
+            pendingAttachRef.current = null
+          // A Stop pressed during this round-trip may have outraced the
+          // reservation server-side and latched nothing. The run has a name
+          // now, so stop it by name; if the latch DID catch it, this second
+          // stop finds an already-aborted run and changes nothing.
+          if (stopDuringStartRef.current) {
+            stopDuringStartRef.current = false
+            void stopGeneration(storyId, runId).catch(() => {
+              // The screen still shows the run streaming, and Stop still works.
+            })
+          }
           if (userEntryId !== null) {
             syncRef.current = true
             setEcho((current) =>
@@ -543,23 +782,22 @@ export function useGeneration(
             )
           }
 
-          if (controller.signal.aborted) {
-            finalize("")
-            return
-          }
-
           // Deliberately not awaited: chunk updates must be urgent, not
           // transition work, and the transition should settle now so the
-          // pending state lifts the moment the provider takes over.
-          void stream(prepared.data, controller)
+          // pending state lifts the moment the stream takes over. If this
+          // reader dies, the run does not — it re-attaches, or another device
+          // watches the same run finish.
+          void runReader(runId, controller)
         } catch {
           fail(GENERATION_ERROR)
+        } finally {
+          localRefresh.pending -= 1
         }
       })
 
       return true
     },
-    [fail, finalize, storyId, stream]
+    [fail, runReader, storyId]
   )
 
   const send = React.useCallback(
@@ -603,7 +841,6 @@ export function useGeneration(
     const last = entries[entries.length - 1]
     if (!last || last.source !== "generated") return
     start({
-      isRetry: true,
       requestKind: "retry",
       variantGroupId: last.variantGroupId,
       // The old take goes inactive, dropping out of `story.entries` as a
@@ -624,20 +861,24 @@ export function useGeneration(
     ) => {
       if (activeRef.current) return
       activeRef.current = true
-      variantRef.current = 0
-      lastWasRetryRef.current = false
 
       startTransition(async () => {
+        localRefresh.pending += 1
         try {
           const res = await run(storyId)
           if (!res.ok) toast.error(res.error)
         } catch {
           toast.error(errorMessage)
+        } finally {
+          localRefresh.pending -= 1
         }
-        activeRef.current = false
+        // Through releaseSlot, not a bare flag flip: a run-started that landed
+        // during the undo (Retry on another device) is latched and only the
+        // release path chases it.
+        releaseSlot()
       })
     },
-    [storyId]
+    [releaseSlot, storyId]
   )
 
   const undo = React.useCallback(() => {
@@ -648,9 +889,31 @@ export function useGeneration(
     runHistory(redoStoryOp, REDO_ERROR)
   }, [runHistory])
 
+  // Fire and forget, and deliberately no local detach: the end frame — emitted
+  // after the server persists whatever prose survived — is what drives the
+  // settle, exactly as a natural finish does. If the stop fails to reach the
+  // server the run honestly keeps going, and the screen keeps saying so.
   const stop = React.useCallback(() => {
-    abortRef.current?.abort()
-  }, [])
+    if (!activeRef.current) return
+    // The runId names the run this device is actually watching, so a Stop
+    // from a device that slept through a settle cannot abort the newer run
+    // now holding the story. Null while our own start is still in flight —
+    // then the start's turnId is the token, and the server aborts or latches
+    // only the run/reservation carrying it: a foreign run that turns out to
+    // hold the story (this device missed its run-started) stays untouched,
+    // and the intent survives even if this tab dies before the round-trip
+    // resolves. The flag is the one ordering the server can't cover — a stop
+    // POST beating the start's own reservation — and start() re-fires it by
+    // name once the runId is known.
+    if (runIdRef.current === null) stopDuringStartRef.current = true
+    void stopGeneration(
+      storyId,
+      runIdRef.current,
+      startTurnIdRef.current
+    ).catch(() => {
+      toast.error("Couldn't reach the server to stop.")
+    })
+  }, [storyId])
 
   const lastEntry = entries[entries.length - 1]
 
@@ -676,4 +939,18 @@ export function useGeneration(
     redo,
     stop,
   }
+}
+
+/** Abort-aware sleep: resolves early (never rejects) when the signal fires. */
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve()
+    const timer = setTimeout(done, ms)
+    signal.addEventListener("abort", done, { once: true })
+    function done() {
+      clearTimeout(timer)
+      signal.removeEventListener("abort", done)
+      resolve()
+    }
+  })
 }

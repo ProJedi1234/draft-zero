@@ -3,8 +3,8 @@
 import { OpenRouter } from "@openrouter/sdk"
 import { OpenRouterError } from "@openrouter/sdk/models/errors"
 import { eq } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
 
+import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
 import { appSettings } from "@/lib/db/schema"
@@ -42,7 +42,7 @@ export async function updateAppSettings(
     await db.update(appSettings).set(values).where(eq(appSettings.id, 1))
   }
 
-  revalidatePath("/", "layout")
+  commitChange(null)
   return { ok: true, data: null }
 }
 

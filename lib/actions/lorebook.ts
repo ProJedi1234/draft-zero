@@ -1,8 +1,8 @@
 "use server"
 
 import { eq } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
 
+import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
 import { lorebookEntries } from "@/lib/db/schema"
 import type { ActionResult, NewLorebookEntry } from "@/lib/types"
@@ -32,7 +32,7 @@ export async function createLorebookEntry(
     updatedAt: now,
   })
 
-  revalidatePath("/", "layout")
+  commitChange(storyId)
   return { ok: true, data: { id } }
 }
 
@@ -65,7 +65,7 @@ export async function updateLorebookEntry(
   if (updated.length === 0)
     return { ok: false, error: "Lorebook entry not found." }
 
-  revalidatePath("/", "layout")
+  commitChange(null)
   return { ok: true, data: null }
 }
 
@@ -79,6 +79,6 @@ export async function deleteLorebookEntry(id: string): Promise<ActionResult> {
   if (deleted.length === 0)
     return { ok: false, error: "Lorebook entry not found." }
 
-  revalidatePath("/", "layout")
+  commitChange(null)
   return { ok: true, data: null }
 }

@@ -1,12 +1,12 @@
 // lib/generation/calls.ts — The write half of the spend ledger.
 //
-// Server-only, and called from POST /api/generate rather than from the client
-// or from appendGeneratedEntry. Two reasons, both structural: `finalize()` only
-// runs when prose survives, so a client-side recorder would miss every Stop and
-// every mid-stream provider error — both of which are billed — and a cost that
-// arrives over the wire from a browser is a number the browser could have made
-// up. The route is the only place that sees every call, including the ones that
-// die.
+// Server-only, and called from the run loop (lib/generation/live.ts) rather
+// than from the client or from the persist path. Two reasons, both structural:
+// persisting only happens when prose survives, so a recorder living there
+// would miss every Stop and every mid-stream provider error — both of which
+// are billed — and a cost that arrives over the wire from a browser is a
+// number the browser could have made up. The run loop is the only place that
+// sees every call, including the ones that die.
 //
 // NOTHING IN HERE MAY THROW INTO THE GENERATION PATH. Failing to measure a call
 // is a bookkeeping problem; failing the writer's generation because we could not
@@ -162,8 +162,8 @@ export async function settleCall(
 /**
  * A settle value that defers to an already-reconciled row.
  *
- * The route starts settleCall and reconcileCall in the same tick and awaits
- * neither, so their two writes race. Reconciliation sleeps a second before its
+ * The run loop awaits settleCall but fires reconcileCall and forgets it, so
+ * their two writes race. Reconciliation sleeps a second before its
  * first lookup, which makes settle win essentially always — but "essentially
  * always" is not an invariant, and the losing order is the destructive one:
  * a stopped call settles with `usage === null`, so a settle landing after a

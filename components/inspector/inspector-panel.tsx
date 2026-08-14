@@ -257,7 +257,7 @@ function InspectorSections({
 
   // The clamp in the useState initializer above is display-only until it is
   // written. The server generation path reads the *stored* window (see
-  // prepareGeneration), so a row left over from a larger model would keep
+  // startGeneration in lib/actions/generation.ts), so a row left over from a larger model would keep
   // assembling a prompt the selected model cannot accept while the meter
   // cheerfully reported the clamped figure. Write the fix-up once, from an
   // effect — saving during a render is not allowed, and `key={story.id}`

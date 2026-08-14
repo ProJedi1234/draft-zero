@@ -3,6 +3,7 @@ import { Geist_Mono, Inter, Source_Serif_4 } from "next/font/google"
 
 import "./globals.css"
 import { AppSidebar } from "@/components/sidebar/app-sidebar"
+import { SyncListener } from "@/components/sync-listener"
 import { ThemeProvider } from "@/components/theme-provider"
 import { ViewportHeightSync } from "@/components/viewport-height-sync"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -109,6 +110,7 @@ export default async function RootLayout({
           </SidebarProvider>
           <Toaster />
           <ViewportHeightSync />
+          <SyncListener />
         </ThemeProvider>
       </body>
     </html>

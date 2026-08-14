@@ -1,0 +1,14 @@
+# compose.lan.yaml — publish the app to the LAN on 3001 instead of 3000.
+#
+#   docker compose -f compose.yaml -f compose.lan.yaml --profile app up -d
+#
+# A separate override rather than an edit to compose.yaml: the base file's
+# stance is "nothing reachable off this box", and 3001 exists to point phones
+# at a magic-sync build — a deliberate exception, opted into per invocation.
+# `!override` replaces the ports list; plain merging would append and keep
+# 3000:3000, which collides with a host `next dev`.
+
+services:
+  app:
+    ports: !override
+      - "3001:3000"

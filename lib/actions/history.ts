@@ -1,12 +1,13 @@
 "use server"
 
 import { and, asc, desc, eq, isNull } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
 
+import { commitChange } from "@/lib/actions/commit"
 import type { DrizzleTx } from "@/lib/db/client"
 import { getDb } from "@/lib/db/client"
 import { applyMutations, recordOp } from "@/lib/db/journal"
 import { stories, storyEntries, storyOps } from "@/lib/db/schema"
+import { refuseDuringRun } from "@/lib/generation/live"
 import type { OpPayload } from "@/lib/history/ops"
 import { parsePayload, redoPlan, summarize, undoPlan } from "@/lib/history/ops"
 import type { ActionResult } from "@/lib/types"
@@ -18,6 +19,13 @@ import type { ActionResult } from "@/lib/types"
 // Each returns `{ summary }` so the client can say what it did, and `null` —
 // still ok — when there was nothing to do. ⌘Z at the start of a story should do
 // nothing quietly rather than raise a toast.
+//
+// All three refuse while a generation is running. The client darkens these
+// controls on a device that is mirroring the run, but a device that ISN'T —
+// woke up mid-run, missed the run-started — has them lit, and an undo landing
+// mid-run deactivates the very slot the run persists into (the passage is
+// silently dropped) or truncates the redo tail out from under the run's own
+// recordOp. The run's settle is the moment history becomes safe to walk again.
 
 /**
  * The story's cursor, or null when the story is gone — callers turn that into
@@ -67,6 +75,8 @@ async function readOp(
 export async function undoStoryOp(
   storyId: string
 ): Promise<ActionResult<{ summary: string } | null>> {
+  const running = refuseDuringRun(storyId)
+  if (running) return running
   const db = await getDb()
   const now = new Date().toISOString()
 
@@ -93,7 +103,7 @@ export async function undoStoryOp(
     }
   )
 
-  if (result.ok) revalidatePath("/", "layout")
+  if (result.ok) commitChange(storyId)
   return result
 }
 
@@ -101,6 +111,8 @@ export async function undoStoryOp(
 export async function redoStoryOp(
   storyId: string
 ): Promise<ActionResult<{ summary: string } | null>> {
+  const running = refuseDuringRun(storyId)
+  if (running) return running
   const db = await getDb()
   const now = new Date().toISOString()
 
@@ -124,7 +136,7 @@ export async function redoStoryOp(
     }
   )
 
-  if (result.ok) revalidatePath("/", "layout")
+  if (result.ok) commitChange(storyId)
   return result
 }
 
@@ -144,6 +156,8 @@ export async function selectVariantByOffset(
   entryId: string,
   offset: number
 ): Promise<ActionResult<{ summary: string } | null>> {
+  const running = refuseDuringRun(storyId)
+  if (running) return running
   const db = await getDb()
   const now = new Date().toISOString()
 
@@ -239,6 +253,6 @@ export async function selectVariantByOffset(
     }
   )
 
-  if (result.ok) revalidatePath("/", "layout")
+  if (result.ok) commitChange(storyId)
   return result
 }

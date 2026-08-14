@@ -1,7 +1,6 @@
 "use server"
 
-import { revalidatePath } from "next/cache"
-
+import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
 import { lorebookEntries, stories, storyEntries } from "@/lib/db/schema"
@@ -112,7 +111,9 @@ export async function importScenario(input: {
     }
   })
 
-  revalidatePath("/", "layout")
+  // Library-level, same as createStory: an import is a new story with no
+  // viewers yet, announced to the library rather than to a story.
+  commitChange(null)
   return {
     ok: true,
     data: {

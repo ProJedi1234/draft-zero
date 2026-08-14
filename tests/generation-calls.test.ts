@@ -1,6 +1,8 @@
 // tests/generation-calls.test.ts — The spend ledger's write half: what
 // lib/generation/calls.ts and lib/generation/reconcile.ts actually put in the
-// row, and what they refuse to put there.
+// row, and what they refuse to put there. Their caller is the run loop in
+// lib/generation/live.ts now (the /api/generate route is gone); when and
+// whether the loop calls them is pinned in generation-stream.test.ts.
 //
 // This layer has no UI and no return value. Every one of its mistakes is
 // silent — a wrong number that sums into a total a writer trusts, or an
@@ -323,8 +325,8 @@ describe("settleCall", () => {
   })
 
   test("it cannot downgrade a row reconciliation already priced", async () => {
-    // The route starts the settle and the reconciliation in the same tick and
-    // awaits neither. Reconciliation sleeps first, so settle wins in practice —
+    // The run loop awaits the settle but fires the reconciliation and
+    // forgets it. Reconciliation sleeps first, so settle wins in practice —
     // but the losing order is the destructive one: an aborted call settles with
     // no usage, so an unguarded settle arriving second would overwrite
     // OpenRouter's own figure with NULL. Every measurement column defers.
@@ -598,8 +600,8 @@ describe("shouldReconcile", () => {
 
 describe("the meta event contract", () => {
   // Pinned here rather than in the stream suite because this is the shape the
-  // ledger depends on: the client learns which row its passage belongs to from
-  // this event and nowhere else.
+  // ledger depends on: the run loop learns the generation id — the handle a
+  // stopped call's cost hangs on — from this event and nowhere else.
   test("both ids are nullable, and the mock is allowed to claim neither", () => {
     const offline: GenerationEvent = {
       type: "meta",
@@ -614,7 +616,7 @@ describe("the meta event contract", () => {
     expect(offline).toEqual({ type: "meta", generationId: null, callId: null })
     expect(live.type).toBe("meta")
     if (live.type !== "meta") throw new Error("unreachable")
-    // A non-null callId is the handle appendGeneratedEntry stamps onto the row.
+    // A non-null callId is the handle the persist core stamps onto the row.
     expect(live.callId).toBe("call-1")
     expect(live.generationId).toBe("gen-abc")
   })
