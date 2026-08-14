@@ -110,7 +110,8 @@ reads the file itself — drizzle-kit needs no flags.
 - `lib/actions/` — server actions (the only writers)
 - `lib/generation/` — provider interface + mock provider, plus the two OpenRouter
   catalogs: `models.ts` (every model) and `endpoints.ts` (who serves one model)
-- `lib/import/` — `novelai.ts` reads NovelAI `.scenario` files (see below)
+- `lib/import/` — `novelai.ts` reads NovelAI `.scenario` files, `aidungeon.ts`
+  reads AI Dungeon story-card exports (see below)
 - `lib/story/` — `action-voice.ts` turns a player action into prose (see below)
 - `docs/` — milestone specs; `MILESTONE2.md` predates the Postgres move
 
@@ -164,13 +165,38 @@ and a tag that has since left the model's endpoint list falls back to Auto rathe
 than failing the request. When a pinned endpoint has a shorter window than the
 model, that shorter window becomes the context ceiling.
 
-## Importing NovelAI scenarios
+## Importing
 
-The upload icon beside the sidebar's Library heading takes a NovelAI
-`.scenario` file and turns it into a story: prompt → the opening passage,
+The upload icon beside the sidebar's Library heading takes **either** a NovelAI
+`.scenario` or an AI Dungeon story-card export. Both are `.json`, so the picker
+sniffs the file rather than asking which one you have: each reader reports
+whether it *recognises* a file separately from whether it could *read* it, and
+the first to claim it wins.
+
+**NovelAI `.scenario`** becomes a story: prompt → the opening passage,
 `context[0]`/`context[1]` → memory and author's note, tags → genre, and the
 scenario's lorebook → that story's lorebook. `${…}` placeholders are collected
 into the import dialog and filled before anything is written.
+
+**AI Dungeon story cards** are lore rather than a scenario — often a bare JSON
+array with no prompt at all — so they import two ways:
+
+- from the sidebar, as a new story whose lorebook is the cards
+- from a story's lorebook, merging into what is already there
+
+A card's `type` is free text, not an enum: AI Dungeon's UI title-cases it and
+lets writers invent their own, so the reader folds case and punctuation, matches
+a table of the known vocabulary, and falls back to keyword matching before the
+`concept` catch-all — reporting every guess it makes.
+
+A `worldDescription` card is the setting bible rather than lore. Importing as a
+new story seeds `memory` with it; merging into an existing story leaves that
+story's memory alone and writes it as an always-active entry instead. Exactly
+one copy is kept either way.
+
+On a merge, a card whose name the story already holds is **skipped** and
+counted — never overwritten, never duplicated. Cards that collide only with each
+other are all kept, the same as the new-story path.
 
 Not imported: NovelAI's model, repetition penalties and `max_length` (its
 sampler has no OpenRouter equivalent — temperature and top-p carry over), user

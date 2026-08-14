@@ -7,6 +7,7 @@ import { toast } from "sonner"
 
 import { importScenario } from "@/lib/actions/import"
 import type { ParsedScenario } from "@/lib/import/novelai"
+import { summarize, SummaryRow } from "@/components/import/import-summary"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -41,12 +42,25 @@ export function ImportScenarioDialog({
   pending: PendingScenario | null
   onOpenChange: (open: boolean) => void
 }) {
+  // Lifted out of the form so the dialog can refuse to close mid-write.
+  // Dismissing does not cancel the action — the rows still land — and the
+  // surviving closure then reports success over a dialog that is gone.
+  const [isBusy, setIsBusy] = React.useState(false)
+
   return (
-    <Dialog open={pending !== null} onOpenChange={onOpenChange}>
+    <Dialog
+      open={pending !== null}
+      onOpenChange={(open) => {
+        if (!open && isBusy) return
+        onOpenChange(open)
+      }}
+      disablePointerDismissal={isBusy}
+    >
       <DialogContent className="sm:max-w-lg">
         {pending && (
           <ImportScenarioForm
             pending={pending}
+            onBusyChange={setIsBusy}
             onDone={() => onOpenChange(false)}
           />
         )}
@@ -58,13 +72,19 @@ export function ImportScenarioDialog({
 function ImportScenarioForm({
   pending,
   onDone,
+  onBusyChange,
 }: {
   pending: PendingScenario
   onDone: () => void
+  onBusyChange: (busy: boolean) => void
 }) {
   const { scenario } = pending
   const router = useRouter()
   const [isPending, startTransition] = React.useTransition()
+
+  React.useEffect(() => {
+    onBusyChange(isPending)
+  }, [isPending, onBusyChange])
   const [values, setValues] = React.useState<Record<string, string>>(() =>
     Object.fromEntries(scenario.placeholders.map((p) => [p.id, p.defaultValue]))
   )
@@ -73,24 +93,32 @@ function ImportScenarioForm({
     event.preventDefault()
     if (isPending) return
     startTransition(async () => {
-      const res = await importScenario({
-        json: pending.json,
-        placeholderValues: values,
-      })
-      if (!res.ok) {
-        toast.error(res.error)
-        return
+      try {
+        const res = await importScenario({
+          json: pending.json,
+          placeholderValues: values,
+        })
+        if (!res.ok) {
+          toast.error(res.error)
+          return
+        }
+        const { lorebookEntryCount } = res.data
+        toast.success(
+          lorebookEntryCount > 0
+            ? `Imported "${res.data.title}" and ${lorebookEntryCount} lorebook ${
+                lorebookEntryCount === 1 ? "entry" : "entries"
+              }`
+            : `Imported "${res.data.title}"`
+        )
+        onDone()
+        router.push(`/story/${res.data.storyId}`)
+      } catch {
+        // A server action can REJECT rather than return {ok:false} — a body-size
+        // rejection, a dropped connection, a constraint error. Unguarded, the
+        // rejection escapes the transition callback: no toast, no close, and
+        // React escalates to the nearest error boundary.
+        toast.error("That import couldn't be completed. Nothing was saved.")
       }
-      const { lorebookEntryCount } = res.data
-      toast.success(
-        lorebookEntryCount > 0
-          ? `Imported "${res.data.title}" and ${lorebookEntryCount} lorebook ${
-              lorebookEntryCount === 1 ? "entry" : "entries"
-            }`
-          : `Imported "${res.data.title}"`
-      )
-      onDone()
-      router.push(`/story/${res.data.storyId}`)
     })
   }
 
@@ -182,7 +210,10 @@ function ImportScenarioForm({
       </ScrollArea>
 
       <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
+        <DialogClose
+          disabled={isPending}
+          render={<Button type="button" variant="outline" />}
+        >
           Cancel
         </DialogClose>
         <Button type="submit" disabled={isPending}>
@@ -194,21 +225,4 @@ function ImportScenarioForm({
       </DialogFooter>
     </form>
   )
-}
-
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="truncate">{value}</dd>
-    </>
-  )
-}
-
-/** Word count for a field, or "Empty" — enough to see what a file carries. */
-function summarize(text: string): string {
-  const trimmed = text.trim()
-  if (trimmed === "") return "Empty"
-  const words = trimmed.split(/\s+/).length
-  return `${words} ${words === 1 ? "word" : "words"}`
 }
