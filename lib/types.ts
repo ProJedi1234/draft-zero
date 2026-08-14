@@ -53,6 +53,20 @@ export interface StoryEntry {
    * "we do not know", not "default settings".
    */
   generation: EntryGeneration | null
+  /**
+   * What this take cost, in USD, as a decimal STRING straight out of Postgres —
+   * never a float. Null means "we do not know": a user passage, a passage
+   * written before the ledger existed, or a call OpenRouter declined to price.
+   * Never render a null as "$0.00"; see formatUsd, which renders it as "—".
+   */
+  costUsd: string | null
+  /** Tokens the model spent thinking, from the ledger. Null when unknown. */
+  reasoningTokens: number | null
+  /**
+   * How the call that produced this take ended. "aborted" is a passage the
+   * writer stopped mid-stream and kept; null is a take with no ledger row.
+   */
+  callStatus: SettledCallStatus | null
   /** ISO-8601 timestamp. */
   createdAt: string
 }
@@ -71,6 +85,103 @@ export interface EntryGeneration {
   /** Exact counts from the provider's final usage event, or null when it sent none. */
   promptTokens: number | null
   completionTokens: number | null
+}
+
+/** Which move sent a generation request. */
+export type GenerationRequestKind = "generate" | "retry" | "continue"
+
+/**
+ * A ledger row's lifecycle. The row is written as "streaming" before anything
+ * is known about the outcome, which is what guarantees a stopped or crashed
+ * call still leaves a trace. Every aggregate excludes "streaming" — a call in
+ * flight has no cost yet and a crashed process would otherwise leave one
+ * pending forever.
+ */
+export type GenerationCallStatus = "streaming" | "ok" | "aborted" | "error"
+
+/** A call that has resolved — everything a reader ever sums or displays. */
+export type SettledCallStatus = Exclude<GenerationCallStatus, "streaming">
+
+/**
+ * Where a cost figure came from. "stream" is the final chunk's own number;
+ * "reconciled" is OpenRouter's /generation record, which is allowed to
+ * overwrite a streamed value but is never overwritten by one.
+ */
+export type CostSource = "stream" | "reconciled"
+
+/**
+ * Everything the per-story cost surfaces need, in one read.
+ *
+ * Every USD figure is a decimal string summed in SQL. `unpricedCalls` is the
+ * honesty column: it is what lets a total be shown as "$0.42+" with a footnote
+ * instead of quietly presenting an undercount as exact.
+ */
+export interface StoryCostProfile {
+  totalUsd: string
+  calls: number
+  /** Settled calls with no price at all — the "+" in "$0.42+". */
+  unpricedCalls: number
+  /** Calls the writer stopped mid-stream. Billed, and usually unpriced. */
+  abortedCalls: number
+  promptTokens: number
+  completionTokens: number
+  /** Spend by model, descending. */
+  perModel: ModelShareRow[]
+  /** Spend per surviving passage, in manuscript order — the sparkline's data. */
+  perEntry: EntrySpendRow[]
+}
+
+export interface ModelShareRow {
+  modelId: string
+  costUsd: string
+  calls: number
+}
+
+export interface EntrySpendRow {
+  entryId: string
+  position: number
+  costUsd: string | null
+}
+
+/** The "where am I right now" numbers, all UTC-day bucketed. */
+export interface GlobalCostSummary {
+  todayUsd: string
+  weekUsd: string
+  allTimeUsd: string
+  /** All-time count of settled calls with no price. */
+  unpricedCalls: number
+  /**
+   * Unpriced calls inside each window, so a figure is only marked as a floor
+   * when its OWN window contains one. Marking "today" with a "+" because of an
+   * unpriced call from last month is not a caveat, it is a wrong caveat.
+   */
+  todayUnpricedCalls: number
+  weekUnpricedCalls: number
+}
+
+/** One bucket of the spend-over-time series. `day` is a UTC "YYYY-MM-DD". */
+export interface SpendDay {
+  day: string
+  costUsd: string
+  calls: number
+}
+
+export interface StorySpendRow {
+  /** Null once the story has been deleted; the ledger row outlives it. */
+  storyId: string | null
+  /** The live title, else the denormalised one, else "Deleted story". */
+  title: string
+  isDeleted: boolean
+  costUsd: string
+  calls: number
+}
+
+export interface ModelSpendRow {
+  modelId: string
+  costUsd: string
+  calls: number
+  promptTokens: number
+  completionTokens: number
 }
 
 /**

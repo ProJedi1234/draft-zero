@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Meter } from "@/components/ui/meter"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
@@ -627,29 +628,24 @@ function ContextMeter({
       composeContext({ story, lorebookEntries, contextWindow }).approxTokens,
     [story, lorebookEntries, contextWindow]
   )
-  // The smallest stops cannot fit the system prompt alone, so the bar can be
-  // pinned full while the readout honestly shows the overflow.
-  const ratio = Math.min(1, approxTokens / contextWindow)
-
   return (
     <div className="space-y-1.5">
       <p className="font-mono text-xs text-muted-foreground tabular-nums">
         ≈ {formatApproxTokens(approxTokens)} /{" "}
         {contextWindowLabel(contextWindow)} tokens
       </p>
-      <div
-        className="h-0.5 w-full overflow-hidden bg-muted"
+      {/* The smallest stops cannot fit the system prompt alone, so the bar can
+          be pinned full (Meter clamps) while the readout above honestly shows
+          the overflow. */}
+      <Meter
+        value={approxTokens / contextWindow}
+        indicatorClassName="transition-[width] duration-200"
         role="progressbar"
         aria-label="Context used"
         aria-valuemin={0}
         aria-valuemax={contextWindow}
         aria-valuenow={approxTokens}
-      >
-        <div
-          className="h-full bg-primary transition-[width] duration-200"
-          style={{ width: `${ratio * 100}%` }}
-        />
-      </div>
+      />
     </div>
   )
 }

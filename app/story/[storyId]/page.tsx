@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
 import { StoryWorkspace } from "@/components/story/story-workspace"
+import { getStoryCostProfile } from "@/lib/db/cost-queries"
 import { getStory, listLorebookEntries } from "@/lib/db/queries"
 import { listModels } from "@/lib/generation/models"
 
@@ -25,10 +26,21 @@ export async function generateMetadata({
 
 export default async function StoryPage({ params }: StoryPageProps) {
   const { storyId } = await params
-  const [story, lorebookEntries, models] = await Promise.all([
+  // Cost is read here rather than fetched by the header on open: the ledger is
+  // behind a deliberate click, and a panel that answers "how much have I spent"
+  // with a skeleton has wasted the gesture. revalidatePath after every entry
+  // mutation keeps these figures honest without a client fetch.
+  //
+  // Story-scoped only. The global summary used to be fetched alongside it, for
+  // the second half of one hover line: an unscoped aggregate over the entire
+  // ledger — the one cost query no index can serve — on every story open, for a
+  // figure most opens never reveal. The global "where am I" figures live on
+  // /usage, which the ledger links to.
+  const [story, lorebookEntries, models, costProfile] = await Promise.all([
     getStory(storyId),
     listLorebookEntries(storyId),
     listModels(),
+    getStoryCostProfile(storyId),
   ])
 
   if (!story) {
@@ -43,6 +55,7 @@ export default async function StoryPage({ params }: StoryPageProps) {
       story={story}
       lorebookEntries={lorebookEntries}
       models={models}
+      costProfile={costProfile}
     />
   )
 }

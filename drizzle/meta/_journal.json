@@ -71,6 +71,13 @@
       "when": 1786639864627,
       "tag": "0009_tricky_sunfire",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786670299928,
+      "tag": "0010_legal_daimon_hellstrom",
+      "breakpoints": true
     }
   ]
 }

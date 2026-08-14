@@ -7,6 +7,7 @@ import type {
   LorebookEntry,
   OpenRouterModel,
   Story,
+  StoryCostProfile,
 } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import {
@@ -45,10 +46,13 @@ export function StoryWorkspace({
   story,
   lorebookEntries,
   models,
+  costProfile,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
+  /** Server-read spend for this story — the header chip's ledger. */
+  costProfile: StoryCostProfile
 }) {
   const [inspectorOpen, setInspectorOpen] = useInspectorOpen()
   const [mobileInspectorOpen, setMobileInspectorOpen] = React.useState(false)
@@ -58,6 +62,7 @@ export function StoryWorkspace({
     <div className="flex h-app min-w-0 flex-col">
       <StoryHeader
         story={story}
+        costProfile={costProfile}
         inspectorOpen={inspectorOpen}
         onToggleInspector={() => setInspectorOpen(!inspectorOpen)}
         onOpenMobileInspector={() => setMobileInspectorOpen(true)}

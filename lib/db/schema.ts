@@ -13,13 +13,19 @@ import {
   doublePrecision,
   index,
   integer,
+  numeric,
   pgTable,
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core"
 
 import type { OpKind } from "@/lib/history/ops"
-import type { ThinkingLevel } from "@/lib/types"
+import type {
+  CostSource,
+  GenerationCallStatus,
+  GenerationRequestKind,
+  ThinkingLevel,
+} from "@/lib/types"
 
 export const stories = pgTable("stories", {
   id: text("id").primaryKey(),
@@ -161,6 +167,139 @@ export const storyOps = pgTable(
   ]
 )
 
+/**
+ * The spend ledger: one row per OpenRouter call, minted when the request goes
+ * out and never deleted.
+ *
+ * Deliberately NOT a column on story_entries. A call the writer stopped
+ * mid-stream, or that died with a provider error, was still billed and still
+ * has to be counted — and neither one leaves an entry behind to hang a column
+ * off. For the same reason both foreign keys are nullable and neither cascades:
+ * deleting a story deletes its manuscript, not the record that the money left
+ * the account.
+ *
+ * `cost_usd` is numeric, not doublePrecision. Per-call costs run to eight and
+ * nine decimal places and the whole point of the table is that a few thousand of
+ * them add up to a number the writer compares against a credit balance; binary
+ * float would drift in exactly the digit being checked. Drizzle maps numeric to
+ * a JS string, which is correct here — the value is summed in SQL and formatted
+ * for display, never arithmetic'd in JS.
+ */
+export const generationCalls = pgTable(
+  "generation_calls",
+  {
+    id: text("id").primaryKey(),
+    // Nullable + no cascade, on purpose (see the header). A NULL story_id is a
+    // call whose story has since been deleted; the denormalised title below
+    // keeps the row readable on its own after that happens.
+    storyId: text("story_id").references(() => stories.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * The take this call produced, stamped in a second write once the entry row
+     * exists. NULL means either "not written yet" or "this call never became a
+     * passage" — aborted, errored, or discarded.
+     */
+    storyEntryId: text("story_entry_id").references(() => storyEntries.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * The story id as the request named it, deliberately WITHOUT a foreign key,
+     * stamped at mint and never nulled. story_id above answers "does this story
+     * still exist"; this column answers "which story was this" — a stable
+     * grouping key that survives deletion, so two departed stories with the
+     * same title stay two lines on the usage page instead of merging.
+     */
+    origStoryId: text("orig_story_id"),
+    /**
+     * The slot (story_entries.variant_group_id) this call's take landed in — no
+     * FK, same afterlife rationale as orig_story_id. Stamped in the same write
+     * as story_entry_id; NULL means the call never became a passage. Groups a
+     * slot's takes so "what did re-rolling this passage cost in total" still
+     * sums after the entries are gone.
+     */
+    origVariantGroupId: text("orig_variant_group_id"),
+    /** Survives story deletion so a global ledger still reads as English. */
+    storyTitle: text("story_title"),
+    /** What the writer asked for. */
+    requestKind: text("request_kind").notNull().$type<GenerationRequestKind>(),
+    // Provenance, frozen, same philosophy as story_entries.gen*.
+    modelId: text("model_id").notNull(),
+    /**
+     * The endpoint that actually served it, from the story's pin or the
+     * reconciliation fetch. NULL for Auto routing we never resolved — which is
+     * why story_entries alone cannot reconstruct a price.
+     */
+    providerName: text("provider_name"),
+    thinking: text("thinking").$type<ThinkingLevel>(),
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    reasoningTokens: integer("reasoning_tokens"),
+    /**
+     * Prompt tokens served from the provider's cache, when it reports them. A
+     * subset of prompt_tokens, not an addition to it. NULL means the provider
+     * said nothing, which is different from "none were cached".
+     */
+    cachedPromptTokens: integer("cached_prompt_tokens"),
+    /** Total, USD. NULL until known; stays NULL on a call we never priced. */
+    costUsd: numeric("cost_usd", { precision: 20, scale: 12 }),
+    /**
+     * Upstream split, when OpenRouter's costDetails carries it. Purely for the
+     * "why was this expensive" breakdown; never summed against costUsd.
+     */
+    upstreamPromptCostUsd: numeric("upstream_prompt_cost_usd", {
+      precision: 20,
+      scale: 12,
+    }),
+    upstreamCompletionCostUsd: numeric("upstream_completion_cost_usd", {
+      precision: 20,
+      scale: 12,
+    }),
+    /**
+     * True when the call rode the writer's own upstream key, in which case
+     * cost_usd is what the upstream charged, not what OpenRouter debited.
+     */
+    isByok: boolean("is_byok"),
+    /**
+     * OpenRouter's id for this generation, from the first stream chunk. The only
+     * handle that can ask OpenRouter what a call actually cost, so it is
+     * captured early — the abort path never reaches the final chunk.
+     */
+    openrouterGenerationId: text("openrouter_generation_id"),
+    /**
+     * "streaming" until the call resolves, then "ok" | "aborted" | "error". The
+     * row is written BEFORE the outcome is known, so a call that dies without
+     * ever sending a usage chunk still leaves a trace to reconcile against.
+     */
+    status: text("status").notNull().$type<GenerationCallStatus>(),
+    /**
+     * Where cost_usd came from: "stream" (the final chunk) or "reconciled" (the
+     * /generation lookup, which may overwrite a streamed value). NULL while
+     * cost_usd is NULL.
+     */
+    costSource: text("cost_source").$type<CostSource>(),
+    createdAt: text("created_at").notNull(),
+    /** When the outcome landed. NULL while status is "streaming". */
+    settledAt: text("settled_at"),
+  },
+  (table) => [
+    // Leading equality, trailing range: every story-scoped query filters story
+    // then windows time.
+    index("generation_calls_story_created_idx").on(
+      table.storyId,
+      table.createdAt
+    ),
+    index("generation_calls_created_idx").on(table.createdAt),
+    index("generation_calls_entry_idx").on(table.storyEntryId),
+    // Reconciliation idempotence. Partial because the column is NULL on every
+    // call whose first chunk never arrived, and a plain unique index would
+    // reject the second such row.
+    uniqueIndex("generation_calls_openrouter_id_idx")
+      .on(table.openrouterGenerationId)
+      .where(sql`"openrouter_generation_id" is not null`),
+  ]
+)
+
 export const lorebookEntries = pgTable(
   "lorebook_entries",
   {
@@ -198,5 +337,7 @@ export const appSettings = pgTable("app_settings", {
 export type StoryRow = typeof stories.$inferSelect
 export type StoryEntryRow = typeof storyEntries.$inferSelect
 export type StoryOpRow = typeof storyOps.$inferSelect
+export type GenerationCallRow = typeof generationCalls.$inferSelect
+export type NewGenerationCallRow = typeof generationCalls.$inferInsert
 export type LorebookEntryRow = typeof lorebookEntries.$inferSelect
 export type AppSettingsRow = typeof appSettings.$inferSelect

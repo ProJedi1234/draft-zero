@@ -24,7 +24,8 @@ import type {
  * group id is the entry's own id and the count is 1. That keeps the fixtures
  * honest — a one-take slot renders no VariantSwitcher, which is what the
  * scaffolding has always shown. `generation` is null because no model produced
- * these; they were written by hand.
+ * these; they were written by hand — and for the same reason they cost nothing
+ * and have no ledger row, which is "unknown", not "$0.00".
  */
 function proseEntry(
   entry: Omit<
@@ -35,6 +36,9 @@ function proseEntry(
     | "variantIndex"
     | "variantCount"
     | "generation"
+    | "costUsd"
+    | "reasoningTokens"
+    | "callStatus"
   >
 ): StoryEntry {
   return {
@@ -45,6 +49,9 @@ function proseEntry(
     variantIndex: 0,
     variantCount: 1,
     generation: null,
+    costUsd: null,
+    reasoningTokens: null,
+    callStatus: null,
   }
 }
 

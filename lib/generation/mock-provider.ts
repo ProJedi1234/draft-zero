@@ -114,6 +114,11 @@ export class MockGenerationProvider implements GenerationProvider {
     const text = truncateToWords(pool[index], settings.maxTokens)
     if (text === "") return
 
+    // Shaped like the real stream so the client's meta handling is exercised
+    // offline, but empty: nothing was billed and no ledger row exists, and a
+    // plausible-looking id here would be a lie the reconciler could act on.
+    yield { type: "meta", generationId: null, callId: null }
+
     await delay(this.initialDelayMs, signal)
 
     let reasoningChars = 0
@@ -144,6 +149,14 @@ export class MockGenerationProvider implements GenerationProvider {
         // Same ceil(chars / 4) rule estimateTokens applies, but the reasoning
         // text itself never existed here — only its length ever did.
         reasoningTokens: Math.ceil(reasoningChars / 4),
+        // Never a number. Token counts can be estimated honestly because the
+        // fixture text is right there; money cannot be estimated at all, and an
+        // invented one would be indistinguishable from a billed one downstream.
+        costUsd: null,
+        cachedPromptTokens: null,
+        upstreamPromptCostUsd: null,
+        upstreamCompletionCostUsd: null,
+        isByok: null,
       },
     }
   }
