@@ -160,6 +160,25 @@
   * {
     @apply border-border outline-ring/50;
     }
+  /*
+   * Installed as a PWA the document itself should never move: every view is an
+   * inner-scrolling h-app shell, so any document movement is iOS rubber-banding
+   * the entire UI — the tell of a web page, not an app. overscroll-behavior
+   * suppresses that bounce; with the shell exactly viewport-height there is no
+   * real overflow, so nothing else ever scrolls.
+   *
+   * Deliberately NOT overflow: hidden. iOS standalone sometimes sizes the
+   * layout viewport short (at launch, or left stale after the keyboard), and
+   * the only thing that makes WebKit re-measure it is an actual document
+   * scroll. In that broken state the 100dvh shell overflows the short viewport,
+   * a drag becomes a real scroll — allowed — and the first one heals the
+   * geometry. overflow: hidden froze that dead strip in permanently.
+   */
+  html,
+  body {
+    height: 100%;
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-background text-foreground;
     }
