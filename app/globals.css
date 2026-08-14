@@ -160,6 +160,19 @@
   * {
     @apply border-border outline-ring/50;
     }
+  /*
+   * Installed as a PWA the document itself must never scroll: every view is an
+   * inner-scrolling h-app shell, so any document movement is iOS panning or
+   * rubber-banding the entire UI — the tell of a web page, not an app.
+   * overflow clips whatever stray overflow would invite the pan, and
+   * overscroll-behavior kills the edge bounce that overflow alone leaves.
+   */
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-background text-foreground;
     }
