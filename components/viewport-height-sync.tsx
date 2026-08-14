@@ -54,6 +54,15 @@ export function ViewportHeightSync() {
         window.scrollTo(0, 0)
       } else {
         root.style.removeProperty("--app-h")
+        // iOS standalone sometimes sizes the layout viewport short (at
+        // launch, or left stale after the keyboard) and only re-measures it
+        // for a real document scroll. In that state the 100dvh shell
+        // overflows the window with no keyboard to justify it — nudge a
+        // scroll so the geometry heals without waiting for the user to drag.
+        if (root.scrollHeight > window.innerHeight + 1) {
+          window.scrollTo(0, 1)
+          window.scrollTo(0, 0)
+        }
       }
     }
 
