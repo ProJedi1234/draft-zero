@@ -7,6 +7,7 @@ import { toast } from "sonner"
 
 import { importScenario } from "@/lib/actions/import"
 import type { ParsedScenario } from "@/lib/import/novelai"
+import { summarize, SummaryRow } from "@/components/import/import-summary"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -194,21 +195,4 @@ function ImportScenarioForm({
       </DialogFooter>
     </form>
   )
-}
-
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="truncate">{value}</dd>
-    </>
-  )
-}
-
-/** Word count for a field, or "Empty" — enough to see what a file carries. */
-function summarize(text: string): string {
-  const trimmed = text.trim()
-  if (trimmed === "") return "Empty"
-  const words = trimmed.split(/\s+/).length
-  return `${words} ${words === 1 ? "word" : "words"}`
 }

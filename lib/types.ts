@@ -384,8 +384,21 @@ export interface StorySummary {
   wordCount: number
 }
 
+/**
+ * Narrative roles, with one deliberate exception. "class" is the odd member:
+ * the others describe what a thing *is* in any story, while a class is an
+ * archetype borrowed from game-shaped fiction. It earns its place empirically —
+ * a third of a real imported lorebook was classes, and a category that leaves
+ * a third of the entries in "concept" is not sorting anything.
+ *
+ * The precedent it sets is known and accepted: the next genre will want "skill"
+ * or "bloodline", and the answer to *that* is per-story categories, not a
+ * longer union. This is a text column, not a Postgres enum, so a value costs no
+ * migration — and nothing in lib/generation reads the category at all, so it
+ * cannot change what any model sees.
+ */
 export type LorebookCategory =
-  "character" | "location" | "faction" | "item" | "event" | "concept"
+  "character" | "class" | "location" | "faction" | "item" | "event" | "concept"
 
 export interface LorebookEntry {
   id: string
@@ -516,6 +529,9 @@ export const LOREBOOK_CATEGORIES: ReadonlyArray<{
   pluralLabel: string
 }> = [
   { value: "character", label: "Character", pluralLabel: "Characters" },
+  // Next to "character" rather than at the end: a class describes who someone
+  // is, so the filter row reads people-first before it moves to the world.
+  { value: "class", label: "Class", pluralLabel: "Classes" },
   { value: "location", label: "Location", pluralLabel: "Locations" },
   { value: "faction", label: "Faction", pluralLabel: "Factions" },
   { value: "item", label: "Item", pluralLabel: "Items" },

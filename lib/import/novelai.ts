@@ -239,6 +239,9 @@ function toParagraphText(text: string): string {
  */
 const CATEGORY_KEYWORDS: ReadonlyArray<[LorebookCategory, RegExp]> = [
   ["character", /char|person|people|cast|npc|protagonist|creature|race/i],
+  // After "character": a lorebook folder called "Character Classes" is about
+  // the people, while a bare "Classes" is about the archetypes.
+  ["class", /class|archetype|profession|vocation/i],
   ["location", /location|place|setting|world|region|city|geograph/i],
   ["faction", /faction|group|organi[sz]ation|guild|order|nation|kingdom/i],
   ["item", /item|object|artifact|artefact|equipment|weapon|gear/i],
