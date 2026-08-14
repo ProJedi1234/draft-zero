@@ -91,7 +91,7 @@ Index: `(story_id, position)` unique.
 |---|---|---|
 | `id` | text PK | |
 | `name` | text NOT NULL | |
-| `category` | text NOT NULL | one of the six `LorebookCategory` values |
+| `category` | text NOT NULL | a `LorebookCategory` value; not constrained in SQL |
 | `keys_json` | text NOT NULL | JSON-serialized `string[]` |
 | `content` | text NOT NULL default `''` | |
 | `enabled` | integer NOT NULL default 1 | boolean 0/1 (`integer({ mode: "boolean" })`) |

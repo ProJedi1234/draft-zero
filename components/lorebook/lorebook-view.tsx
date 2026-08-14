@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils"
 import type { LorebookCategory, LorebookEntry } from "@/lib/types"
 
+import { ImportCardsDialog } from "@/components/lorebook/import-cards-dialog"
 import { LorebookEntryEditor } from "@/components/lorebook/lorebook-entry-editor"
 import { LorebookEntryList } from "@/components/lorebook/lorebook-entry-list"
 import { NewEntryDialog } from "@/components/lorebook/new-entry-dialog"
@@ -132,6 +133,21 @@ export function LorebookView({
           {entries.length === 1 ? "entry" : "entries"}
         </span>
         <div className="flex-1" />
+        <ImportCardsDialog
+          storyId={storyId}
+          entryNames={entries.map((e) => e.name)}
+          onImported={() => {
+            // Clear the filters so the merged entries are actually visible.
+            // Deliberately no selection change: a merge lands many entries at
+            // once, and jumping into one arbitrary card's editor would strand a
+            // phone there. But below md the editor IS the screen, so a writer
+            // sitting in one would see nothing change except a toast — send
+            // them back to the list, which is where the new entries are.
+            setCategory("all")
+            setQuery("")
+            setShowEntry(false)
+          }}
+        />
         <NewEntryDialog
           storyId={storyId}
           onCreated={(id) => {
