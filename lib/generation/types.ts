@@ -1,7 +1,7 @@
 // lib/generation/types.ts — Provider-agnostic generation contract.
 // Pure types: isomorphic, no imports beyond the domain contract.
 
-import type { GenerationSettings } from "@/lib/types"
+import type { GenerationRequestKind, GenerationSettings } from "@/lib/types"
 
 /** A lorebook entry selected into context, with why. */
 export interface ActiveLoreEntry {
@@ -46,6 +46,15 @@ export interface GenerationRequest {
   context: ComposedContext
   settings: GenerationSettings
   signal?: AbortSignal
+  /**
+   * Which story is being billed. Sent so the route can open a ledger row before
+   * the first byte — the client is never the recorder, but it is the only place
+   * that knows which manuscript the request belongs to. Optional because the
+   * offline mock records nothing.
+   */
+  storyId?: string
+  /** Which move triggered this, for the ledger. */
+  requestKind?: GenerationRequestKind
 }
 
 /**
@@ -59,6 +68,19 @@ export interface GenerationUsage {
   completionTokens: number
   /** Tokens spent thinking. 0 on a model that did not reason. */
   reasoningTokens: number
+  /**
+   * What OpenRouter charged for this call, USD. Null when it declined to price
+   * it, and null on the offline mock — a fabricated number here would be
+   * indistinguishable from a record once it reached the ledger.
+   */
+  costUsd: number | null
+  /** Prompt tokens served from cache. A subset of promptTokens, not an addition. */
+  cachedPromptTokens: number | null
+  /** Upstream split, for the "why was this expensive" breakdown only. */
+  upstreamPromptCostUsd: number | null
+  upstreamCompletionCostUsd: number | null
+  /** True when the call rode a Bring-Your-Own-Key configuration. */
+  isByok: boolean | null
 }
 
 /**
@@ -73,10 +95,25 @@ export interface GenerationUsage {
  * downstream can reconstruct the reasoning from a number, so the "the manuscript
  * only ever receives prose" rule still holds by construction.
  */
+/**
+ * `meta` is the identity of the call, sent as early as it is known and never
+ * repeated. It exists because usage rides the FINAL chunk exclusively: a
+ * generation the writer stops has real tokens billed against it and no usage
+ * event at all, so the only way to ever learn what it cost is to have kept the
+ * handle OpenRouter answers questions about. `callId` is our own ledger row, so
+ * the client can link the passage it is about to persist back to the money.
+ */
 export type GenerationEvent =
   | { type: "reasoning"; chars: number }
   | { type: "text"; value: string }
   | { type: "usage"; usage: GenerationUsage }
+  | {
+      type: "meta"
+      /** OpenRouter's generation id, or null before/without one. */
+      generationId: string | null
+      /** The ledger row. Null on the offline mock, which records nothing. */
+      callId: string | null
+    }
 
 export interface GenerationProvider {
   /**

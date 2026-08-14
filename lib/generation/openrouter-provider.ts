@@ -10,11 +10,14 @@ import type {
 
 export class OpenRouterProvider implements GenerationProvider {
   async *generate(request: GenerationRequest): AsyncGenerator<GenerationEvent> {
-    const { context, settings, signal } = request
+    const { context, settings, signal, storyId, requestKind } = request
+    // storyId and requestKind are for the spend ledger the route opens. The
+    // client sends WHICH story and WHICH move, never how much anything cost —
+    // the one is a label it already owns, the other is a number it could forge.
     const res = await fetch("/api/generate", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ context, settings }),
+      body: JSON.stringify({ context, settings, storyId, requestKind }),
       signal,
     })
 

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -95,6 +96,15 @@ function SettingsView({
         <span className="font-mono text-xs text-muted-foreground">
           local-first
         </span>
+        <span className="font-mono text-xs text-muted-foreground/40">·</span>
+        {/* Settings are things you change; usage is a thing you read. It gets
+            its own route, and this is the door from here to there. */}
+        <Link
+          href="/usage"
+          className="font-mono text-xs text-muted-foreground/60 transition-colors hover:text-foreground"
+        >
+          usage
+        </Link>
       </header>
 
       <ScrollArea className="min-h-0 flex-1">

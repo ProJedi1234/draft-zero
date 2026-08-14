@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import {
   CircleAlert,
@@ -9,10 +10,11 @@ import {
   PanelRight,
 } from "lucide-react"
 
-import type { Story } from "@/lib/types"
+import type { Story, StoryCostProfile } from "@/lib/types"
 import { formatWordCount } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useSaveStatus } from "@/hooks/use-autosave"
+import { CostChip } from "@/components/cost/cost-chip"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import {
@@ -53,18 +55,42 @@ function SaveStatusChip() {
   )
 }
 
+/**
+ * The wall-clock span of the generated manuscript, for the sparkline caption.
+ * Derived here rather than queried: the entries are already on the client and
+ * the ledger only needs the two endpoints.
+ */
+function useGeneratedSpan(story: Story) {
+  return React.useMemo(() => {
+    const dates = story.entries
+      .filter((entry) => entry.source === "generated")
+      .map((entry) => entry.createdAt)
+    if (dates.length === 0) return null
+    let firstIso = dates[0]
+    let lastIso = dates[0]
+    for (const iso of dates) {
+      if (iso < firstIso) firstIso = iso
+      if (iso > lastIso) lastIso = iso
+    }
+    return { firstIso, lastIso }
+  }, [story.entries])
+}
+
 export function StoryHeader({
   story,
+  costProfile,
   inspectorOpen,
   onToggleInspector,
   onOpenMobileInspector,
 }: {
   story: Story
+  costProfile: StoryCostProfile
   inspectorOpen: boolean
   onToggleInspector: () => void
   onOpenMobileInspector: () => void
 }) {
   const inspectorLabel = inspectorOpen ? "Hide inspector" : "Show inspector"
+  const span = useGeneratedSpan(story)
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
@@ -75,6 +101,7 @@ export function StoryHeader({
       </span>
       <div className="flex-1" />
       <SaveStatusChip />
+      <CostChip profile={costProfile} span={span} />
       <Tooltip>
         {/* The trigger renders the anchor directly. Wrapping it in <Button>
             instead would make Base UI's button expect native <button>

@@ -119,17 +119,39 @@ describe("NDJSON decoding", () => {
 
   test("a final line with no trailing newline is not dropped", async () => {
     // Usage is always last, so this is the case that decides whether exact token
-    // counts ever arrive at all.
+    // counts — and the call's price — ever arrive at all.
     respondWith([
       '{"type":"text","value":"a"}\n',
-      '{"type":"usage","usage":{"promptTokens":10,"completionTokens":4,"reasoningTokens":2}}',
+      '{"type":"usage","usage":{"promptTokens":10,"completionTokens":4,"reasoningTokens":2,"costUsd":0.000123456789,"cachedPromptTokens":8,"upstreamPromptCostUsd":0.0001,"upstreamCompletionCostUsd":0.00002,"isByok":false}}',
     ])
     expect(await collect()).toEqual([
       { type: "text", value: "a" },
       {
         type: "usage",
-        usage: { promptTokens: 10, completionTokens: 4, reasoningTokens: 2 },
+        usage: {
+          promptTokens: 10,
+          completionTokens: 4,
+          reasoningTokens: 2,
+          costUsd: 0.000123456789,
+          cachedPromptTokens: 8,
+          upstreamPromptCostUsd: 0.0001,
+          upstreamCompletionCostUsd: 0.00002,
+          isByok: false,
+        },
       },
+    ])
+  })
+
+  test("the meta event arrives ahead of the prose it identifies", async () => {
+    // The whole point of sending it early: a writer who presses Stop between two
+    // deltas leaves a billed call whose only remaining handle is this id.
+    respondWith([
+      '{"type":"meta","generationId":"gen-abc","callId":"call-1"}\n',
+      '{"type":"text","value":"Snow."}\n',
+    ])
+    expect(await collect()).toEqual([
+      { type: "meta", generationId: "gen-abc", callId: "call-1" },
+      { type: "text", value: "Snow." },
     ])
   })
 
@@ -193,6 +215,26 @@ describe("MockGenerationProvider events", () => {
     return events
   }
 
+  test("meta comes first, and claims nothing it cannot back up", async () => {
+    // The mock records no ledger row and was billed by nobody. Both ids are
+    // null on purpose: a plausible-looking generation id here is one the
+    // reconciler would happily go and ask OpenRouter about.
+    const events = await run("off")
+    expect(events[0]).toEqual({
+      type: "meta",
+      generationId: null,
+      callId: null,
+    })
+  })
+
+  test("the mock never invents a cost", async () => {
+    const last = (await run("off")).at(-1)
+    expect(last?.type).toBe("usage")
+    if (last?.type !== "usage") throw new Error("unreachable")
+    expect(last.usage.costUsd).toBeNull()
+    expect(last.usage.isByok).toBeNull()
+  })
+
   test("thinking off emits no reasoning events", async () => {
     const events = await run("off")
     expect(events.some((e) => e.type === "reasoning")).toBe(false)
@@ -203,8 +245,12 @@ describe("MockGenerationProvider events", () => {
     const firstText = events.findIndex((e) => e.type === "text")
     const reasoning = events.filter((e) => e.type === "reasoning")
     expect(reasoning).toHaveLength(14)
+    // Everything before the first word is either the call's identity or the
+    // model thinking — never prose arriving out of order.
     expect(
-      events.slice(0, firstText).every((e) => e.type === "reasoning")
+      events
+        .slice(0, firstText)
+        .every((e) => e.type === "reasoning" || e.type === "meta")
     ).toBe(true)
   })
 

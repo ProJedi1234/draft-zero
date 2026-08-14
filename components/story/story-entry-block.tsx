@@ -8,6 +8,7 @@ import { deleteEntry } from "@/lib/actions/entries"
 import type { StoryEntry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
 import {
   Dialog,
   DialogClose,
@@ -22,6 +23,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { EntryCostChip } from "@/components/cost/entry-cost-chip"
 import { PassageEditor } from "@/components/story/passage-editor"
 import { Prose } from "@/components/story/prose"
 import { VariantSwitcher } from "@/components/story/variant-switcher"
@@ -142,6 +144,18 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
           SidebarMenuAction, so the buttons stay in the tab order for keyboard
           users and are permanently visible on touch (no hover to give). */}
       <div className="absolute -top-3 right-2 flex items-center gap-0.5 border bg-background p-0.5 shadow-sm transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 md:pointer-events-none md:opacity-0">
+        {/* Rides the cluster's own reveal — no second hover target. A generated
+            passage only; what a typed one cost is not a question, and a dash
+            there would read as a broken value. Below `md` the cluster has no
+            hover to hide behind, so the chip shows a "$" glyph rather than a
+            figure: an amount permanently printed under every passage is the one
+            thing this feature promises never to do. */}
+        {entry.source === "generated" && (
+          <>
+            <EntryCostChip entry={entry} />
+            <Separator orientation="vertical" className="mx-0.5 h-4" />
+          </>
+        )}
         {actions.map(({ key, icon: Icon, label, onClick }) => (
           <Tooltip key={key}>
             <TooltipTrigger

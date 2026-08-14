@@ -166,10 +166,24 @@ export async function* streamCompletion(opts: {
     throw new Error("OpenRouter returned a non-streaming response")
   }
 
+  // OpenRouter's id for this generation, repeated on every chunk. Yielded once,
+  // from the first chunk that carries it, and deliberately BEFORE any prose:
+  // the writer can press Stop between two deltas, and after that this handle is
+  // the only way left to ask what the call cost. Capturing it at the end would
+  // capture it exactly never on the path that needs it most.
+  let generationId: string | null = null
+
   for await (const chunk of res.value) {
     if (signal.aborted) return
     if (chunk.error) {
       throw new Error(chunk.error.message ?? "Provider error mid-stream")
+    }
+
+    if (generationId === null && chunk.id) {
+      generationId = chunk.id
+      // callId is minted by the route, which stamps it onto this event as it
+      // forwards it; nothing down here knows about the ledger.
+      yield { type: "meta", generationId, callId: null }
     }
 
     // Reasoning deltas are still never forwarded as text — the manuscript only
@@ -189,6 +203,12 @@ export async function* streamCompletion(opts: {
     // Usage rides the final chunk and only the final chunk (OpenRouter sends it
     // once, after the last delta), so this is the one place exact counts exist.
     // Everything the UI shows before it is an estimate and has to look like one.
+    //
+    // The cost fields ride along with them. No request flag turns them on:
+    // `stream_options.include_usage` is a deprecated no-op in this SDK ("full
+    // usage details are always included"). Every one of them is nullable and
+    // stays null when absent — an unpriced call is a fact worth recording, and a
+    // zero would sum silently into a total the writer checks against a balance.
     if (chunk.usage) {
       yield {
         type: "usage",
@@ -197,6 +217,14 @@ export async function* streamCompletion(opts: {
           completionTokens: chunk.usage.completionTokens,
           reasoningTokens:
             chunk.usage.completionTokensDetails?.reasoningTokens ?? 0,
+          costUsd: chunk.usage.cost ?? null,
+          cachedPromptTokens:
+            chunk.usage.promptTokensDetails?.cachedTokens ?? null,
+          upstreamPromptCostUsd:
+            chunk.usage.costDetails?.upstreamInferencePromptCost ?? null,
+          upstreamCompletionCostUsd:
+            chunk.usage.costDetails?.upstreamInferenceCompletionsCost ?? null,
+          isByok: chunk.usage.isByok ?? null,
         },
       }
     }

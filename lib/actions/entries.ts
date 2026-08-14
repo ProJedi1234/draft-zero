@@ -8,7 +8,7 @@ import { getDb } from "@/lib/db/client"
 import { recordOp } from "@/lib/db/journal"
 import { toStoryEntry } from "@/lib/db/mappers"
 import type { StoryEntryRow } from "@/lib/db/schema"
-import { stories, storyEntries } from "@/lib/db/schema"
+import { generationCalls, stories, storyEntries } from "@/lib/db/schema"
 import type { EntryProse } from "@/lib/history/ops"
 import { translateAction } from "@/lib/story/action-voice"
 import type {
@@ -58,6 +58,36 @@ async function nextPosition(db: Handle, storyId: string): Promise<number> {
   return max === null || max === undefined ? 0 : max + 1
 }
 
+/**
+ * Links the spend-ledger row this passage came from to the passage itself.
+ * Runs inside the caller's transaction, so a take and its price are joined in
+ * the same commit that creates the take.
+ *
+ * A client-supplied callId is safe here in a way a client-supplied *cost* would
+ * never be: the worst a forged one can do is mislink a row the writer already
+ * owns, and the `IS NULL` guard means a call can only be claimed once. It sets
+ * one nullable foreign key and touches no money column.
+ *
+ * Deliberately not part of the undo journal. Undo un-renders the prose; it does
+ * not un-spend what OpenRouter charged, and the ledger goes on saying so.
+ */
+async function stampCallEntry(
+  tx: Handle,
+  callId: string | null | undefined,
+  entryId: string,
+  variantGroupId: string
+) {
+  if (!callId) return
+  await tx
+    .update(generationCalls)
+    // origVariantGroupId is the FK-free copy: story_entry_id nulls when the
+    // entry is hard-deleted, this one stays, so a slot's takes still sum.
+    .set({ storyEntryId: entryId, origVariantGroupId: variantGroupId })
+    .where(
+      and(eq(generationCalls.id, callId), isNull(generationCalls.storyEntryId))
+    )
+}
+
 /** The prose columns an `edit` op has to carry, as they read right now. */
 function proseOf(row: {
   text: string
@@ -99,6 +129,8 @@ async function appendEntry(
     revalidate?: boolean
     turnId?: string | null
     generation?: EntryGeneration | null
+    /** The spend-ledger row this passage came out of; see stampCallEntry. */
+    callId?: string | null
   } = {}
 ): Promise<ActionResult<{ entry: StoryEntry }>> {
   const trimmed = text.trim()
@@ -137,6 +169,7 @@ async function appendEntry(
 
   await db.transaction(async (tx) => {
     await tx.insert(storyEntries).values(row)
+    await stampCallEntry(tx, opts.callId, id, row.variantGroupId)
     // Which half this row is follows from its source. The other stays null
     // until written — a generation that dies mid-stream leaves a turn with only
     // its user half, which still has to undo cleanly.
@@ -222,19 +255,28 @@ export async function appendGeneratedEntry(
     turnId?: string | null
     variantGroupId?: string
     generation?: EntryGeneration | null
+    /**
+     * The spend-ledger row the route opened for the call that wrote this text.
+     * Null on the offline mock and on any call the recorder failed to open —
+     * both leave the row unlinked, which is exactly what an aborted call looks
+     * like and is never a reason to refuse the passage.
+     */
+    callId?: string | null
   } = {}
 ): Promise<ActionResult<{ entry: StoryEntry }>> {
   if (opts.variantGroupId === undefined) {
     return appendEntry(storyId, text, "generated", {
       turnId: opts.turnId,
       generation: opts.generation,
+      callId: opts.callId,
     })
   }
   return appendRetryTake(
     storyId,
     text,
     opts.variantGroupId,
-    opts.generation ?? null
+    opts.generation ?? null,
+    opts.callId ?? null
   )
 }
 
@@ -253,7 +295,8 @@ async function appendRetryTake(
   storyId: string,
   text: string,
   variantGroupId: string,
-  generation: EntryGeneration | null
+  generation: EntryGeneration | null,
+  callId: string | null
 ): Promise<ActionResult<{ entry: StoryEntry }>> {
   const trimmed = text.trim()
   if (trimmed === "")
@@ -324,6 +367,9 @@ async function appendRetryTake(
         .set({ isActive: false })
         .where(eq(storyEntries.id, previous.id))
       await tx.insert(storyEntries).values(row)
+      // Every take is its own call and its own row, so a slot's takes each
+      // carry their own price and the slot's total is their sum.
+      await stampCallEntry(tx, callId, id, variantGroupId)
       await recordOp(tx, storyId, {
         kind: "retry",
         variantGroupId,

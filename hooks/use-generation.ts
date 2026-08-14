@@ -45,6 +45,7 @@ import type {
   ActionKind,
   ActionResult,
   EntryGeneration,
+  GenerationRequestKind,
   GenerationSettings,
   Story,
 } from "@/lib/types"
@@ -74,12 +75,33 @@ const REDO_ERROR = "Couldn't redo that change."
  */
 const SETTLE_TIMEOUT_MS = 6000
 
+/**
+ * How long to leave a cut-short generation before refetching the tree.
+ *
+ * A stop is the one case whose cost does not arrive with the stream — usage
+ * rides the final chunk and there isn't one — so the server goes and asks
+ * OpenRouter for it afterwards, backing off 1s/4s/10s (lib/generation/
+ * reconcile.ts) and writing straight to Postgres. Nothing pushes that write
+ * back down. Without this the passage's chip keeps reading "—", the story total
+ * stays short and the ledger keeps a "not recorded" footnote, until the writer
+ * happens to navigate away and back — which is to say, the one case
+ * reconciliation exists for is the one case its result was never visible in.
+ *
+ * One refresh, just past the far end of that backoff. It is not on the writer's
+ * path: it lands long after the passage has settled and repaints nothing but a
+ * number they have not asked to see yet.
+ */
+const RECONCILE_SETTLE_MS = 17_000
+
 type Prepared = {
   context: ComposedContext
   settings: GenerationSettings
   providerKind: ProviderKind
   userEntryId: string | null
 }
+
+/** What the server calls a generation that arrived with no move attached. */
+const DEFAULT_REQUEST_KIND: GenerationRequestKind = "generate"
 
 /** The player's turn, shown from here until its own row lands. */
 type Echo = {
@@ -106,6 +128,8 @@ interface StartOptions {
   removing?: string[]
   /** Retries bump the fixture variant; every other trigger resets it. */
   isRetry?: boolean
+  /** Which move this is, recorded on the spend ledger row. */
+  requestKind?: GenerationRequestKind
   /** Composer text to hand back if the dispatch fails before the server owns it. */
   restoreOnFailure?: string
 }
@@ -193,12 +217,30 @@ export function useGeneration(
   const variantGroupRef = React.useRef<string | null>(null)
   const settingsRef = React.useRef<GenerationSettings | null>(null)
   const usageRef = React.useRef<GenerationUsage | null>(null)
+  // The spend-ledger row the route opened for this generation, from its `meta`
+  // event. Same reason as usageRef: finalize() closes over state from before the
+  // request existed, and meta arrives long afterwards. Null on the offline mock,
+  // and null for anything the route failed to record — the link is an extra, and
+  // a passage must never fail to save because the bookkeeping did.
+  const callIdRef = React.useRef<string | null>(null)
+  const requestKindRef =
+    React.useRef<GenerationRequestKind>(DEFAULT_REQUEST_KIND)
   // True while a persisted player turn is invisible to the client, because
   // prepareGeneration wrote it without revalidating. Cleared by whichever
   // terminal path refreshes the tree.
   const syncRef = React.useRef(false)
+  // The pending post-reconciliation refresh, if any. See RECONCILE_SETTLE_MS.
+  const costRefreshRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
 
-  React.useEffect(() => () => abortRef.current?.abort(), [])
+  React.useEffect(
+    () => () => {
+      abortRef.current?.abort()
+      if (costRefreshRef.current !== null) clearTimeout(costRefreshRef.current)
+    },
+    []
+  )
 
   const entryIds = React.useMemo(
     () => new Set(entries.map((entry) => entry.id)),
@@ -238,6 +280,24 @@ export function useGeneration(
         // worth a toast on top of whatever else went wrong.
       }
     })
+  }, [])
+
+  /**
+   * Refetches the tree once the server has had time to price a stopped call.
+   *
+   * Only one is ever outstanding: a writer who stops three generations in a row
+   * wants the last refresh, not three of them, and each one supersedes the last.
+   */
+  const scheduleCostRefresh = React.useCallback(() => {
+    if (costRefreshRef.current !== null) clearTimeout(costRefreshRef.current)
+    costRefreshRef.current = setTimeout(() => {
+      costRefreshRef.current = null
+      // Deliberately not in a transition: nothing is waiting on it and `busy`
+      // must not flicker under a writer who has long since moved on.
+      void syncStoryTree().catch(() => {
+        // A cost that stays unknown for another navigation is not worth a toast.
+      })
+    }, RECONCILE_SETTLE_MS)
   }, [])
 
   const fail = React.useCallback(
@@ -297,6 +357,10 @@ export function useGeneration(
             // the end, and with one it is a new take inside that slot.
             variantGroupId: variantGroupRef.current ?? undefined,
             generation,
+            // Links the money to the passage. The insert stamps it on the
+            // ledger row inside its own transaction; a stale or absent one just
+            // leaves the row unlinked, which is what an aborted call looks like.
+            callId: callIdRef.current,
           })
           if (!res.ok) {
             toast.error(res.error)
@@ -343,14 +407,24 @@ export function useGeneration(
   const stream = React.useCallback(
     async (prepared: Prepared, controller: AbortController) => {
       let full = ""
+      let failed = false
       try {
         const provider = getGenerationProvider(prepared.providerKind)
         for await (const event of provider.generate({
           context: prepared.context,
           settings: prepared.settings,
           signal: controller.signal,
+          storyId,
+          requestKind: requestKindRef.current,
         })) {
           if (controller.signal.aborted) break
+
+          if (event.type === "meta") {
+            // Ref only, and never rendered: this is bookkeeping identity, not
+            // anything the writer has a reason to see.
+            callIdRef.current = event.callId
+            continue
+          }
 
           if (event.type === "reasoning") {
             // Only ever a promotion out of `pending`. Some models interleave
@@ -376,6 +450,7 @@ export function useGeneration(
           setStatus("streaming")
         }
       } catch (err) {
+        failed = true
         // Surface the provider's specific message (bad key, credits, rate
         // limit) when there is one; aborts stay silent as before.
         if (!controller.signal.aborted)
@@ -384,8 +459,12 @@ export function useGeneration(
           )
       }
       finalize(full)
+      // Exactly the two endings the server reconciles — a stop and a mid-stream
+      // failure. A call that finished told us its cost on the way past, and its
+      // figures are already in the tree the persisted passage revalidated.
+      if (failed || controller.signal.aborted) scheduleCostRefresh()
     },
-    [finalize]
+    [finalize, scheduleCostRefresh, storyId]
   )
 
   const start = React.useCallback(
@@ -417,6 +496,8 @@ export function useGeneration(
       variantGroupRef.current = options.variantGroupId ?? null
       settingsRef.current = null
       usageRef.current = null
+      callIdRef.current = null
+      requestKindRef.current = options.requestKind ?? DEFAULT_REQUEST_KIND
 
       setStatus("pending")
       setStreamingText("")
@@ -512,7 +593,7 @@ export function useGeneration(
   )
 
   const continueStory = React.useCallback(() => {
-    start({})
+    start({ requestKind: "continue" })
   }, [start])
 
   // Only the LAST passage can be retried, in place: the new take joins the slot
@@ -523,6 +604,7 @@ export function useGeneration(
     if (!last || last.source !== "generated") return
     start({
       isRetry: true,
+      requestKind: "retry",
       variantGroupId: last.variantGroupId,
       // The old take goes inactive, dropping out of `story.entries` as a
       // delete did, so `stillRemoving` retires this id on its own.

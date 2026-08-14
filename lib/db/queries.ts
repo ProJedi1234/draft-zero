@@ -1,25 +1,33 @@
 // lib/db/queries.ts — Read layer. Server-only: imported by server components
 // and server actions. Every call reads fresh from Postgres (no caching layer).
 
-import { and, asc, desc, eq, isNull } from "drizzle-orm"
+import { and, asc, desc, eq, isNotNull, isNull, ne } from "drizzle-orm"
 
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type {
   AppSettings,
   LorebookEntry,
+  SettledCallStatus,
   Story,
   StorySummary,
 } from "@/lib/types"
 
 import { getDb } from "./client"
 import { readHistoryState } from "./journal"
+import type { EntryCost } from "./mappers"
 import {
   toAppSettings,
   toLorebookEntry,
   toStory,
   toStorySummary,
 } from "./mappers"
-import { appSettings, lorebookEntries, storyEntries, stories } from "./schema"
+import {
+  appSettings,
+  generationCalls,
+  lorebookEntries,
+  storyEntries,
+  stories,
+} from "./schema"
 
 /** All stories, ordered updated_at DESC. wordCount computed per story. */
 export async function listStories(): Promise<StorySummary[]> {
@@ -62,7 +70,7 @@ export async function getStory(id: string): Promise<Story | null> {
 
   if (!storyRow) return null
 
-  const [entryRows, lorebookRows, history] = await Promise.all([
+  const [entryRows, lorebookRows, history, costRows] = await Promise.all([
     // Every non-deleted row, active takes and alternatives alike. One flat
     // query rather than a GROUP BY plus a join for the sibling counts: a
     // manuscript is small and is already loaded whole on every request, so the
@@ -75,9 +83,40 @@ export async function getStory(id: string): Promise<Story | null> {
       .orderBy(asc(storyEntries.position), asc(storyEntries.variantIndex)),
     db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
     readHistoryState(db, id),
+    // The story's spend, as a second small SELECT rather than a join onto the
+    // entries above. A join is the same rows, but a ledger that somehow held two
+    // calls for one take would silently DUPLICATE a passage in the manuscript —
+    // a bookkeeping oddity has no business being able to do that. Indexed on
+    // (story_id, created_at); in-flight calls are excluded because they have no
+    // cost yet and no take.
+    db
+      .select({
+        storyEntryId: generationCalls.storyEntryId,
+        costUsd: generationCalls.costUsd,
+        reasoningTokens: generationCalls.reasoningTokens,
+        status: generationCalls.status,
+      })
+      .from(generationCalls)
+      .where(
+        and(
+          eq(generationCalls.storyId, id),
+          isNotNull(generationCalls.storyEntryId),
+          ne(generationCalls.status, "streaming")
+        )
+      ),
   ])
 
-  return toStory(storyRow, entryRows, lorebookRows, history)
+  const costs = new Map<string, EntryCost>()
+  for (const row of costRows) {
+    if (row.storyEntryId === null) continue
+    costs.set(row.storyEntryId, {
+      costUsd: row.costUsd,
+      reasoningTokens: row.reasoningTokens,
+      status: row.status as SettledCallStatus,
+    })
+  }
+
+  return toStory(storyRow, entryRows, lorebookRows, history, costs)
 }
 
 /** One story's lorebook entries, ordered name ASC. */
