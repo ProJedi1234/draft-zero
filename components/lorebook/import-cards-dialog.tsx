@@ -68,6 +68,7 @@ export function ImportCardsDialog({
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [pending, setPending] = React.useState<PendingCards | null>(null)
+  const [isBusy, setIsBusy] = React.useState(false)
 
   async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -80,7 +81,17 @@ export function ImportCardsDialog({
       return
     }
 
-    const json = await file.text()
+    // A picked file can still fail to read — a network or removable volume, or
+    // one moved between the picker closing and this call, which is routine on
+    // mobile document providers. Unguarded, the rejection escapes the handler
+    // and the button simply appears dead.
+    let json: string
+    try {
+      json = await file.text()
+    } catch {
+      toast.error("That file couldn't be read. Try picking it again.")
+      return
+    }
     const parsed = parseStoryCards(json)
     if (!parsed.ok) {
       toast.error(parsed.error)
@@ -116,8 +127,13 @@ export function ImportCardsDialog({
       <Dialog
         open={pending !== null}
         onOpenChange={(open) => {
+          // Refuses to close mid-write: dismissing does not cancel the action,
+          // the rows land anyway, and the surviving closure then toasts success
+          // over a dialog the writer explicitly cancelled.
+          if (!open && isBusy) return
           if (!open) setPending(null)
         }}
+        disablePointerDismissal={isBusy}
       >
         <DialogContent className="sm:max-w-lg">
           {/* Mounted only while a file is pending, so the form starts clean for
@@ -129,6 +145,7 @@ export function ImportCardsDialog({
               entryNames={entryNames}
               onDone={() => setPending(null)}
               onImported={onImported}
+              onBusyChange={setIsBusy}
             />
           )}
         </DialogContent>
@@ -143,40 +160,65 @@ function ImportCardsForm({
   entryNames,
   onDone,
   onImported,
+  onBusyChange,
 }: {
   storyId: string
   pending: PendingCards
   entryNames: string[]
   onDone: () => void
   onImported?: () => void
+  onBusyChange: (busy: boolean) => void
 }) {
   const { cards } = pending
   const [isPending, startTransition] = React.useTransition()
 
-  const split = splitByCollision(cards.lorebookEntries, entryNames)
+  React.useEffect(() => {
+    onBusyChange(isPending)
+  }, [isPending, onBusyChange])
+
+  // Setting cards are written by this path too — memory is left alone here, so
+  // an always-active entry is how the setting reaches a generation.
+  const incoming = React.useMemo(
+    () => [...cards.lorebookEntries, ...cards.settingEntries],
+    [cards]
+  )
+  const split = React.useMemo(
+    () => splitByCollision(incoming, entryNames),
+    [incoming, entryNames]
+  )
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isPending) return
     startTransition(async () => {
-      const res = await importStoryCardsIntoStory({
-        storyId,
-        json: pending.json,
-      })
-      if (!res.ok) {
-        toast.error(res.error)
-        return
+      try {
+        const res = await importStoryCardsIntoStory({
+          storyId,
+          json: pending.json,
+        })
+        if (!res.ok) {
+          toast.error(res.error)
+          return
+        }
+        const { lorebookEntryCount, skippedCount } = res.data
+        toast.success(
+          lorebookEntryCount === 0
+            ? "Every card was already in this lorebook"
+            : `Added ${lorebookEntryCount} lorebook ${
+                lorebookEntryCount === 1 ? "entry" : "entries"
+              }${
+                skippedCount > 0 ? `, skipped ${skippedCount} already here` : ""
+              }`
+        )
+        onDone()
+        onImported?.()
+      } catch {
+        // A server action can REJECT rather than return {ok:false} — a body-size
+        // rejection, a dropped connection, a constraint error. Unguarded, the
+        // rejection escapes the transition callback: no toast, no close, and
+        // React escalates to the nearest error boundary.
+        toast.error("That import couldn't be completed. Nothing was saved.")
       }
-      const { lorebookEntryCount, skippedCount } = res.data
-      toast.success(
-        lorebookEntryCount === 0
-          ? "Every card was already in this lorebook"
-          : `Added ${lorebookEntryCount} lorebook ${
-              lorebookEntryCount === 1 ? "entry" : "entries"
-            }${skippedCount > 0 ? `, skipped ${skippedCount} already here` : ""}`
-      )
-      onDone()
-      onImported?.()
     })
   }
 
@@ -240,7 +282,10 @@ function ImportCardsForm({
       </ScrollArea>
 
       <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
+        <DialogClose
+          disabled={isPending}
+          render={<Button type="button" variant="outline" />}
+        >
           Cancel
         </DialogClose>
         {/* Nothing to write when every card collides — the merge would be a

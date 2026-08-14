@@ -75,11 +75,31 @@ export function ImportScenarioButton({
       return
     }
 
-    const json = await file.text()
+    // A picked file can still fail to read: it may live on a network or
+    // removable volume, or have moved between the picker closing and this call,
+    // which is routine on mobile document providers. Unguarded, the rejection
+    // escapes the handler and the button simply appears dead.
+    let json: string
+    try {
+      json = await file.text()
+    } catch {
+      toast.error("That file couldn't be read. Try picking it again.")
+      return
+    }
 
     const cards = parseStoryCards(json)
     if (cards.ok) {
       setPendingCards({ json, cards: cards.data })
+      return
+    }
+
+    // A card file that failed to READ is not offered to the scenario reader.
+    // parseScenario accepts any object carrying a string `prompt`, so an AI
+    // Dungeon scenario export whose card list is empty would sail through it and
+    // import as NovelAI with every card silently discarded. `recognised` is what
+    // separates "this isn't mine" from "this is mine, and it's broken".
+    if (cards.recognised) {
+      toast.error(cards.error)
       return
     }
 
@@ -89,10 +109,12 @@ export function ImportScenarioButton({
       return
     }
 
-    // Neither reader recognised it. A top-level array could only ever have been
-    // a card export, so that reader's complaint is the useful one; anything else
-    // is far likelier to be a broken scenario than a broken card file.
-    toast.error(json.trimStart().startsWith("[") ? cards.error : scenario.error)
+    // Neither reader claims it. Prefer whichever one recognised the shape; with
+    // no claim either way a top-level array could only ever have been a card
+    // export, and anything else is likelier a broken scenario.
+    const preferCards =
+      scenario.recognised === false && json.trimStart().startsWith("[")
+    toast.error(preferCards ? cards.error : scenario.error)
   }
 
   return (

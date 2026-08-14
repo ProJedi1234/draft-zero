@@ -50,7 +50,11 @@ const CARD = {
 
 describe("parseStoryCards — the sample export", () => {
   test("all 26 cards land", () => {
-    expect(parsed(SAMPLE_CARDS).lorebookEntries).toHaveLength(26)
+    const data = parsed(SAMPLE_CARDS)
+    // 25 ordinary cards plus the one worldDescription, which is kept apart so
+    // each import path can choose between it and the memory copy.
+    expect(data.lorebookEntries).toHaveLength(25)
+    expect(data.settingEntries).toHaveLength(1)
   })
 
   test("the card types split across our categories exactly", () => {
@@ -63,29 +67,35 @@ describe("parseStoryCards — the sample export", () => {
     // card here: this sample happens to carry none, though the format has all
     // three. Classes were the reason draft-zero grew a "class" category — a
     // third of this file used to land in the concept catch-all.
+    // No `concept` row: the sample's only concept card was the
+    // worldDescription, and that now lives in settingEntries.
     expect(counts).toEqual({
       location: 8,
       faction: 3,
       character: 6,
       class: 8,
-      concept: 1,
     })
   })
 
-  test("the worldDescription card is surfaced for memory and kept as lore", () => {
+  test("the worldDescription card comes back as memory AND as an entry", () => {
     const data = parsed(SAMPLE_CARDS)
     expect(data.worldDescription.startsWith("Xaxas is a world of peace")).toBe(
       true
     )
 
-    const xaxas = data.lorebookEntries.find((entry) => entry.name === "Xaxas")
-    expect(xaxas?.alwaysActive).toBe(true)
-    expect(xaxas?.category).toBe("concept" satisfies LorebookCategory)
-    expect(xaxas?.content).toBe(data.worldDescription)
-    // Every other card triggers on its keys alone.
+    // Both copies exist so each path can keep exactly one: the new story seeds
+    // memory, the merge writes the entry.
+    const xaxas = data.settingEntries[0]
+    expect(xaxas.name).toBe("Xaxas")
+    expect(xaxas.alwaysActive).toBe(true)
+    expect(xaxas.category).toBe("concept" satisfies LorebookCategory)
+    expect(xaxas.content).toBe(data.worldDescription)
+
+    // The ordinary lore never carries a setting card, so no caller has to
+    // filter one out — that filtering is what the split replaced.
     expect(
       data.lorebookEntries.filter((entry) => entry.alwaysActive)
-    ).toHaveLength(1)
+    ).toHaveLength(0)
   })
 
   test("a multi-key card keeps every trigger, trimmed", () => {
@@ -213,7 +223,42 @@ describe("parseStoryCards — rejections", () => {
   for (const [name, input, error] of REJECTIONS) {
     test(name, () => {
       const result = parseStoryCards(input)
-      expect(result).toEqual({ ok: false, error })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.error).toBe(error)
+    })
+  }
+})
+
+// `recognised` is what stops the import picker handing an AI Dungeon file to
+// the NovelAI reader, which accepts anything carrying a string `prompt` and
+// would import it with every card discarded.
+describe("parseStoryCards — format recognition", () => {
+  const claimed: Array<[string, unknown]> = [
+    ["an empty bare array", []],
+    ["an empty card list on a wrapper", { storyCards: [], prompt: "Once." }],
+    ["a card list with nothing readable in it", [{ title: "Blank" }]],
+  ]
+  for (const [name, input] of claimed) {
+    test(`claims ${name}`, () => {
+      const result = parseStoryCards(input)
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.recognised).toBe(true)
+    })
+  }
+
+  const disowned: Array<[string, unknown]> = [
+    ["a NovelAI scenario", { prompt: "Once.", lorebook: { entries: [] } }],
+    ["a bare string", "not json at all"],
+    ["a number", 42],
+  ]
+  for (const [name, input] of disowned) {
+    test(`disowns ${name}`, () => {
+      const result = parseStoryCards(input)
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.recognised).toBe(false)
     })
   }
 })
@@ -261,7 +306,7 @@ describe("parseStoryCards — partial cards", () => {
     const data = parsed([{ ...CARD, keys: "" }])
     expect(data.lorebookEntries[0].keys).toEqual(["Somara"])
     expect(data.warnings).toContain(
-      "1 card had no trigger words — their titles are the trigger instead."
+      "1 card had no trigger words — its title is the trigger instead."
     )
   })
 
@@ -356,8 +401,21 @@ describe("parseStoryCards — keys", () => {
     expect(data.lorebookEntries[0].keys).toEqual(["elf", "elv"])
   })
 
-  test("a non-string keys field is not a crash", () => {
-    const data = parsed([{ ...CARD, keys: ["a", "b"] }])
+  test("an array-valued keys field is read, not thrown away", () => {
+    // Card editors and script exporters emit arrays. Reading only the
+    // comma-string form dropped every trigger and fell back to the title, so
+    // the entry silently stopped firing on all but one of its keys.
+    const data = parsed([{ ...CARD, keys: ["elf", "elv", "elven"] }])
+    expect(data.lorebookEntries[0].keys).toEqual(["elf", "elv", "elven"])
+  })
+
+  test("an array whose elements are themselves comma-joined still splits", () => {
+    const data = parsed([{ ...CARD, keys: ["elf, elv", "elven"] }])
+    expect(data.lorebookEntries[0].keys).toEqual(["elf", "elv", "elven"])
+  })
+
+  test("a keys field of the wrong type entirely is not a crash", () => {
+    const data = parsed([{ ...CARD, keys: 42 }])
     expect(data.lorebookEntries[0].keys).toEqual(["Somara"])
   })
 })
@@ -457,5 +515,45 @@ describe("parseStoryCards — card types", () => {
       "concept",
       "concept",
     ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Lore text
+//
+// Lore is not prose. It is rendered verbatim inside a `[Lore: name]` block and
+// never passes through draft-zero's paragraph contract, so the reader must not
+// reflow it. An earlier version ran the prose normalizer over card text, which
+// double-spaced every stat block and deleted its indentation — invisible in the
+// 26-card fixture, whose cards are all single paragraphs.
+// ---------------------------------------------------------------------------
+
+describe("parseStoryCards — lore text", () => {
+  test("line breaks inside a card are left exactly as written", () => {
+    const block = "Elara Vance\nAge: 24\n  Home: Somara"
+    const data = parsed([{ ...CARD, description: "", value: block }])
+    expect(data.lorebookEntries[0].content).toBe(block)
+  })
+
+  test("blank lines inside a card survive too", () => {
+    const block = "The Guild\n\nDues: 5g\nRanks:\n  - Novice\n  - Adept"
+    const data = parsed([{ ...CARD, description: "", value: block }])
+    expect(data.lorebookEntries[0].content).toBe(block)
+  })
+
+  test("CRLF and bare CR become newlines rather than vanishing", () => {
+    // Stripping "\r" instead of replacing it glued the words together.
+    const data = parsed([
+      { ...CARD, description: "", value: "one\r\ntwo\rthree" },
+    ])
+    expect(data.lorebookEntries[0].content).toBe("one\ntwo\nthree")
+  })
+
+  test("prose fields still get the paragraph contract", () => {
+    const data = parsed({
+      storyCards: [CARD],
+      prompt: "You wake.\rThe bells ring.",
+    })
+    expect(data.prompt).toBe("You wake.\n\nThe bells ring.")
   })
 })

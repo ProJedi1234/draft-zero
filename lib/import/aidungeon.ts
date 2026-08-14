@@ -13,7 +13,8 @@
 //     title, description, prompt,
 //     memory, authorsNote, tags[] }         a scenario export
 //
-//   card.keys                  ONE comma-separated string, not an array
+//   card.keys                  usually ONE comma-separated string; card editors
+//                              and script exporters also emit a real array
 //   card.title                 the card's name
 //   card.value                 the text AI Dungeon injects into context
 //   card.description           an author-facing note; usually a copy of `value`
@@ -31,12 +32,11 @@
 // is live — so mapping it onto `enabled` would silently mute half a lorebook.
 //
 // `worldDescription` is the one card type that is not really lore: it is the
-// setting bible. It comes back on its own field so the new-story path can seed
-// the story's memory with it, and it is *also* emitted as an always-active lore
-// entry so the merge path (which must not touch an existing story's memory)
-// still carries the setting into every generation. The two copies are the same
-// text, so a caller that uses one drops the other — the new-story path keeps
-// the memory copy and filters the always-active entries out.
+// setting bible. It comes back twice — as `worldDescription` text, so the
+// new-story path can seed the story's memory with it, and as `settingEntries`,
+// always-active lore for the merge path, which must not touch an existing
+// story's memory. The two are the same text, so every caller keeps exactly one:
+// the new-story path takes the memory copy, the merge path takes the entries.
 //
 // This module is pure and client-safe: the import dialog parses here to preview
 // a file, and the server action re-parses the same bytes rather than trusting
@@ -55,8 +55,15 @@ export const STORY_CARD_FILE_ACCEPT = ".json"
 // number is the same today: the two formats carry different payloads (a
 // scenario embeds its whole opening text), so their ceilings should be free to
 // drift without one importer silently redefining the other's limit.
+//
+// 1MB, not the 5MB this started at, because 5MB was a ceiling that never bound:
+// Next caps a Server Action request body at 1MB by default and next.config.ts
+// sets no bodySizeLimit, so anything between the two limits previewed happily
+// and then died on submit with a rejection no reader could explain. Matching
+// the real limit turns that into an honest "too large" before the file is even
+// parsed. A 26-card export is about 20KB, so this is still ~50x any real file.
 /** Refuse anything larger than this before parsing — card exports are tiny. */
-export const MAX_CARDS_BYTES = 5 * 1024 * 1024
+export const MAX_CARDS_BYTES = 1024 * 1024
 
 /** An AI Dungeon export reduced to draft-zero's domain shapes. */
 export interface ParsedStoryCards {
@@ -68,19 +75,39 @@ export interface ParsedStoryCards {
   memory: string
   authorsNote: string
   tags: string[]
-  /**
-   * Every `worldDescription` card's text, joined. The new-story path seeds
-   * memory with this; the merge path ignores it (the cards are in
-   * `lorebookEntries` too).
-   */
+  /** Every `worldDescription` card's text, joined — the setting bible. */
   worldDescription: string
+  /** Ordinary lore. Never contains a setting card; see `settingEntries`. */
   lorebookEntries: NewLorebookEntry[]
+  /**
+   * The setting cards, as always-active entries. Kept apart from the lore so
+   * each caller can make one choice and not two: the new-story path seeds
+   * `memory` from `worldDescription` and drops these, while the merge path
+   * (which must not touch an existing story's memory) writes them and ignores
+   * `worldDescription`. Exactly one of the two copies is ever kept.
+   */
+  settingEntries: NewLorebookEntry[]
   /** Human-readable notes about what was dropped or coerced. */
   warnings: string[]
 }
 
 export type ParseResult =
-  { ok: true; data: ParsedStoryCards } | { ok: false; error: string }
+  | { ok: true; data: ParsedStoryCards }
+  | {
+      ok: false
+      /**
+       * Whether the file was recognisably an AI Dungeon export that then failed
+       * to read, as opposed to something this reader has no claim on.
+       *
+       * The caller sniffs an unlabelled `.json` by offering it to each reader in
+       * turn, and without this it cannot tell "not mine" from "mine, but
+       * broken" — so an AI Dungeon scenario whose card list is empty fell
+       * through to the NovelAI reader, which accepts anything carrying a string
+       * `prompt`, and imported with the cards silently discarded.
+       */
+      recognised: boolean
+      error: string
+    }
 
 // ---------------------------------------------------------------------------
 // Field readers (every one tolerates a wrong-typed or absent value)
@@ -103,16 +130,42 @@ function strArray(value: unknown): string[] {
 }
 
 /**
- * AI Dungeon writes hard line breaks as single "\n"; draft-zero's prose
- * contract separates paragraphs with "\n\n" (see lib/markdown.ts). Promote
- * every single newline to a paragraph break and collapse runs of blank lines.
+ * CRLF and bare-CR line endings both become "\n" before anything else looks at
+ * the text. Stripping "\r" instead — as an earlier version did — glues words
+ * together on a CR-only file, because the line break disappears rather than
+ * being replaced by one.
+ */
+function normalizeNewlines(text: string): string {
+  return text.replace(/\r\n?/g, "\n")
+}
+
+/**
+ * For PROSE only — the opening passage and memory, which are subject to
+ * draft-zero's paragraph contract (see lib/markdown.ts): paragraphs separated
+ * by "\n\n". AI Dungeon writes hard breaks as single "\n", so every single
+ * newline is promoted and runs of blank lines collapse.
  */
 function toParagraphText(text: string): string {
-  return text
+  return normalizeNewlines(text)
     .split(/\n+/)
-    .map((line) => line.replace(/\r/g, "").trim())
+    .map((line) => line.trim())
     .filter((line) => line !== "")
     .join("\n\n")
+}
+
+/**
+ * For LORE, which is not prose and is deliberately left alone. Lore is rendered
+ * verbatim inside a `[Lore: name]` block (lib/generation/context.ts) and never
+ * goes through the paragraph contract, so the reader's job is to normalize line
+ * endings and nothing else — novelai.ts stores its lore the same way.
+ *
+ * Running toParagraphText over it, as an earlier version did, double-spaced
+ * every stat block and deleted its indentation: a card reading
+ * "Elara\nAge: 24\n  Home: Somara" became three paragraphs with the alignment
+ * stripped, in the editor and in every prompt the entry fired into.
+ */
+function toLoreText(text: string): string {
+  return normalizeNewlines(text).trim()
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +310,19 @@ const WORLD_DESCRIPTION_PRIORITY = 70
  * duplicates are dropped case-insensitively because a duplicate that differs
  * only in case can never match anything the first one missed.
  */
+/**
+ * AI Dungeon itself writes `keys` as one comma-separated string, but card
+ * editors and script exporters emit a real array, and reading only the string
+ * form threw those away: the entry fell back to its title and silently stopped
+ * firing on every trigger but one, while the warnings claimed it had none.
+ * Both forms are accepted, and an array's elements are split on commas too,
+ * since a one-element `["elf, elv"]` also occurs.
+ */
+function readKeys(raw: unknown): string[] {
+  if (Array.isArray(raw)) return splitKeys(strArray(raw).join(","))
+  return splitKeys(str(raw))
+}
+
 function splitKeys(raw: string): string[] {
   const keys: string[] = []
   const seen = new Set<string>()
@@ -288,6 +354,7 @@ function toContent(value: string, description: string): string {
 
 interface ReadCards {
   entries: NewLorebookEntry[]
+  settings: NewLorebookEntry[]
   worldDescription: string
   /** Title of the first worldDescription card, for the bare-array title. */
   worldTitle: string
@@ -295,6 +362,7 @@ interface ReadCards {
 
 function readCards(raw: unknown[], warnings: string[]): ReadCards {
   const entries: NewLorebookEntry[] = []
+  const settings: NewLorebookEntry[] = []
   const worldTexts: string[] = []
   const unknownTypes = new Set<string>()
   /** Raw type → the category a keyword guess put it in. */
@@ -314,8 +382,8 @@ function readCards(raw: unknown[], warnings: string[]): ReadCards {
     }
 
     const type = str(item.type).trim()
-    const value = toParagraphText(str(item.value))
-    const description = toParagraphText(str(item.description))
+    const value = toLoreText(str(item.value))
+    const description = toLoreText(str(item.description))
     const content = toContent(value, description)
     // A card with no text on either field carries nothing into context. Hand-
     // edited exports keep these around as blank templates.
@@ -336,7 +404,7 @@ function readCards(raw: unknown[], warnings: string[]): ReadCards {
 
     const isWorld = folded === WORLD_DESCRIPTION_TYPE
     const title = str(item.title).trim()
-    let keys = splitKeys(str(item.keys))
+    let keys = readKeys(item.keys)
     // A card with no triggers would never fire, and its title is what the
     // writer would have typed as a key anyway.
     if (keys.length === 0 && title !== "") {
@@ -362,7 +430,12 @@ function readCards(raw: unknown[], warnings: string[]): ReadCards {
       if (worldTitle === "") worldTitle = title
     }
 
-    entries.push({
+    // Setting cards go in their own bucket rather than being tagged inside the
+    // lore list. `alwaysActive` is a persisted lorebook field that novelai.ts
+    // fills from `forceActivation`, so a caller filtering on it to find the
+    // setting bible would also catch any force-activated entry that arrived by
+    // another route. Two lists make the distinction structural.
+    ;(isWorld ? settings : entries).push({
       name,
       category: category ?? "concept",
       keys,
@@ -397,8 +470,10 @@ function readCards(raw: unknown[], warnings: string[]): ReadCards {
   if (keyedByTitle > 0) {
     warnings.push(
       `${keyedByTitle} ${
-        keyedByTitle === 1 ? "card" : "cards"
-      } had no trigger words — their titles are the trigger instead.`
+        keyedByTitle === 1
+          ? "card had no trigger words — its title is"
+          : "cards had no trigger words — their titles are"
+      } the trigger instead.`
     )
   }
   if (untitled > 0) {
@@ -423,12 +498,15 @@ function readCards(raw: unknown[], warnings: string[]): ReadCards {
     warnings.push(
       `Duplicate card ${
         duplicateNames.size === 1 ? "title" : "titles"
-      } (${[...duplicateNames].join(", ")}) were imported as separate entries.`
+      } (${[...duplicateNames].join(", ")}) ${
+        duplicateNames.size === 1 ? "was" : "were"
+      } imported as separate entries.`
     )
   }
 
   return {
     entries,
+    settings,
     worldDescription: worldTexts.join("\n\n"),
     worldTitle,
   }
@@ -441,12 +519,23 @@ function readCards(raw: unknown[], warnings: string[]): ReadCards {
 /** The key spellings AI Dungeon and its exporters have used for the card list. */
 const CARD_LIST_KEYS = ["storyCards", "story_cards", "cards"] as const
 
+/**
+ * The card list, preferring a populated one. An export that carries both an
+ * empty `storyCards` and a full `cards` is real — exporters that renamed the
+ * key leave the old one behind as `[]` — so returning the first array-valued
+ * key regardless of contents rejected a perfectly good file. A present-but-
+ * empty key still counts as recognition, which is why the empty array is
+ * returned when it is all there is.
+ */
 function readCardList(raw: Record<string, unknown>): unknown[] | null {
+  let empty: unknown[] | null = null
   for (const key of CARD_LIST_KEYS) {
     const value = raw[key]
-    if (Array.isArray(value)) return value
+    if (!Array.isArray(value)) continue
+    if (value.length > 0) return value
+    empty ??= value
   }
-  return null
+  return empty
 }
 
 /**
@@ -454,15 +543,21 @@ function readCardList(raw: Record<string, unknown>): unknown[] | null {
  * already-parsed value, and either shape of the format. Never throws:
  * malformed input comes back as `{ ok: false }`.
  */
-export function parseStoryCards(input: string | unknown): ParseResult {
+export function parseStoryCards(input: unknown): ParseResult {
   let raw: unknown = input
 
   if (typeof input === "string") {
-    if (input.trim() === "") return { ok: false, error: "The file is empty." }
+    if (input.trim() === "") {
+      return { ok: false, recognised: false, error: "The file is empty." }
+    }
     try {
       raw = JSON.parse(input)
     } catch {
-      return { ok: false, error: "That file isn't valid JSON." }
+      return {
+        ok: false,
+        recognised: false,
+        error: "That file isn't valid JSON.",
+      }
     }
   }
 
@@ -470,35 +565,51 @@ export function parseStoryCards(input: string | unknown): ParseResult {
   let wrapper: Record<string, unknown> = {}
 
   if (Array.isArray(raw)) {
+    // A top-level array could only ever have been a card export, so even an
+    // empty one is this reader's to complain about.
     cards = raw
   } else if (isRecord(raw)) {
     const list = readCardList(raw)
     if (!list) {
       // This is where a NovelAI .scenario lands: an object, plausibly a story
-      // export, with no card list anywhere in it.
+      // export, with no card list anywhere in it. Not ours.
       return {
         ok: false,
+        recognised: false,
         error: "That file isn't an AI Dungeon export — no story cards in it.",
       }
     }
     cards = list
     wrapper = raw
   } else {
-    return { ok: false, error: "That file isn't an AI Dungeon export." }
+    return {
+      ok: false,
+      recognised: false,
+      error: "That file isn't an AI Dungeon export.",
+    }
   }
 
+  // Everything below here is a file this reader claims: it had a card list, it
+  // was just unusable. Saying so beats handing it to another reader that would
+  // accept it on some other field and drop the cards.
   if (cards.length === 0) {
-    return { ok: false, error: "That file has no story cards in it." }
+    return {
+      ok: false,
+      recognised: true,
+      error: "That file has no story cards in it.",
+    }
   }
 
   const warnings: string[] = []
   const read = readCards(cards, warnings)
 
   // Every row was unreadable or blank — the file is card-shaped in name only,
-  // and importing nothing is worse than saying so.
-  if (read.entries.length === 0) {
+  // and importing nothing is worse than saying so. Setting cards count: a file
+  // that is nothing but a worldDescription still carries something.
+  if (read.entries.length === 0 && read.settings.length === 0) {
     return {
       ok: false,
+      recognised: true,
       error: "None of the story cards in that file have any text.",
     }
   }
@@ -522,6 +633,7 @@ export function parseStoryCards(input: string | unknown): ParseResult {
       tags: [...new Set(strArray(wrapper.tags))],
       worldDescription: read.worldDescription,
       lorebookEntries: read.entries,
+      settingEntries: read.settings,
       warnings,
     },
   }

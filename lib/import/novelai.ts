@@ -33,8 +33,11 @@ import type {
 /** File extensions the import picker accepts. */
 export const SCENARIO_FILE_ACCEPT = ".scenario,.json"
 
+// 1MB matches Next's default Server Action body limit, which is the ceiling
+// that actually binds — see the note on MAX_CARDS_BYTES in aidungeon.ts. Above
+// it a file previewed fine and then failed on submit with nothing to say.
 /** Refuse anything larger than this before parsing — scenarios are tiny. */
-export const MAX_SCENARIO_BYTES = 5 * 1024 * 1024
+export const MAX_SCENARIO_BYTES = 1024 * 1024
 
 /**
  * An import-time fill-in declared in the scenario text.
@@ -71,7 +74,19 @@ export interface ParsedScenario {
 }
 
 export type ParseResult =
-  { ok: true; data: ParsedScenario } | { ok: false; error: string }
+  | { ok: true; data: ParsedScenario }
+  | {
+      ok: false
+      /**
+       * Whether this was recognisably a NovelAI scenario that failed to read,
+       * as opposed to a file this reader has no claim on. The import picker
+       * sniffs an unlabelled `.json` by offering it to each reader in turn and
+       * needs to tell those two apart — see the same field on
+       * lib/import/aidungeon.ts's ParseResult.
+       */
+      recognised: boolean
+      error: string
+    }
 
 // ---------------------------------------------------------------------------
 // Placeholders
@@ -239,13 +254,16 @@ function toParagraphText(text: string): string {
  */
 const CATEGORY_KEYWORDS: ReadonlyArray<[LorebookCategory, RegExp]> = [
   ["character", /char|person|people|cast|npc|protagonist|creature|race/i],
-  // After "character": a lorebook folder called "Character Classes" is about
-  // the people, while a bare "Classes" is about the archetypes.
-  ["class", /class|archetype|profession|vocation/i],
   ["location", /location|place|setting|world|region|city|geograph/i],
   ["faction", /faction|group|organi[sz]ation|guild|order|nation|kingdom/i],
   ["item", /item|object|artifact|artefact|equipment|weapon|gear/i],
   ["event", /event|history|timeline|lore ?event|plot/i],
+  // Last of the specific rows, and word-anchored, both learned the hard way.
+  // An unanchored /class/ placed high matched "Object Classes" (items),
+  // "Professions & Guilds" (a faction) and even "Classified Documents", re-
+  // filing lore in scenarios that imported correctly before the row existed.
+  // Anchoring stops "classified"; ordering lets the concrete categories win.
+  ["class", /\bclass(es)?\b|\barchetypes?\b|\bprofessions?\b|\bvocations?\b/i],
   ["concept", /concept|magic|system|term|misc|rule|theme/i],
 ]
 
@@ -402,24 +420,40 @@ export function parseScenario(input: string | unknown): ParseResult {
   let raw: unknown = input
 
   if (typeof input === "string") {
-    if (input.trim() === "") return { ok: false, error: "The file is empty." }
+    if (input.trim() === "") {
+      return { ok: false, recognised: false, error: "The file is empty." }
+    }
     try {
       raw = JSON.parse(input)
     } catch {
-      return { ok: false, error: "That file isn't valid JSON." }
+      return {
+        ok: false,
+        recognised: false,
+        error: "That file isn't valid JSON.",
+      }
     }
   }
 
   if (!isRecord(raw)) {
-    return { ok: false, error: "That file isn't a NovelAI scenario." }
+    return {
+      ok: false,
+      recognised: false,
+      error: "That file isn't a NovelAI scenario.",
+    }
   }
 
   const warnings: string[] = []
 
-  // `prompt` is the one field every scenario revision has carried.
+  // `prompt` is the one field every scenario revision has carried. Without it
+  // this is only *ours* if some other scenario-only key says so — otherwise the
+  // file belongs to whichever reader can make sense of it, and claiming it here
+  // would stop the picker from trying them.
   if (typeof raw.prompt !== "string") {
+    const marker =
+      "scenarioVersion" in raw || "lorebook" in raw || "context" in raw
     return {
       ok: false,
+      recognised: marker,
       error: "That file isn't a NovelAI scenario — no story prompt in it.",
     }
   }

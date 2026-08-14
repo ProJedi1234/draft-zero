@@ -29,8 +29,8 @@ export function summarize(text: string): string {
 
 /**
  * ["8 Locations", "3 Characters"] in the app's own category order — an import's
- * types are remapped onto our six, and this is where a writer sees where they
- * landed before committing. Callers join it or render it as badges.
+ * types are remapped onto LOREBOOK_CATEGORIES, and this is where a writer sees
+ * where they landed before committing. Callers join it or render it as badges.
  */
 export function categoryBreakdown(entries: NewLorebookEntry[]): string[] {
   return LOREBOOK_CATEGORIES.filter((category) =>

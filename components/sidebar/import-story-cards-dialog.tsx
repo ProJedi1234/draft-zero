@@ -46,12 +46,26 @@ export function ImportStoryCardsDialog({
   pending: PendingStoryCards | null
   onOpenChange: (open: boolean) => void
 }) {
+  // Lifted out of the form so the dialog itself can refuse to close mid-write.
+  // Dismissing while the action is in flight does not cancel it — the rows
+  // still land — and the surviving closure then toasts success and navigates
+  // into the story the writer just cancelled creating.
+  const [isBusy, setIsBusy] = React.useState(false)
+
   return (
-    <Dialog open={pending !== null} onOpenChange={onOpenChange}>
+    <Dialog
+      open={pending !== null}
+      onOpenChange={(open) => {
+        if (!open && isBusy) return
+        onOpenChange(open)
+      }}
+      disablePointerDismissal={isBusy}
+    >
       <DialogContent className="sm:max-w-lg">
         {pending && (
           <ImportStoryCardsForm
             pending={pending}
+            onBusyChange={setIsBusy}
             onDone={() => onOpenChange(false)}
           />
         )}
@@ -63,39 +77,54 @@ export function ImportStoryCardsDialog({
 function ImportStoryCardsForm({
   pending,
   onDone,
+  onBusyChange,
 }: {
   pending: PendingStoryCards
   onDone: () => void
+  onBusyChange: (busy: boolean) => void
 }) {
   const { cards } = pending
   const router = useRouter()
   const [isPending, startTransition] = React.useTransition()
 
+  React.useEffect(() => {
+    onBusyChange(isPending)
+  }, [isPending, onBusyChange])
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isPending) return
     startTransition(async () => {
-      const res = await importStoryCards({ json: pending.json })
-      if (!res.ok) {
-        toast.error(res.error)
-        return
+      try {
+        const res = await importStoryCards({ json: pending.json })
+        if (!res.ok) {
+          toast.error(res.error)
+          return
+        }
+        const { lorebookEntryCount } = res.data
+        toast.success(
+          `Imported "${res.data.title}" and ${lorebookEntryCount} lorebook ${
+            lorebookEntryCount === 1 ? "entry" : "entries"
+          }`
+        )
+        onDone()
+        router.push(`/story/${res.data.storyId}`)
+      } catch {
+        // A server action can REJECT rather than return {ok:false} — a body-size
+        // rejection, a dropped connection, a constraint error. Unguarded, the
+        // rejection escapes the transition callback: no toast, no close, and
+        // React escalates to the nearest error boundary.
+        toast.error("That import couldn't be completed. Nothing was saved.")
       }
-      const { lorebookEntryCount } = res.data
-      toast.success(
-        `Imported "${res.data.title}" and ${lorebookEntryCount} lorebook ${
-          lorebookEntryCount === 1 ? "entry" : "entries"
-        }`
-      )
-      onDone()
-      router.push(`/story/${res.data.storyId}`)
     })
   }
 
   // Mirrors what `importStoryCards` writes: the setting bible becomes the
   // story's memory, so its always-active copy is dropped rather than injected
   // into every prompt a second time.
-  const lore = cards.lorebookEntries.filter((entry) => !entry.alwaysActive)
+  const lore = cards.lorebookEntries
   const loreCount = lore.length
+  const categories = categoryBreakdown(lore)
 
   return (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-col gap-4">
@@ -123,9 +152,13 @@ function ImportStoryCardsForm({
               label="Lorebook"
               value={`${loreCount} ${loreCount === 1 ? "entry" : "entries"}`}
             />
+            {/* "None" rather than an empty cell: a worldDescription-only export
+                has no ordinary lore, and a blank value reads as a rendering
+                bug. The scenario dialog has always guarded this; the shared
+                extraction dropped it. */}
             <SummaryRow
               label="Categories"
-              value={categoryBreakdown(lore).join(" · ")}
+              value={categories.length > 0 ? categories.join(" · ") : "None"}
             />
             {/* The setting bible becomes the new story's memory rather than a
                 lorebook entry, so it earns its own row. */}
@@ -154,7 +187,10 @@ function ImportStoryCardsForm({
       </ScrollArea>
 
       <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
+        <DialogClose
+          disabled={isPending}
+          render={<Button type="button" variant="outline" />}
+        >
           Cancel
         </DialogClose>
         <Button type="submit" disabled={isPending}>

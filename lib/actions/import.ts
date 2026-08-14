@@ -16,6 +16,51 @@ import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type { ActionResult, NewLorebookEntry } from "@/lib/types"
 
 /**
+ * Server actions are unauthenticated POST endpoints and their arguments are
+ * deserialized without any runtime validation, so the declared parameter type
+ * is a hope, not a check. This is the check.
+ *
+ * The size test is in BYTES, via TextEncoder. `String.length` counts UTF-16
+ * code units, which undercounts every non-ASCII export — a CJK file weighs
+ * about three bytes per unit, so a `.length` test labelled in bytes passes
+ * files three times over the limit. And a non-string payload (a pre-parsed
+ * array, say) has a `.length` that is an element count, which sails under any
+ * byte ceiling and then reaches the reader's object path directly.
+ */
+function readFileText(
+  value: unknown,
+  maxBytes: number
+): { ok: true; text: string } | { ok: false; error: string } {
+  if (typeof value !== "string") {
+    return { ok: false, error: "That import didn't arrive as a file." }
+  }
+  if (new TextEncoder().encode(value).length > maxBytes) {
+    return { ok: false, error: "That file is too large to be an export." }
+  }
+  return { ok: true, text: value }
+}
+
+/**
+ * Postgres' wire protocol caps a statement at 65535 bind parameters, and
+ * loreRows emits 11 columns per row, so a single INSERT tops out just under
+ * 6000 entries — reachable with a large export, and reachable well inside the
+ * body-size limit because a minimal card is a few dozen bytes. Past that the
+ * driver rejects the whole statement and the transaction rolls back, which
+ * surfaces as a thrown action rather than a clean result.
+ *
+ * 1000 is a round number far below the cap, leaving headroom if the row ever
+ * grows a column.
+ */
+const INSERT_CHUNK_ROWS = 1000
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < items.length; i += size)
+    out.push(items.slice(i, i + size))
+  return out
+}
+
+/**
  * One insertable lorebook row per parsed entry. Ids and timestamps are minted
  * here rather than in the reader — the readers are pure and client-side, and
  * nothing a client sends should decide a primary key.
@@ -63,11 +108,10 @@ export async function importScenario(input: {
   /** Values for the scenario's `${…}` placeholders, keyed by placeholder id. */
   placeholderValues?: Record<string, string>
 }): Promise<ActionResult<ScenarioImportSummary>> {
-  if (input.json.length > MAX_SCENARIO_BYTES) {
-    return { ok: false, error: "That file is too large to be a scenario." }
-  }
+  const file = readFileText(input.json, MAX_SCENARIO_BYTES)
+  if (!file.ok) return { ok: false, error: file.error }
 
-  const parsed = parseScenario(input.json)
+  const parsed = parseScenario(file.text)
   if (!parsed.ok) return { ok: false, error: parsed.error }
 
   const scenario = fillScenarioPlaceholders(
@@ -94,6 +138,9 @@ export async function importScenario(input: {
       // model stays the app default, since NovelAI names its own (readSettings).
       ...scenario.settings,
       modelId: appSettings.defaultModelId,
+      // Same app default createStory applies. Without it an imported story
+      // silently diverges from every story made the normal way.
+      thinking: appSettings.defaultThinking,
       createdAt: now,
       updatedAt: now,
     })
@@ -120,8 +167,8 @@ export async function importScenario(input: {
       })
     }
 
-    if (lore.length > 0) {
-      await tx.insert(lorebookEntries).values(loreRows(lore, storyId, now))
+    for (const rows of chunk(loreRows(lore, storyId, now), INSERT_CHUNK_ROWS)) {
+      await tx.insert(lorebookEntries).values(rows)
     }
   })
 
@@ -162,11 +209,10 @@ export async function importStoryCards(input: {
   /** Raw export file text. */
   json: string
 }): Promise<ActionResult<StoryCardImportSummary>> {
-  if (input.json.length > MAX_CARDS_BYTES) {
-    return { ok: false, error: "That file is too large to be an export." }
-  }
+  const file = readFileText(input.json, MAX_CARDS_BYTES)
+  if (!file.ok) return { ok: false, error: file.error }
 
-  const parsed = parseStoryCards(input.json)
+  const parsed = parseStoryCards(file.text)
   if (!parsed.ok) return { ok: false, error: parsed.error }
   const cards = parsed.data
 
@@ -174,12 +220,10 @@ export async function importStoryCards(input: {
   const appSettings = await getAppSettings()
   const now = new Date().toISOString()
   const storyId = crypto.randomUUID()
-  // The reader emits every worldDescription card twice: once on
-  // `worldDescription`, once as an always-active entry for the merge path,
-  // which must not touch an existing story's memory. This path does seed
-  // memory, so keeping the lore copy would inject the setting bible into every
-  // prompt twice — once under [Memory] and again as always-active lore.
-  const lore = cards.lorebookEntries.filter((entry) => !entry.alwaysActive)
+  // `settingEntries` is deliberately not written here. This path seeds memory
+  // from the same text, and keeping both copies would inject the setting bible
+  // into every prompt twice — once under [Memory], again as always-active lore.
+  const lore = cards.lorebookEntries
 
   // The worldDescription card is the setting bible, so it seeds memory — but a
   // scenario export can carry its own memory too, and that one was written to
@@ -203,6 +247,8 @@ export async function importStoryCards(input: {
       // scenario, there is nothing to override the app defaults with.
       ...DEFAULT_GENERATION_SETTINGS,
       modelId: appSettings.defaultModelId,
+      // Same app default createStory applies; see importScenario.
+      thinking: appSettings.defaultThinking,
       createdAt: now,
       updatedAt: now,
     })
@@ -229,8 +275,8 @@ export async function importStoryCards(input: {
       })
     }
 
-    if (lore.length > 0) {
-      await tx.insert(lorebookEntries).values(loreRows(lore, storyId, now))
+    for (const rows of chunk(loreRows(lore, storyId, now), INSERT_CHUNK_ROWS)) {
+      await tx.insert(lorebookEntries).values(rows)
     }
   })
 
@@ -260,27 +306,29 @@ export interface StoryCardMergeSummary {
  *
  * The story's memory is deliberately untouched: a writer merging a card pack
  * into a story in progress is adding lore, not replacing what the story
- * remembers. The worldDescription card still arrives — as an always-active
- * entry, which is how the reader emits it — so the setting reaches every
- * generation without overwriting a word the writer wrote.
+ * remembers. The setting cards still arrive — as always-active entries — so the
+ * setting reaches every generation without overwriting a word the writer wrote.
  *
- * Collision policy: a card whose name already exists in this lorebook is
- * SKIPPED, matched case-insensitively on the trimmed name. Overwriting would
- * destroy hand-edited entries with no undo, and importing a second copy would
- * double the entry's text into every context that matches its keys. Skipping is
- * the only outcome a writer can recover from by hand, and the count comes back
- * in the summary so it is never silent.
+ * Collision policy: a card whose name already exists IN THIS STORY is SKIPPED,
+ * matched case-insensitively on the trimmed name. Overwriting would destroy
+ * hand-edited entries with no undo, and importing a second copy would double the
+ * entry's text into every context that matches its keys. Skipping is the only
+ * outcome a writer can recover from by hand, and the count comes back in the
+ * summary so it is never silent.
+ *
+ * Cards that collide only with EACH OTHER are all kept — that is the reader's
+ * documented behaviour and what the new-story path does, and counting them as
+ * skips reported collisions against a story that never had them.
  */
 export async function importStoryCardsIntoStory(input: {
   storyId: string
   /** Raw export file text. */
   json: string
 }): Promise<ActionResult<StoryCardMergeSummary>> {
-  if (input.json.length > MAX_CARDS_BYTES) {
-    return { ok: false, error: "That file is too large to be an export." }
-  }
+  const file = readFileText(input.json, MAX_CARDS_BYTES)
+  if (!file.ok) return { ok: false, error: file.error }
 
-  const parsed = parseStoryCards(input.json)
+  const parsed = parseStoryCards(file.text)
   if (!parsed.ok) return { ok: false, error: parsed.error }
   const cards = parsed.data
 
@@ -288,49 +336,66 @@ export async function importStoryCardsIntoStory(input: {
   const now = new Date().toISOString()
   const warnings = [...cards.warnings]
 
-  const story = await db
-    .select({ id: stories.id })
-    .from(stories)
-    .where(eq(stories.id, input.storyId))
-    .limit(1)
-    .then((rows) => rows[0])
-  if (!story) return { ok: false, error: "Story not found." }
+  // The setting cards ARE written here, unlike the new-story path: memory is
+  // left alone, so an always-active entry is the only way the setting reaches a
+  // generation.
+  const incoming = [...cards.lorebookEntries, ...cards.settingEntries]
 
-  // The existing names are read and the rows written in one transaction, so
-  // either every accepted card lands or none does. That is atomicity, not
-  // isolation: at Postgres' default READ COMMITTED, and with only a non-unique
-  // index on (story_id, name), two imports of the same file running at once
-  // would each miss the other's uncommitted rows and both insert. A single
-  // writer is the assumption here, as everywhere else in the app.
+  // Existence check, name read and rows written in ONE transaction. Checking
+  // existence on a separate connection first left a window where the story
+  // could be deleted in between, and the insert would then hit the story_id
+  // foreign key and throw a raw constraint error instead of returning the tidy
+  // "Story not found." below.
+  //
+  // Atomicity, not isolation: at Postgres' default READ COMMITTED, and with
+  // only a non-unique index on (story_id, name), two imports of the same file
+  // running at once would each miss the other's uncommitted rows and both
+  // insert. A single writer is the assumption here, as everywhere else.
   let added = 0
   let skipped = 0
+  let missing = false
 
   await db.transaction(async (tx) => {
+    const story = await tx
+      .select({ id: stories.id })
+      .from(stories)
+      .where(eq(stories.id, input.storyId))
+      .limit(1)
+      .then((rows) => rows[0])
+    if (!story) {
+      missing = true
+      return
+    }
+
     const existing = await tx
       .select({ name: lorebookEntries.name })
       .from(lorebookEntries)
       .where(eq(lorebookEntries.storyId, input.storyId))
     const taken = new Set(existing.map((row) => row.name.trim().toLowerCase()))
 
-    const fresh = cards.lorebookEntries.filter((entry) => {
-      const fold = entry.name.trim().toLowerCase()
-      // Also folded against the cards already accepted from this file: the
-      // reader keeps same-titled cards as separate entries, and a merge should
-      // not introduce a collision the story didn't already have.
-      if (taken.has(fold)) return false
-      taken.add(fold)
-      return true
-    })
+    // Only names the STORY already holds are skipped. Cards that collide with
+    // each other inside the same file are all kept, exactly as the new-story
+    // path keeps them and as the reader's own "imported as separate entries"
+    // warning promises. Folding the file against itself as well used to drop
+    // every card after the first sharing a name — including the synthesized
+    // "Untitled entry" placeholder, which is not a name the story ever had, and
+    // which every later import would then collide with forever.
+    const fresh = incoming.filter(
+      (entry) => !taken.has(entry.name.trim().toLowerCase())
+    )
 
     added = fresh.length
-    skipped = cards.lorebookEntries.length - added
+    skipped = incoming.length - added
 
-    if (fresh.length > 0) {
-      await tx
-        .insert(lorebookEntries)
-        .values(loreRows(fresh, input.storyId, now))
+    for (const rows of chunk(
+      loreRows(fresh, input.storyId, now),
+      INSERT_CHUNK_ROWS
+    )) {
+      await tx.insert(lorebookEntries).values(rows)
     }
   })
+
+  if (missing) return { ok: false, error: "Story not found." }
 
   if (skipped > 0) {
     warnings.push(
