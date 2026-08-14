@@ -1,11 +1,12 @@
 "use server"
 
 import { and, asc, eq, isNull } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
 
+import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
 import { lorebookEntries, stories, storyEntries } from "@/lib/db/schema"
+import { discardStoryRun } from "@/lib/generation/live"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import { isContextWindow } from "@/lib/types"
 import type { ActionResult, GenerationSettings } from "@/lib/types"
@@ -46,7 +47,10 @@ export async function createStory(input?: {
     updatedAt: now,
   })
 
-  revalidatePath("/", "layout")
+  // Null, not the new id: this is a library-level write — no device can be on
+  // a story that didn't exist a moment ago, and scoping it to the id would
+  // strand the event if change handling ever filters by story.
+  commitChange(null)
   return { ok: true, data: { id } }
 }
 
@@ -66,7 +70,7 @@ export async function renameStory(
 
   if (updated.length === 0) return { ok: false, error: "Story not found." }
 
-  revalidatePath("/", "layout")
+  commitChange(id)
   return { ok: true, data: null }
 }
 
@@ -109,7 +113,7 @@ export async function updateStoryMeta(
 
   if (updated.length === 0) return { ok: false, error: "Story not found." }
 
-  revalidatePath("/", "layout")
+  commitChange(id)
   return { ok: true, data: null }
 }
 
@@ -205,11 +209,17 @@ export async function duplicateStory(
     )
   }
 
-  revalidatePath("/", "layout")
+  // Library-level for the same reason as createStory: the copy has no viewers.
+  commitChange(null)
   return { ok: true, data: { id: copyId } }
 }
 
 export async function deleteStory(id: string): Promise<ActionResult> {
+  // The story's live run goes with it — left running, the loop keeps
+  // streaming and billing against a manuscript that no longer exists, and its
+  // settle ends "error" over a persist the delete doomed. Discard aborts the
+  // run and ends it "aborted" with nothing persisted.
+  discardStoryRun(id)
   const db = await getDb()
   // Child entries and lorebook entries go with it: Postgres enforces the
   // ON DELETE CASCADE declared on both story_id columns, so no explicit child
@@ -221,7 +231,9 @@ export async function deleteStory(id: string): Promise<ActionResult> {
 
   if (deleted.length === 0) return { ok: false, error: "Story not found." }
 
-  revalidatePath("/", "layout")
+  // Null: the library list changed and the deleted story's viewers must hear
+  // it too — global reaches both under any future story filter.
+  commitChange(null)
   return { ok: true, data: null }
 }
 
@@ -266,6 +278,6 @@ export async function updateGenerationSettings(
 
   if (updated.length === 0) return { ok: false, error: "Story not found." }
 
-  revalidatePath("/", "layout")
+  commitChange(id)
   return { ok: true, data: null }
 }

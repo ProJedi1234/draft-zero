@@ -1,8 +1,8 @@
 "use server"
 
 import { eq } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
 
+import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
 import { lorebookEntries, stories, storyEntries } from "@/lib/db/schema"
@@ -172,7 +172,9 @@ export async function importScenario(input: {
     }
   })
 
-  revalidatePath("/", "layout")
+  // Library-level, same as createStory: an import is a new story with no
+  // viewers yet, announced to the library rather than to a story.
+  commitChange(null)
   return {
     ok: true,
     data: {
@@ -280,7 +282,9 @@ export async function importStoryCards(input: {
     }
   })
 
-  revalidatePath("/", "layout")
+  // Null, not the new id: a story that did not exist a moment ago is a
+  // library-level write, and no device can be sitting on it.
+  commitChange(null)
   return {
     ok: true,
     data: {
@@ -405,9 +409,11 @@ export async function importStoryCardsIntoStory(input: {
     )
   }
 
-  // Same one-line revalidation every mutating action uses; the lorebook route
-  // is under the root layout, so it re-renders with the rest.
-  revalidatePath("/", "layout")
+  // Same one-line commit every mutating action uses: it revalidates for the
+  // device that acted — the lorebook route is under the root layout, so it
+  // re-renders with the rest — and announces the write to every device that
+  // did not, which is what keeps a lorebook open elsewhere from going stale.
+  commitChange(input.storyId)
   return {
     ok: true,
     data: {

@@ -39,9 +39,9 @@ interface GenerationRecord {
 /**
  * Fills in what a stopped or errored call cost, best-effort.
  *
- * Scheduled with `after()` from the route, so it runs once the response has
- * finished streaming and never delays a token. It cannot throw: the response is
- * already sent, and an unhandled rejection here would be noise about a
+ * Fired and forgotten by the run loop, so its ~15s of backoff never delays
+ * the end frame the writer is waiting on. It cannot throw: nobody is left
+ * awaiting it, and an unhandled rejection here would be noise about a
  * measurement, not about the writer's prose.
  */
 export async function reconcileCall(

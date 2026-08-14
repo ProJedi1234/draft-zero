@@ -1,6 +1,7 @@
 // lib/generation/openrouter.ts — Server-only OpenRouter streaming core.
 // The only module that feeds the key into the SDK for generation. Consumed by
-// POST /api/generate; never import from client code ("server-only" enforces it).
+// the run loop in lib/generation/live.ts; never import from client code
+// ("server-only" enforces it).
 import "server-only"
 
 import { OpenRouterCore } from "@openrouter/sdk/core.js"
@@ -106,8 +107,8 @@ export function providerParam(
  * instructions as a real system turn, and renderPrompt(context) VERBATIM as the
  * user turn — the same pure function the ContextMeter uses, so the tokens the
  * writer sees are the tokens sent. Throws before the first yield for pre-stream
- * errors (401, 402, 429, ...) so the route can still answer with a JSON error
- * status.
+ * errors (401, 402, 429, ...) so the run loop can end the run with a real
+ * message before any ledger row exists.
  */
 export async function* streamCompletion(opts: {
   context: ComposedContext
@@ -181,8 +182,8 @@ export async function* streamCompletion(opts: {
 
     if (generationId === null && chunk.id) {
       generationId = chunk.id
-      // callId is minted by the route, which stamps it onto this event as it
-      // forwards it; nothing down here knows about the ledger.
+      // callId stays null down here on purpose: the run loop owns the ledger
+      // row, and this module does not know the ledger exists.
       yield { type: "meta", generationId, callId: null }
     }
 

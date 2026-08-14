@@ -9,6 +9,7 @@ import type {
   Story,
   StoryCostProfile,
 } from "@/lib/types"
+import { runHandoff } from "@/lib/sync/client"
 import { cn } from "@/lib/utils"
 import {
   useGeneration,
@@ -58,6 +59,27 @@ export function StoryWorkspace({
   const [mobileInspectorOpen, setMobileInspectorOpen] = React.useState(false)
   const [actionKind, setActionKind] = React.useState<ActionKind>("do")
 
+  // The sync channel itself lives in the root layout (components/
+  // sync-listener.tsx) so the library and settings pages hear `change` too;
+  // this workspace only registers as the run-started target while mounted.
+  // The ref bridges to the keyed editor below: the generation hook writes its
+  // attach function into it, and a `run-started` from another device calls
+  // through — which is the entire multi-device story; there is deliberately
+  // nothing to see.
+  const attachRef = React.useRef<((runId: string | null) => void) | null>(null)
+  React.useEffect(() => {
+    runHandoff.current = {
+      storyId: story.id,
+      onRunStarted: (runId) => attachRef.current?.(runId),
+      // A reconnect means run-started events may have been missed while the
+      // socket was down; a null attach is the "is anything running?" probe.
+      onReconnect: () => attachRef.current?.(null),
+    }
+    return () => {
+      runHandoff.current = null
+    }
+  }, [story.id])
+
   return (
     <div className="flex h-app min-w-0 flex-col">
       <StoryHeader
@@ -75,6 +97,7 @@ export function StoryWorkspace({
           story={story}
           actionKind={actionKind}
           onActionKindChange={setActionKind}
+          attachRef={attachRef}
         />
         <InspectorPanel
           story={story}
@@ -108,10 +131,13 @@ function StoryEditor({
   story,
   actionKind,
   onActionKindChange,
+  attachRef,
 }: {
   story: Story
   actionKind: ActionKind
   onActionKindChange: (kind: ActionKind) => void
+  /** Bridge from the workspace's sync channel: run-started → attach mid-flight; null = re-probe. */
+  attachRef: { current: ((runId: string | null) => void) | null }
 }) {
   const [draft, setDraft] = React.useState("")
   const composerRef = React.useRef<HTMLTextAreaElement>(null)
@@ -122,6 +148,7 @@ function StoryEditor({
     // The composer clears the moment a move dispatches, so until the server has
     // written the row the textarea is the only copy of what the writer typed.
     onRestoreDraft: setDraft,
+    attachRef,
   })
 
   useDraftPersistence(story.id, draft, setDraft)

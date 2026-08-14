@@ -10,6 +10,24 @@ import type { StoryEntry } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 
+/** Unsaved editor text, per passage, for the length of the browser session. */
+const DRAFT_STORAGE_PREFIX = "draft-zero:passage-draft:"
+
+/** Which buffer the draft belongs to: the prose, or a player turn's input. */
+type SavedDraft = { prose: boolean; value: string }
+
+function readDraft(entryId: string): SavedDraft | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = window.sessionStorage.getItem(DRAFT_STORAGE_PREFIX + entryId)
+    if (raw === null) return null
+    const parsed = JSON.parse(raw) as SavedDraft
+    return typeof parsed?.value === "string" ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Inline editing surface swapped in place of a passage's prose. The textarea
  * carries the exact manuscript type spec (and no padding/border of its own) so
@@ -35,6 +53,16 @@ export function PassageEditor({
       ? { kind: entry.actionKind, inputText: entry.inputText }
       : null
 
+  // An unsaved draft left by an editor this component never got to close: a
+  // remote Retry or a tree refresh unmounts the open editor mid-edit, and the
+  // buffer below is bare state. A draft for the input half of a row that has
+  // since been demoted to plain prose matches nothing and is discarded.
+  const [restored] = React.useState(() => {
+    const saved = readDraft(entry.id)
+    if (saved !== null && !saved.prose && action === null) return null
+    return saved
+  })
+
   /**
    * The escape hatch. translateAction is deterministic and therefore wrong on
    * inputs it wasn't built for ("the guard turns around" becomes "You the guard
@@ -42,13 +70,15 @@ export function PassageEditor({
    * writer could otherwise never hand-fix one. Switching here abandons the
    * pairing: the passage is saved as plain prose and stops being a Say or a Do.
    */
-  const [editingProse, setEditingProse] = React.useState(action === null)
+  const [editingProse, setEditingProse] = React.useState(
+    action === null || (restored?.prose ?? false)
+  )
 
   // Uncontrolled-after-mount (§4.2): seeded once, never resynced from props.
   // Switching to prose is the one thing that replaces the buffer, and it is a
   // deliberate click rather than a prop change, so the rule still holds.
   const [value, setValue] = React.useState(
-    action ? action.inputText : entry.text
+    restored?.value ?? (action ? action.inputText : entry.text)
   )
   const [isPending, startTransition] = React.useTransition()
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -63,6 +93,26 @@ export function PassageEditor({
     const end = el.value.length
     el.setSelectionRange(end, end)
   }, [])
+
+  // Same bargain as the composer's useDraftPersistence: an unmount this
+  // component doesn't control (a Retry from another device hides the entry,
+  // a refresh drops the row) must not be the end of unsaved words. Written
+  // per keystroke, kept across unmount, and removed the moment the buffer
+  // matches the row again — only a save or an explicit cancel discards it.
+  const pristine = editingProse ? entry.text : (action?.inputText ?? "")
+  React.useEffect(() => {
+    const key = DRAFT_STORAGE_PREFIX + entry.id
+    if (value === pristine) window.sessionStorage.removeItem(key)
+    else
+      window.sessionStorage.setItem(
+        key,
+        JSON.stringify({ prose: editingProse, value } satisfies SavedDraft)
+      )
+  }, [editingProse, entry.id, pristine, value])
+
+  function discardDraft() {
+    window.sessionStorage.removeItem(DRAFT_STORAGE_PREFIX + entry.id)
+  }
 
   function switchToProse() {
     setEditingProse(true)
@@ -86,6 +136,7 @@ export function PassageEditor({
         toast.error(res.error)
         return
       }
+      discardDraft()
       onDone()
     })
   }
@@ -101,7 +152,12 @@ export function PassageEditor({
       // Don't let Esc reach the canvas-level stop-generation handler.
       event.preventDefault()
       event.stopPropagation()
-      if (!isPending) onDone()
+      if (!isPending) {
+        // Esc is the writer's own discard — unlike an unmount, it may drop
+        // the draft.
+        discardDraft()
+        onDone()
+      }
     }
   }
 
@@ -146,7 +202,15 @@ export function PassageEditor({
             Edit prose instead
           </Button>
         )}
-        <Button variant="ghost" size="xs" onClick={onDone} disabled={isPending}>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={() => {
+            discardDraft()
+            onDone()
+          }}
+          disabled={isPending}
+        >
           Cancel
         </Button>
         <Button size="xs" onClick={save} disabled={!canSave}>
