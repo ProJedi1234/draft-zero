@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
+import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { updateGenerationSettings } from "@/lib/actions/stories"
 import type { GenerationSettings } from "@/lib/types"
 
@@ -20,8 +21,8 @@ export interface SettingSliderProps {
   /** Which generation setting this slider persists. */
   field: SliderSettingField
   label: string
-  /** Initial value from the server. The slider is uncontrolled-after-mount (§4.2). */
-  defaultValue: number
+  /** The stored value. Followed while mounted, except mid-drag or mid-save. */
+  serverValue: number
   min: number
   max: number
   step: number
@@ -36,26 +37,35 @@ function readValue(next: number | readonly number[], fallback: number): number {
 /**
  * A labelled slider that tracks the drag locally and persists exactly once, on
  * commit (`onValueCommitted`) — never on every drag frame.
+ *
+ * Between drags it follows the stored value, so a temperature changed on
+ * another device shows up here without a reload. `dragging` is what keeps that
+ * from yanking the thumb out from under a finger mid-gesture.
  */
 export function SettingSlider({
   storyId,
   field,
   label,
-  defaultValue,
+  serverValue,
   min,
   max,
   step,
   hint,
 }: SettingSliderProps) {
-  const [value, setValue] = React.useState(defaultValue)
-  // Last value known to be persisted — keeps a commit without movement (a click
-  // on the thumb, a re-commit of the same number) from hitting the database.
-  const savedRef = React.useRef(defaultValue)
+  const [dragging, setDragging] = React.useState(false)
+  const { value, server, setLocal, write } = useServerSyncedValue(serverValue, {
+    hold: dragging,
+  })
   const [, startTransition] = React.useTransition()
 
   function commit(next: number) {
-    if (next === savedRef.current) return
-    savedRef.current = next
+    // A commit without movement — a click on the thumb, a drag that ended where
+    // it began — is what `server` catches, and what keeps it off the database.
+    const changed = next !== server
+    write(next)
+    setDragging(false)
+    if (!changed) return
+
     const patch: Partial<GenerationSettings> = {}
     patch[field] = next
     startTransition(async () => {
@@ -77,7 +87,10 @@ export function SettingSlider({
         min={min}
         max={max}
         step={step}
-        onValueChange={(next) => setValue(readValue(next, min))}
+        onValueChange={(next) => {
+          setDragging(true)
+          setLocal(readValue(next, min))
+        }}
         onValueCommitted={(next) => commit(readValue(next, min))}
         aria-label={label}
       />

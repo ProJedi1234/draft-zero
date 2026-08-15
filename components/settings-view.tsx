@@ -19,6 +19,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { updateAppSettings, verifyOpenRouterKey } from "@/lib/actions/settings"
 import type { AppSettings, OpenRouterModel, ThinkingLevel } from "@/lib/types"
 
@@ -30,8 +31,13 @@ function SettingsView({
   models: OpenRouterModel[]
 }) {
   const [verifying, setVerifying] = React.useState(false)
-  const [modelId, setModelId] = React.useState(settings.defaultModelId)
-  const [thinking, setThinking] = React.useState(settings.defaultThinking)
+  // These two are one row shared by every device, so they follow the server the
+  // same way the inspector's do — changing the default on the phone moves the
+  // picker here. See hooks/use-server-synced.ts.
+  const model = useServerSyncedValue(settings.defaultModelId)
+  const thinkingSync = useServerSyncedValue(settings.defaultThinking)
+  const modelId = model.value
+  const thinking = thinkingSync.value
   const [isPending, startTransition] = React.useTransition()
 
   function handleModelChange(next: string) {
@@ -43,16 +49,18 @@ function SettingsView({
       models.find((m) => m.id === next)?.reasoning,
       thinking
     )
-    setModelId(next)
-    setThinking(nextThinking)
+    model.write(next)
+    thinkingSync.write(nextThinking)
     startTransition(async () => {
       const result = await updateAppSettings({
         defaultModelId: next,
         defaultThinking: nextThinking,
       })
       if (!result.ok) {
-        setModelId(previous.modelId)
-        setThinking(previous.thinking)
+        // Nothing was written, so reset rather than write: there is no echo
+        // coming that would clear a pending write.
+        model.reset(previous.modelId)
+        thinkingSync.reset(previous.thinking)
         toast.error(result.error)
       }
     })
@@ -60,11 +68,11 @@ function SettingsView({
 
   function handleThinkingChange(next: ThinkingLevel) {
     const previous = thinking
-    setThinking(next)
+    thinkingSync.write(next)
     startTransition(async () => {
       const result = await updateAppSettings({ defaultThinking: next })
       if (!result.ok) {
-        setThinking(previous)
+        thinkingSync.reset(previous)
         toast.error(result.error)
       }
     })
