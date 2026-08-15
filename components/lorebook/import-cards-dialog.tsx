@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -27,7 +28,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Tooltip,
   TooltipContent,
@@ -135,7 +135,7 @@ export function ImportCardsDialog({
         }}
         disablePointerDismissal={isBusy}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent sheet className="sm:max-w-lg">
           {/* Mounted only while a file is pending, so the form starts clean for
               every pick. */}
           {pending && (
@@ -225,7 +225,10 @@ function ImportCardsForm({
   const cardCount = cards.lorebookEntries.length
 
   return (
-    <form onSubmit={handleSubmit} className="flex min-h-0 flex-col gap-4">
+    <form
+      onSubmit={handleSubmit}
+      className="flex min-h-0 flex-col gap-4 max-sm:flex-1"
+    >
       <DialogHeader>
         <DialogTitle>Import story cards</DialogTitle>
         <DialogDescription className="truncate">
@@ -233,7 +236,7 @@ function ImportCardsForm({
         </DialogDescription>
       </DialogHeader>
 
-      <ScrollArea className="max-h-[55svh] pr-3">
+      <DialogBody className="sm:max-h-[55svh]">
         <div className="flex flex-col gap-5">
           {split.categories.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
@@ -279,7 +282,7 @@ function ImportCardsForm({
             </ul>
           )}
         </div>
-      </ScrollArea>
+      </DialogBody>
 
       <DialogFooter>
         <DialogClose

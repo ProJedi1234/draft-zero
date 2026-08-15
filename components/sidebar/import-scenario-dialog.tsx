@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -21,7 +22,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 /** A parsed file waiting for confirmation. */
 export interface PendingScenario {
@@ -56,7 +56,7 @@ export function ImportScenarioDialog({
       }}
       disablePointerDismissal={isBusy}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent sheet className="sm:max-w-lg">
         {pending && (
           <ImportScenarioForm
             pending={pending}
@@ -125,7 +125,10 @@ function ImportScenarioForm({
   const loreCount = scenario.lorebookEntries.length
 
   return (
-    <form onSubmit={handleSubmit} className="flex min-h-0 flex-col gap-4">
+    <form
+      onSubmit={handleSubmit}
+      className="flex min-h-0 flex-col gap-4 max-sm:flex-1"
+    >
       <DialogHeader>
         <DialogTitle className="truncate">{scenario.title}</DialogTitle>
         <DialogDescription>
@@ -135,7 +138,7 @@ function ImportScenarioForm({
         </DialogDescription>
       </DialogHeader>
 
-      <ScrollArea className="max-h-[55svh] pr-3">
+      <DialogBody className="sm:max-h-[55svh]">
         <div className="flex flex-col gap-5">
           {scenario.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
@@ -207,7 +210,7 @@ function ImportScenarioForm({
             </ul>
           )}
         </div>
-      </ScrollArea>
+      </DialogBody>
 
       <DialogFooter>
         <DialogClose

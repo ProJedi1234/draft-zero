@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -15,7 +16,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { createLorebookEntry } from "@/lib/actions/lorebook"
 import type { NewLorebookEntry } from "@/lib/types"
 
@@ -77,20 +77,20 @@ export function NewEntryDialog({
         <Plus data-icon="inline-start" />
         <span className="max-sm:hidden">New entry</span>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent sheet className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New lorebook entry</DialogTitle>
           <DialogDescription>
             Define a person, place, or idea the model should remember.
           </DialogDescription>
         </DialogHeader>
-        <ScrollArea className="max-h-[60svh] pr-3">
+        <DialogBody className="sm:max-h-[60svh]">
           <LorebookEntryEditor
             key={formKey}
             layout="dialog"
             onChange={setDraft}
           />
-        </ScrollArea>
+        </DialogBody>
         <DialogFooter>
           <DialogClose
             render={

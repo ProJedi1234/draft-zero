@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -23,7 +24,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 /** A parsed export waiting for confirmation. */
 export interface PendingStoryCards {
@@ -61,7 +61,7 @@ export function ImportStoryCardsDialog({
       }}
       disablePointerDismissal={isBusy}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent sheet className="sm:max-w-lg">
         {pending && (
           <ImportStoryCardsForm
             pending={pending}
@@ -127,7 +127,10 @@ function ImportStoryCardsForm({
   const categories = categoryBreakdown(lore)
 
   return (
-    <form onSubmit={handleSubmit} className="flex min-h-0 flex-col gap-4">
+    <form
+      onSubmit={handleSubmit}
+      className="flex min-h-0 flex-col gap-4 max-sm:flex-1"
+    >
       <DialogHeader>
         <DialogTitle className="truncate">{cards.title}</DialogTitle>
         <DialogDescription>
@@ -135,7 +138,7 @@ function ImportStoryCardsForm({
         </DialogDescription>
       </DialogHeader>
 
-      <ScrollArea className="max-h-[55svh] pr-3">
+      <DialogBody className="sm:max-h-[55svh]">
         <div className="flex flex-col gap-5">
           {cards.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
@@ -184,7 +187,7 @@ function ImportStoryCardsForm({
             </ul>
           )}
         </div>
-      </ScrollArea>
+      </DialogBody>
 
       <DialogFooter>
         <DialogClose
