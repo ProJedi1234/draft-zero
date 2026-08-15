@@ -21,8 +21,9 @@ import { Meter } from "@/components/ui/meter"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { useAutosave, type SaveStatus } from "@/hooks/use-autosave"
+import { useAutosave } from "@/hooks/use-autosave"
 import { useModelEndpoints } from "@/hooks/use-model-endpoints"
+import { useServerSyncedField } from "@/hooks/use-server-synced"
 import {
   updateGenerationSettings,
   updateStoryMeta,
@@ -67,58 +68,6 @@ export function InspectorPanel({
       />
     </aside>
   )
-}
-
-/**
- * A DB-backed text field that is uncontrolled after mount (§4.2) but still
- * reconciles when the value changes *somewhere else* — the sidebar's Rename
- * dialog edits the same column as the Title field, and the mobile sheet mounts a
- * second copy of every field while the desktop panel stays mounted behind it.
- *
- * The rule: an incoming server value is written into the DOM only when this
- * field has no edit of its own in flight and is not focused. `pendingRef` holds
- * the last value this field wrote and is cleared once the props echo it back, so
- * a revalidation that predates our own save can never roll the field backwards.
- */
-function useServerSyncedField<E extends HTMLInputElement | HTMLTextAreaElement>(
-  ref: React.RefObject<E | null>,
-  serverValue: string,
-  status: SaveStatus
-) {
-  const pendingRef = React.useRef<string | null>(null)
-
-  React.useEffect(() => {
-    const el = ref.current
-    if (!el) return
-
-    const pending = pendingRef.current
-    if (pending !== null) {
-      // Our own write is still travelling; the server has caught up only when
-      // it hands the same text back.
-      if (serverValue === pending) pendingRef.current = null
-      return
-    }
-
-    if (el === document.activeElement) return
-    if (el.value === serverValue) return
-    el.value = serverValue
-  }, [ref, serverValue, status])
-
-  /** Record what this field just wrote, so its own echo isn't mistaken for an external change. */
-  const markWritten = React.useCallback((value: string) => {
-    pendingRef.current = value
-  }, [])
-
-  /** Put the field back on the server value and forget the local edit. */
-  const restore = React.useCallback(
-    (value: string) => {
-      pendingRef.current = null
-      if (ref.current) ref.current.value = value
-    },
-    [ref]
-  )
-
-  return { markWritten, restore }
 }
 
 /**
