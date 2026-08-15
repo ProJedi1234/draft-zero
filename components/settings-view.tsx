@@ -19,8 +19,33 @@ import {
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { updateAppSettings, verifyOpenRouterKey } from "@/lib/actions/settings"
 import type { AppSettings, OpenRouterModel, ThinkingLevel } from "@/lib/types"
+
+const FALLBACK_ERROR = "Couldn't save your changes."
+
+/**
+ * updateAppSettings, with a thrown action folded into the same shape as a
+ * rejected one — a dropped connection mid-save must reach the failure path, or
+ * the picker sits waiting for an echo that is never coming.
+ */
+async function save(
+  patch: Parameters<typeof updateAppSettings>[0]
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const result = await updateAppSettings(patch)
+    return result.ok ? { ok: true } : { ok: false, error: result.error }
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error && error.message
+          ? error.message
+          : FALLBACK_ERROR,
+    }
+  }
+}
 
 function SettingsView({
   settings,
@@ -30,8 +55,13 @@ function SettingsView({
   models: OpenRouterModel[]
 }) {
   const [verifying, setVerifying] = React.useState(false)
-  const [modelId, setModelId] = React.useState(settings.defaultModelId)
-  const [thinking, setThinking] = React.useState(settings.defaultThinking)
+  // These two are one row shared by every device, so they follow the server the
+  // same way the inspector's do — changing the default on the phone moves the
+  // picker here. See hooks/use-server-synced.ts.
+  const model = useServerSyncedValue(settings.defaultModelId)
+  const thinkingSync = useServerSyncedValue(settings.defaultThinking)
+  const modelId = model.value
+  const thinking = thinkingSync.value
   const [isPending, startTransition] = React.useTransition()
 
   function handleModelChange(next: string) {
@@ -43,30 +73,37 @@ function SettingsView({
       models.find((m) => m.id === next)?.reasoning,
       thinking
     )
-    setModelId(next)
-    setThinking(nextThinking)
+    model.write(next)
+    thinkingSync.write(nextThinking)
     startTransition(async () => {
-      const result = await updateAppSettings({
+      const outcome = await save({
         defaultModelId: next,
         defaultThinking: nextThinking,
       })
-      if (!result.ok) {
-        setModelId(previous.modelId)
-        setThinking(previous.thinking)
-        toast.error(result.error)
+      if (outcome.ok) {
+        model.settle()
+        thinkingSync.settle()
+        return
       }
+      // Nothing was written, so reset rather than write: there is no echo
+      // coming that would clear a pending write.
+      model.reset(previous.modelId)
+      thinkingSync.reset(previous.thinking)
+      toast.error(outcome.error)
     })
   }
 
   function handleThinkingChange(next: ThinkingLevel) {
     const previous = thinking
-    setThinking(next)
+    thinkingSync.write(next)
     startTransition(async () => {
-      const result = await updateAppSettings({ defaultThinking: next })
-      if (!result.ok) {
-        setThinking(previous)
-        toast.error(result.error)
+      const outcome = await save({ defaultThinking: next })
+      if (outcome.ok) {
+        thinkingSync.settle()
+        return
       }
+      thinkingSync.reset(previous)
+      toast.error(outcome.error)
     })
   }
 

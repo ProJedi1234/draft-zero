@@ -1,5 +1,7 @@
 "use client"
 
+import * as React from "react"
+
 import { ModelCombobox } from "@/components/model-combobox"
 import { ProviderCombobox } from "@/components/provider-combobox"
 import { ThinkingSelect } from "@/components/thinking-select"
@@ -32,6 +34,7 @@ export function ModelPicker({
   onProviderTagChange,
   thinking,
   onThinkingChange,
+  onOpenChange,
 }: {
   models: OpenRouterModel[]
   value: string
@@ -42,8 +45,37 @@ export function ModelPicker({
   onProviderTagChange: (providerTag: string | null) => void
   thinking: ThinkingLevel
   onThinkingChange: (thinking: ThinkingLevel) => void
+  /**
+   * True while any of the three is open. These settings depend on each other —
+   * the model decides which thinking levels and which endpoints exist — so a
+   * server-driven model change can retarget or unmount a menu the writer is
+   * reading. The inspector holds all three still until this goes false.
+   */
+  onOpenChange?: (open: boolean) => void
 }) {
   const selected = models.find((m) => m.id === value)
+  const [open, setOpen] = React.useState({
+    model: false,
+    provider: false,
+    thinking: false,
+  })
+
+  function report(key: keyof typeof open, next: boolean) {
+    setOpen((o) => (o[key] === next ? o : { ...o, [key]: next }))
+  }
+
+  // Both sub-controls render nothing when they would have nothing to offer, and
+  // a menu that disappears mid-interaction cannot report itself closed — so the
+  // flags are qualified here rather than trusted, or one disappearing menu
+  // would hold the inspector shut for good.
+  const anyOpen =
+    open.model ||
+    (endpoints.length > 0 && open.provider) ||
+    (selected?.reasoning != null && open.thinking)
+  React.useEffect(() => {
+    onOpenChange?.(anyOpen)
+  }, [anyOpen, onOpenChange])
+
   const endpoint = endpointForTag(endpoints, providerTag)
   const pricing = endpoint?.pricing ?? selected?.pricing
   const contextLength = endpoint?.contextLength ?? selected?.contextLength
@@ -55,16 +87,19 @@ export function ModelPicker({
         models={models}
         value={value}
         onValueChange={onValueChange}
+        onOpenChange={(next) => report("model", next)}
       />
       <ProviderCombobox
         endpoints={endpoints}
         value={providerTag}
         onValueChange={onProviderTagChange}
+        onOpenChange={(next) => report("provider", next)}
       />
       <ThinkingSelect
         reasoning={selected?.reasoning ?? null}
         value={thinking}
         onValueChange={onThinkingChange}
+        onOpenChange={(next) => report("thinking", next)}
       />
       {pricing && contextLength !== undefined ? (
         <p className="text-xs text-muted-foreground">

@@ -72,6 +72,7 @@ export function ProviderCombobox({
   endpoints,
   value,
   onValueChange,
+  onOpenChange,
   disabled,
 }: {
   id?: string
@@ -80,6 +81,8 @@ export function ProviderCombobox({
   /** Pinned endpoint tag, or null for Auto. */
   value: string | null
   onValueChange: (providerTag: string | null) => void
+  /** Reported so a caller can hold off server-driven changes while this is open. */
+  onOpenChange?: (open: boolean) => void
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -97,13 +100,18 @@ export function ProviderCombobox({
     null
   )
 
+  function changeOpen(next: boolean) {
+    setOpen(next)
+    onOpenChange?.(next)
+  }
+
   function select(tag: string | null) {
     onValueChange(tag)
-    setOpen(false)
+    changeOpen(false)
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={changeOpen}>
       <PopoverTrigger
         render={
           <Button

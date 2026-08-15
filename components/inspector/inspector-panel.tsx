@@ -22,8 +22,12 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useAutosave } from "@/hooks/use-autosave"
+import { useDragHold } from "@/hooks/use-drag-hold"
 import { useModelEndpoints } from "@/hooks/use-model-endpoints"
-import { useServerSyncedField } from "@/hooks/use-server-synced"
+import {
+  useServerSyncedField,
+  useServerSyncedValue,
+} from "@/hooks/use-server-synced"
 import {
   updateGenerationSettings,
   updateStoryMeta,
@@ -41,6 +45,8 @@ import {
   type ThinkingLevel,
 } from "@/lib/types"
 import { cn } from "@/lib/utils"
+
+const FALLBACK_ERROR = "Couldn't save your changes."
 
 export function InspectorPanel({
   story,
@@ -72,10 +78,10 @@ export function InspectorPanel({
 
 /**
  * Inspector sections without the aside chrome — shared by the desktop panel and
- * the mobile sheet. The `key` remounts every field, slider and the model picker
- * when the writer switches stories: inside, fields only ever resync from props
- * for changes made elsewhere (see useServerSyncedField), so a remount is the
- * only thing that resets the sliders and the model picker.
+ * the mobile sheet. The `key` remounts everything when the writer switches
+ * stories, which is what clears any edit-in-flight bookkeeping the old story's
+ * controls were holding; while mounted, every control follows the server on its
+ * own (see hooks/use-server-synced.ts).
  */
 export function InspectorContent({
   story,
@@ -108,30 +114,45 @@ function InspectorSections({
   // Unique per mounted instance: the desktop panel and the mobile sheet can be
   // in the DOM at once, and duplicate ids would cross-wire the labels.
   const uid = React.useId()
-  const [modelId, setModelId] = React.useState(story.settings.modelId)
-  const [thinking, setThinking] = React.useState(story.settings.thinking)
-  const [providerTag, setProviderTag] = React.useState(
-    story.settings.providerTag
-  )
+  // These three depend on each other, so an open menu holds all three: adopting
+  // a foreign model while the writer is reading one of them would retarget the
+  // endpoint list under the cursor, or unmount the thinking menu outright.
+  const [pickerOpen, setPickerOpen] = React.useState(false)
+  // The four settings that move together. Each follows the server while mounted
+  // — a model switched on the phone lands here — but never while this device's
+  // own write is still travelling; see hooks/use-server-synced.ts.
+  const model = useServerSyncedValue(story.settings.modelId, {
+    hold: pickerOpen,
+  })
+  const thinkingSync = useServerSyncedValue(story.settings.thinking, {
+    hold: pickerOpen,
+  })
+  const provider = useServerSyncedValue(story.settings.providerTag, {
+    hold: pickerOpen,
+  })
+  const modelId = model.value
+  const thinking = thinkingSync.value
+  const providerTag = provider.value
   const { endpoints } = useModelEndpoints(modelId)
-  // Lifted out of the slider because the model owns its ceiling: switching
-  // models has to be able to pull the value down (see handleModelChange). Still
-  // uncontrolled-after-mount in spirit — only `key={story.id}` reseeds it.
-  const [contextWindow, setContextWindow] = React.useState(() =>
-    // A window stored while another model was selected can be larger than this
-    // one allows; show the legal value immediately and let the next commit (or
-    // a model change) write it back, rather than saving during a render.
-    clampContextWindow(
-      story.settings.contextWindow,
-      models.find((m) => m.id === story.settings.modelId)?.contextLength ?? 0
-    )
+  // The ceiling in force for the duration of a drag; see windowDragProps below.
+  const [heldContextLength, setHeldContextLength] = React.useState<
+    number | null
+  >(null)
+  const { dragging: draggingWindow, dragProps: startWindowDrag } = useDragHold(
+    () => setHeldContextLength(null)
   )
-  // What the row is believed to hold, so a commit that lands back on the stored
-  // stop costs nothing. It lives here rather than inside ContextWindowSlider
-  // because the slider is not the only writer: handleModelChange and the
-  // mount-time clamp below both move the value behind its back, and a ref
-  // seeded once inside the slider would go stale the moment they did.
-  const savedContextWindowRef = React.useRef(story.settings.contextWindow)
+  // Lifted out of the slider because the model owns its ceiling: switching
+  // models has to be able to pull the value down (see handleModelChange).
+  const {
+    value: storedContextWindow,
+    server: savedContextWindow,
+    setLocal: setContextWindowLocal,
+    write: writeContextWindow,
+    settle: settleContextWindow,
+    reset: resetContextWindow,
+  } = useServerSyncedValue(story.settings.contextWindow, {
+    hold: draggingWindow,
+  })
   const [titleEmpty, setTitleEmpty] = React.useState(false)
   const [, startTransition] = React.useTransition()
 
@@ -194,88 +215,179 @@ function InspectorSections({
     systemPromptSave.status
   )
 
+  /**
+   * Save a settings patch and tell the caller how it ended. Every caller must
+   * do something with `resolve` — a control left waiting for the echo of a save
+   * that failed stops following the server for good; see hooks/use-server-synced.ts.
+   */
   const saveSettings = React.useCallback(
-    (patch: Partial<GenerationSettings>) => {
+    (patch: Partial<GenerationSettings>, resolve?: (ok: boolean) => void) => {
       startTransition(async () => {
-        const result = await updateGenerationSettings(story.id, patch)
-        if (!result.ok) toast.error(result.error)
+        let ok = false
+        let message = FALLBACK_ERROR
+        try {
+          const result = await updateGenerationSettings(story.id, patch)
+          ok = result.ok
+          if (!result.ok) message = result.error
+        } catch (error) {
+          // A thrown action — a dropped connection mid-save — never reaches the
+          // `ok` check, and would otherwise fail silently.
+          message =
+            error instanceof Error && error.message ? error.message : message
+        }
+        resolve?.(ok)
+        if (!ok) toast.error(message)
       })
     },
     [story.id, startTransition]
   )
 
-  // The clamp in the useState initializer above is display-only until it is
-  // written. The server generation path reads the *stored* window (see
-  // startGeneration in lib/actions/generation.ts), so a row left over from a larger model would keep
-  // assembling a prompt the selected model cannot accept while the meter
-  // cheerfully reported the clamped figure. Write the fix-up once, from an
-  // effect — saving during a render is not allowed, and `key={story.id}`
-  // guarantees this mounts fresh per story. Later clamps ride along with
-  // handleModelChange.
-  const mountContextWindowRef = React.useRef(contextWindow)
-  React.useEffect(() => {
-    const next = mountContextWindowRef.current
-    if (next === savedContextWindowRef.current) return
-    savedContextWindowRef.current = next
-    saveSettings({ contextWindow: next })
-  }, [saveSettings])
-
-  function handleModelChange(nextModelId: string) {
-    setModelId(nextModelId)
-    // A provider tag names an endpoint of the *old* model; the new one is served
-    // by a different set, so the pin cannot survive the switch. Back to Auto.
-    setProviderTag(null)
-    const nextModel = models.find((m) => m.id === nextModelId)
-    // Thinking levels are per-model: a level the new model doesn't offer (or
-    // any level at all, on a model that can't think) falls back to off.
-    const nextThinking = levelForModel(nextModel?.reasoning, thinking)
-    setThinking(nextThinking)
-    // Same story for the context window: a smaller model can't honour the stop
-    // the writer picked under a bigger one. Both dependent settings ride along
-    // in the one patch so the row is never briefly inconsistent.
-    const nextContextWindow = clampContextWindow(
-      contextWindow,
-      nextModel?.contextLength ?? 0
-    )
-    setContextWindow(nextContextWindow)
-    savedContextWindowRef.current = nextContextWindow
-    saveSettings({
-      modelId: nextModelId,
-      providerTag: null,
-      thinking: nextThinking,
-      contextWindow: nextContextWindow,
-    })
-  }
-
   // 0 means "neither the model nor the pinned endpoint is known to the catalog",
   // i.e. no clamp. A pinned endpoint wins: a third-party host commonly serves a
   // shorter window than the lab does, and that shorter window is the real ceiling.
-  const contextLength =
+  const liveContextLength =
     endpointForTag(endpoints, providerTag)?.contextLength ??
     models.find((m) => m.id === modelId)?.contextLength ??
     0
 
+  // Holding the value mid-drag is not enough on its own: the ceiling it is
+  // clamped against moves too — endpoints resolve, or another device switches
+  // the model — and a ceiling that drops under a finger snaps the thumb to a
+  // stop the writer never chose, which the release then persists.
+  const windowDragProps = {
+    onPointerDown: () => {
+      setHeldContextLength(liveContextLength)
+      startWindowDrag.onPointerDown()
+    },
+  }
+  const contextLength = draggingWindow
+    ? (heldContextLength ?? liveContextLength)
+    : liveContextLength
+
+  // A window stored while another model was selected can be larger than this one
+  // allows. Clamped for display so the meter and the slider agree on a legal
+  // stop immediately; the effect below is what makes the row agree too.
+  const contextWindow = clampContextWindow(storedContextWindow, contextLength)
+
+  // That display clamp is cosmetic until it is written, and every other reader
+  // of the row has to defend itself against the difference — startGeneration
+  // re-clamps for itself rather than trust it (lib/actions/generation.ts). Write
+  // the fix-up from an effect, since saving during a render is not allowed, and
+  // key it on the ceiling rather than on mount: `endpoints` arrive well after
+  // mount, and the endpoint is frequently the binding constraint.
+  const fixedUpRef = React.useRef<number | null>(null)
+  React.useEffect(() => {
+    if (draggingWindow) return
+    const clamped = clampContextWindow(savedContextWindow, contextLength)
+    if (clamped === savedContextWindow) return
+    // The row only needs fixing once per ceiling. Without the latch StrictMode's
+    // double invocation sends the same write twice, and with it two revalidations
+    // and two fan-outs to every connected device.
+    if (fixedUpRef.current === clamped) return
+    fixedUpRef.current = clamped
+    writeContextWindow(clamped)
+    saveSettings({ contextWindow: clamped }, (ok) => {
+      if (ok) settleContextWindow()
+      else resetContextWindow(savedContextWindow)
+    })
+  }, [
+    contextLength,
+    savedContextWindow,
+    draggingWindow,
+    saveSettings,
+    writeContextWindow,
+    settleContextWindow,
+    resetContextWindow,
+  ])
+
+  function handleModelChange(nextModelId: string) {
+    // Re-picking the model already in use is not a change, and running the rest
+    // of this would drop the writer's provider pin for a click that chose
+    // nothing. The combobox reports every selection, including that one.
+    if (nextModelId === modelId) return
+    const previous = {
+      modelId,
+      providerTag,
+      thinking,
+      contextWindow: storedContextWindow,
+    }
+    model.write(nextModelId)
+    // A provider tag names an endpoint of the *old* model; the new one is served
+    // by a different set, so the pin cannot survive the switch. Back to Auto.
+    provider.write(null)
+    const nextModel = models.find((m) => m.id === nextModelId)
+    // Thinking levels are per-model: a level the new model doesn't offer (or
+    // any level at all, on a model that can't think) falls back to off.
+    const nextThinking = levelForModel(nextModel?.reasoning, thinking)
+    thinkingSync.write(nextThinking)
+    // Same story for the context window: a smaller model can't honour the stop
+    // the writer picked under a bigger one. Both dependent settings ride along
+    // in the one patch so the row is never briefly inconsistent. Clamped from
+    // the *stored* window, not the displayed one — the display may be sitting
+    // under an endpoint ceiling that this very patch is about to remove, and
+    // writing that back would quietly forfeit the writer's real preference.
+    const nextContextWindow = clampContextWindow(
+      storedContextWindow,
+      nextModel?.contextLength ?? 0
+    )
+    writeContextWindow(nextContextWindow)
+    saveSettings(
+      {
+        modelId: nextModelId,
+        providerTag: null,
+        thinking: nextThinking,
+        contextWindow: nextContextWindow,
+      },
+      (ok) => {
+        if (ok) {
+          model.settle()
+          provider.settle()
+          thinkingSync.settle()
+          settleContextWindow()
+        } else {
+          model.reset(previous.modelId)
+          provider.reset(previous.providerTag)
+          thinkingSync.reset(previous.thinking)
+          resetContextWindow(previous.contextWindow)
+        }
+      }
+    )
+  }
+
   function handleProviderChange(nextProviderTag: string | null) {
-    setProviderTag(nextProviderTag)
+    if (nextProviderTag === providerTag) return
+    const previous = { providerTag, contextWindow: storedContextWindow }
+    provider.write(nextProviderTag)
     // Same clamp as a model change, for the same reason: the endpoint owns the
     // window, so pinning a smaller one has to pull the slider down with it.
     const nextContextWindow = clampContextWindow(
-      contextWindow,
+      storedContextWindow,
       endpointForTag(endpoints, nextProviderTag)?.contextLength ??
         models.find((m) => m.id === modelId)?.contextLength ??
         0
     )
-    setContextWindow(nextContextWindow)
-    savedContextWindowRef.current = nextContextWindow
-    saveSettings({
-      providerTag: nextProviderTag,
-      contextWindow: nextContextWindow,
-    })
+    writeContextWindow(nextContextWindow)
+    saveSettings(
+      { providerTag: nextProviderTag, contextWindow: nextContextWindow },
+      (ok) => {
+        if (ok) {
+          provider.settle()
+          settleContextWindow()
+        } else {
+          provider.reset(previous.providerTag)
+          resetContextWindow(previous.contextWindow)
+        }
+      }
+    )
   }
 
   function handleThinkingChange(next: ThinkingLevel) {
-    setThinking(next)
-    saveSettings({ thinking: next })
+    const previous = thinking
+    thinkingSync.write(next)
+    saveSettings({ thinking: next }, (ok) => {
+      if (ok) thinkingSync.settle()
+      else thinkingSync.reset(previous)
+    })
   }
 
   return (
@@ -293,6 +405,7 @@ function InspectorSections({
               onProviderTagChange={handleProviderChange}
               thinking={thinking}
               onThinkingChange={handleThinkingChange}
+              onOpenChange={setPickerOpen}
             />
             <Collapsible>
               <CollapsibleTrigger
@@ -312,7 +425,7 @@ function InspectorSections({
                   storyId={story.id}
                   field="temperature"
                   label="Temperature"
-                  defaultValue={story.settings.temperature}
+                  serverValue={story.settings.temperature}
                   min={0}
                   max={2}
                   step={0.01}
@@ -321,7 +434,7 @@ function InspectorSections({
                   storyId={story.id}
                   field="topP"
                   label="Top P"
-                  defaultValue={story.settings.topP}
+                  serverValue={story.settings.topP}
                   min={0}
                   max={1}
                   step={0.01}
@@ -330,7 +443,7 @@ function InspectorSections({
                   storyId={story.id}
                   field="maxTokens"
                   label="Max tokens"
-                  defaultValue={story.settings.maxTokens}
+                  serverValue={story.settings.maxTokens}
                   min={128}
                   max={4096}
                   step={128}
@@ -338,22 +451,26 @@ function InspectorSections({
                 <ContextWindowSlider
                   value={contextWindow}
                   contextLength={contextLength}
-                  onValueChange={setContextWindow}
+                  dragProps={windowDragProps}
+                  onValueChange={setContextWindowLocal}
                   onValueCommitted={(next) => {
-                    setContextWindow(next)
                     // A release that settled back on the stored stop is not a
                     // change; anything else is, including a return to a stop
                     // the model clamp moved us off earlier.
-                    if (next === savedContextWindowRef.current) return
-                    savedContextWindowRef.current = next
-                    saveSettings({ contextWindow: next })
+                    const previous = savedContextWindow
+                    writeContextWindow(next)
+                    if (next === previous) return
+                    saveSettings({ contextWindow: next }, (ok) => {
+                      if (ok) settleContextWindow()
+                      else resetContextWindow(previous)
+                    })
                   }}
                 />
                 <SettingSlider
                   storyId={story.id}
                   field="frequencyPenalty"
                   label="Frequency penalty"
-                  defaultValue={story.settings.frequencyPenalty}
+                  serverValue={story.settings.frequencyPenalty}
                   min={-2}
                   max={2}
                   step={0.1}
@@ -362,7 +479,7 @@ function InspectorSections({
                   storyId={story.id}
                   field="presencePenalty"
                   label="Presence penalty"
-                  defaultValue={story.settings.presencePenalty}
+                  serverValue={story.settings.presencePenalty}
                   min={-2}
                   max={2}
                   step={0.1}
@@ -399,7 +516,10 @@ function InspectorSections({
                 titleSave.cancel()
                 return
               }
-              titleField.markWritten(next)
+              // What the row will hold, not what was typed: updateStoryMeta
+              // trims, and an echo that can never match would latch the field
+              // shut against every later rename.
+              titleField.markWritten(next.trim())
               titleSave.schedule(next)
             }}
             onBlur={() => {
@@ -522,8 +642,11 @@ function InspectorSections({
               // when the field is empty, so it belongs in the box, greyed out.
               placeholder={DEFAULT_SYSTEM_PROMPT}
               onChange={(event) => {
-                systemPromptField.markWritten(event.target.value)
-                systemPromptSave.schedule(event.target.value)
+                const next = event.target.value
+                // Blank is stored as NULL and comes back as "" (see the field
+                // above); anything else is stored verbatim.
+                systemPromptField.markWritten(next.trim() === "" ? "" : next)
+                systemPromptSave.schedule(next)
               }}
               onBlur={() => systemPromptSave.flush()}
             />

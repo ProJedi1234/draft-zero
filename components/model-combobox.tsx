@@ -46,6 +46,7 @@ export function ModelCombobox({
   models,
   value,
   onValueChange,
+  onOpenChange,
   disabled,
   placeholder = "Select model…",
 }: {
@@ -53,6 +54,8 @@ export function ModelCombobox({
   models: OpenRouterModel[]
   value: string
   onValueChange: (modelId: string) => void
+  /** Reported so a caller can hold off server-driven changes while this is open. */
+  onOpenChange?: (open: boolean) => void
   disabled?: boolean
   placeholder?: string
 }) {
@@ -60,8 +63,13 @@ export function ModelCombobox({
   const providers = groupByProvider(models)
   const selected = models.find((m) => m.id === value)
 
+  function changeOpen(next: boolean) {
+    setOpen(next)
+    onOpenChange?.(next)
+  }
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={changeOpen}>
       <PopoverTrigger
         render={
           <Button
@@ -91,7 +99,7 @@ export function ModelCombobox({
                     data-checked={m.id === value}
                     onSelect={() => {
                       onValueChange(m.id)
-                      setOpen(false)
+                      changeOpen(false)
                     }}
                   >
                     <span className="flex-1 truncate">{m.name}</span>
