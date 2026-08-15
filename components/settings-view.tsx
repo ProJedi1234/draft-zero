@@ -23,6 +23,30 @@ import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { updateAppSettings, verifyOpenRouterKey } from "@/lib/actions/settings"
 import type { AppSettings, OpenRouterModel, ThinkingLevel } from "@/lib/types"
 
+const FALLBACK_ERROR = "Couldn't save your changes."
+
+/**
+ * updateAppSettings, with a thrown action folded into the same shape as a
+ * rejected one — a dropped connection mid-save must reach the failure path, or
+ * the picker sits waiting for an echo that is never coming.
+ */
+async function save(
+  patch: Parameters<typeof updateAppSettings>[0]
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const result = await updateAppSettings(patch)
+    return result.ok ? { ok: true } : { ok: false, error: result.error }
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error && error.message
+          ? error.message
+          : FALLBACK_ERROR,
+    }
+  }
+}
+
 function SettingsView({
   settings,
   models,
@@ -52,17 +76,20 @@ function SettingsView({
     model.write(next)
     thinkingSync.write(nextThinking)
     startTransition(async () => {
-      const result = await updateAppSettings({
+      const outcome = await save({
         defaultModelId: next,
         defaultThinking: nextThinking,
       })
-      if (!result.ok) {
-        // Nothing was written, so reset rather than write: there is no echo
-        // coming that would clear a pending write.
-        model.reset(previous.modelId)
-        thinkingSync.reset(previous.thinking)
-        toast.error(result.error)
+      if (outcome.ok) {
+        model.settle()
+        thinkingSync.settle()
+        return
       }
+      // Nothing was written, so reset rather than write: there is no echo
+      // coming that would clear a pending write.
+      model.reset(previous.modelId)
+      thinkingSync.reset(previous.thinking)
+      toast.error(outcome.error)
     })
   }
 
@@ -70,11 +97,13 @@ function SettingsView({
     const previous = thinking
     thinkingSync.write(next)
     startTransition(async () => {
-      const result = await updateAppSettings({ defaultThinking: next })
-      if (!result.ok) {
-        thinkingSync.reset(previous)
-        toast.error(result.error)
+      const outcome = await save({ defaultThinking: next })
+      if (outcome.ok) {
+        thinkingSync.settle()
+        return
       }
+      thinkingSync.reset(previous)
+      toast.error(outcome.error)
     })
   }
 

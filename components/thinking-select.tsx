@@ -25,6 +25,7 @@ export function ThinkingSelect({
   reasoning,
   value,
   onValueChange,
+  onOpenChange,
   disabled,
 }: {
   id?: string
@@ -32,6 +33,8 @@ export function ThinkingSelect({
   reasoning: ModelReasoning | null
   value: ThinkingLevel
   onValueChange: (thinking: ThinkingLevel) => void
+  /** Reported so a caller can hold off server-driven changes while this is open. */
+  onOpenChange?: (open: boolean) => void
   disabled?: boolean
 }) {
   if (!reasoning) return null
@@ -41,6 +44,7 @@ export function ThinkingSelect({
     <Select
       value={value}
       onValueChange={(next) => onValueChange(next as ThinkingLevel)}
+      onOpenChange={onOpenChange}
       disabled={disabled}
       items={levels.map((level) => ({
         value: level,

@@ -40,6 +40,12 @@ export interface ContextWindowSliderProps {
    * switch, behind this component's back), so it owns the no-op check.
    */
   onValueCommitted: (next: number) => void
+  /**
+   * Pointer handlers from `useDragHold`, spread onto the slider. Owned by the
+   * inspector because the gesture has to freeze more than this component knows
+   * about — the ceiling as well as the value.
+   */
+  dragProps?: { onPointerDown: () => void }
 }
 
 /**
@@ -61,6 +67,7 @@ export function ContextWindowSlider({
   contextLength,
   onValueChange,
   onValueCommitted,
+  dragProps,
 }: ContextWindowSliderProps) {
   const maxIndex = stopIndex(
     clampContextWindow(
@@ -95,6 +102,7 @@ export function ContextWindowSlider({
           )
         }
         aria-label={LABEL}
+        {...dragProps}
       />
       {clamped ? (
         // Without this the ladder just stops short for no visible reason.

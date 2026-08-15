@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
+import { useDragHold } from "@/hooks/use-drag-hold"
 import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { updateGenerationSettings } from "@/lib/actions/stories"
 import type { GenerationSettings } from "@/lib/types"
@@ -29,6 +30,8 @@ export interface SettingSliderProps {
   hint?: string
 }
 
+const FALLBACK_ERROR = "Couldn't save your changes."
+
 /** First element of Base UI's slider value, which is an array here (one thumb). */
 function readValue(next: number | readonly number[], fallback: number): number {
   return Array.isArray(next) ? (next[0] ?? fallback) : (next as number)
@@ -52,25 +55,40 @@ export function SettingSlider({
   step,
   hint,
 }: SettingSliderProps) {
-  const [dragging, setDragging] = React.useState(false)
-  const { value, server, setLocal, write } = useServerSyncedValue(serverValue, {
-    hold: dragging,
-  })
+  const { dragging, dragProps } = useDragHold()
+  const { value, server, setLocal, write, settle, reset } =
+    useServerSyncedValue(serverValue, { hold: dragging })
   const [, startTransition] = React.useTransition()
 
   function commit(next: number) {
     // A commit without movement — a click on the thumb, a drag that ended where
     // it began — is what `server` catches, and what keeps it off the database.
     const changed = next !== server
+    const previous = server
     write(next)
-    setDragging(false)
     if (!changed) return
 
     const patch: Partial<GenerationSettings> = {}
     patch[field] = next
     startTransition(async () => {
-      const result = await updateGenerationSettings(storyId, patch)
-      if (!result.ok) toast.error(result.error)
+      let ok = false
+      let message = FALLBACK_ERROR
+      try {
+        const result = await updateGenerationSettings(storyId, patch)
+        ok = result.ok
+        if (!result.ok) message = result.error
+      } catch (error) {
+        message =
+          error instanceof Error && error.message ? error.message : message
+      }
+      // Either way the wait for an echo is over. Leaving it on would strand
+      // this slider on a value the database never took.
+      if (ok) {
+        settle()
+      } else {
+        reset(previous)
+        toast.error(message)
+      }
     })
   }
 
@@ -87,12 +105,10 @@ export function SettingSlider({
         min={min}
         max={max}
         step={step}
-        onValueChange={(next) => {
-          setDragging(true)
-          setLocal(readValue(next, min))
-        }}
+        onValueChange={(next) => setLocal(readValue(next, min))}
         onValueCommitted={(next) => commit(readValue(next, min))}
         aria-label={label}
+        {...dragProps}
       />
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
