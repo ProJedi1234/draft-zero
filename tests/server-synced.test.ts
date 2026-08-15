@@ -2,7 +2,10 @@
 // decides whether a value arriving from the server is allowed to move a control
 // the writer may be holding.
 //
-// This is the whole of magic sync for the inspector: a `change` event lands,
+// `adopt` is the heart of magic sync, though not the whole of it — the hook
+// around it also decides when to *ask*, and how a write in flight is released
+// when no echo is coming (see `settle`/`reset` in hooks/use-server-synced.ts).
+// What lives here is the arbitration: a `change` event lands,
 // the tree refetches, and every setting control is handed a fresh server value
 // with no way of knowing whether it is news from another device or the echo of
 // a save this device made two hundred milliseconds ago. Get it wrong in one
@@ -14,7 +17,12 @@
 
 import { describe, expect, test } from "bun:test"
 
-import { adopt, type SyncState } from "@/hooks/use-server-synced"
+import {
+  adopt,
+  settleValue,
+  writeValue,
+  type SyncState,
+} from "@/hooks/use-server-synced"
 
 /** Idle: nothing in flight, display and row agree. */
 function settled<T>(value: T): SyncState<T> {
@@ -85,7 +93,6 @@ describe("adopt — hold (a slider mid-drag)", () => {
   test("the row is tracked while held, so a release onto the old value still counts as a change", () => {
     const held = adopt({ value: 0.7, server: 0.5, pending: null }, 1.2, true)
     expect(held.server).toBe(1.2)
-    expect(0.5 === held.server).toBe(false)
   })
 
   test("the held value lands the moment the gesture ends", () => {
@@ -99,5 +106,134 @@ describe("adopt — hold (a slider mid-drag)", () => {
   test("a write during the release beats the value that arrived mid-drag", () => {
     const releasedAt = saving(0.9)
     expect(adopt(releasedAt, 1.2, false)).toBe(releasedAt)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The control around `adopt`
+// ---------------------------------------------------------------------------
+
+/**
+ * `useServerSyncedValue`'s render loop without React: props in, one
+ * reconciliation per change, and the same `seen`/epoch gate the hook uses to
+ * decide whether to run `adopt` at all. That gate is where a control gets
+ * stranded, and it is invisible to a test of `adopt` alone — every case below
+ * passes `adopt` on its own and still leaves the writer looking at a value the
+ * database does not hold.
+ */
+class Control<T> {
+  state: SyncState<T>
+  private seen: { serverValue: T; hold: boolean; epoch: number }
+  private epoch = 0
+
+  constructor(serverValue: T) {
+    this.state = { value: serverValue, server: serverValue, pending: null }
+    this.seen = { serverValue, hold: false, epoch: 0 }
+  }
+
+  /** A fresh prop from the server; mirrors the hook's render-phase adjustment. */
+  render(serverValue: T, hold = false): T {
+    if (
+      !Object.is(this.seen.serverValue, serverValue) ||
+      this.seen.hold !== hold ||
+      this.seen.epoch !== this.epoch
+    ) {
+      this.state = adopt(this.state, serverValue, hold)
+      this.seen = { serverValue, hold, epoch: this.epoch }
+    }
+    return this.state.value
+  }
+
+  write(next: T) {
+    this.state = writeValue(this.state, next)
+  }
+
+  settle() {
+    this.state = settleValue(this.state)
+    this.epoch += 1
+  }
+
+  reset(next: T) {
+    this.state = { value: next, server: next, pending: null }
+    this.epoch += 1
+  }
+}
+
+describe("a write that never gets its echo", () => {
+  // The whole point of the mechanism is that a control follows the server. A
+  // control that has quietly stopped is worse than one that never started:
+  // nothing about it looks broken until two devices disagree for an hour.
+  test("a failed save puts the control back in touch with the server", () => {
+    const control = new Control("gpt-4")
+    control.render("gpt-4")
+
+    control.write("claude-opus-5")
+    control.reset("gpt-4") // the save came back { ok: false }
+
+    // A foreign change now lands, and must be adopted like any other.
+    expect(control.render("gemini-3")).toBe("gemini-3")
+  })
+
+  // Two devices, one row, same second: ours is not the write that lands last,
+  // so our value is never echoed. Waiting for it would mean displaying a model
+  // that is in no database anywhere until the story is reopened.
+  test("a lost race adopts the value that actually won", () => {
+    const control = new Control("gpt-4")
+    control.render("gpt-4")
+
+    control.write("claude-opus-5")
+    // The other device's write settled the row, and its revalidation arrives
+    // first — correctly turned away while ours is still travelling.
+    expect(control.render("gemini-3")).toBe("claude-opus-5")
+
+    control.settle() // our save resolved ok; the row is whatever it now says
+    expect(control.render("gemini-3")).toBe("gemini-3")
+  })
+
+  // The subtle one: the rejected prop advanced `seen`, so the props need never
+  // change again — and if only `pending` were cleared, nothing would ever
+  // re-offer the value the control is out of step with.
+  test("re-adopts a value that was turned away, without it arriving twice", () => {
+    const control = new Control<string | null>(null)
+    control.render(null)
+
+    control.write("cerebras")
+    control.render("groq") // turned away, but seen
+    control.reset(null) // and then the save failed
+
+    // "groq" is not sent again — it is already the row, and the bus has no
+    // reason to announce it a second time.
+    expect(control.render("groq")).toBe("groq")
+  })
+
+  test("a successful save keeps the value it wrote when the echo agrees", () => {
+    const control = new Control(0.5)
+    control.render(0.5)
+
+    control.write(0.9)
+    control.settle()
+    expect(control.render(0.9)).toBe(0.9)
+  })
+})
+
+describe("hold, from press to release", () => {
+  test("a value arriving mid-gesture lands when the finger comes up", () => {
+    const control = new Control(0.5)
+    control.render(0.5)
+
+    // Pressed, not yet moved — Base UI reports no value change for this, which
+    // is why `hold` comes from the pointer and not from onValueChange.
+    expect(control.render(1.2, true)).toBe(0.5)
+    expect(control.render(1.2, false)).toBe(1.2)
+  })
+
+  test("a cancelled gesture is a release, not a permanent hold", () => {
+    const control = new Control(0.5)
+    control.render(0.5)
+    control.render(0.5, true)
+
+    // The pointer is torn away by a scroll: no commit, no write — just the end
+    // of the hold. The control has to start following the server again.
+    expect(control.render(0.9, false)).toBe(0.9)
   })
 })

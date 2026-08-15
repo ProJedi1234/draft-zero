@@ -19,8 +19,16 @@
 // back before it trusts props again. `hold` extends the same courtesy to a
 // gesture: a slider mid-drag is an edit in progress even though nothing has
 // been written yet.
+//
+// The echo is an optimisation, not the contract: a save can fail, and a write
+// from another device can win the row, and in neither case is our value ever
+// coming back. So every caller must tell its control how the save ended —
+// `settle()` or `reset()` — or the control waits forever and silently stops
+// following the server, which is the one failure this file exists to prevent.
 
 import * as React from "react"
+
+import type { SaveStatus } from "@/hooks/use-autosave"
 
 /**
  * A DB-backed text field that is uncontrolled after mount but still reconciles
@@ -33,10 +41,15 @@ import * as React from "react"
  * field has no edit of its own in flight and is not focused. `pendingRef` holds
  * the last value this field wrote and is cleared once the props echo it back, so
  * a revalidation that predates our own save can never roll the field backwards.
+ *
+ * Callers must record the value the *server will store*, not the keystrokes:
+ * `updateStoryMeta` trims the title and turns a blank system prompt into NULL,
+ * and an echo that can never match the recorded text would latch this field
+ * shut for good.
  */
 export function useServerSyncedField<
   E extends HTMLInputElement | HTMLTextAreaElement,
->(ref: React.RefObject<E | null>, serverValue: string, status: unknown) {
+>(ref: React.RefObject<E | null>, serverValue: string, status: SaveStatus) {
   const pendingRef = React.useRef<string | null>(null)
 
   React.useEffect(() => {
@@ -47,8 +60,14 @@ export function useServerSyncedField<
     if (pending !== null) {
       // Our own write is still travelling; the server has caught up only when
       // it hands the same text back.
-      if (serverValue === pending) pendingRef.current = null
-      return
+      if (serverValue === pending) {
+        pendingRef.current = null
+        return
+      }
+      // Unless it failed, in which case no echo is ever coming and waiting for
+      // one would ignore the server for the life of the mount.
+      if (status !== "error") return
+      pendingRef.current = null
     }
 
     if (el === document.activeElement) return
@@ -90,6 +109,13 @@ export interface ServerSyncedValue<T> {
   setLocal: (next: T) => void
   /** Declare `next` persisted (or about to be), so its own echo isn't mistaken for a foreign change. */
   write: (next: T) => void
+  /**
+   * Declare the write in flight resolved successfully. The row is now whatever
+   * the server says it is — our value, or a later write from another device
+   * that beat ours to it — so stop holding out for an echo that may never
+   * match, and let the next server value through.
+   */
+  settle: () => void
   /**
    * Put the control back on a value and forget the write in flight — for a
    * save that came back `{ ok: false }`, where the row never moved and waiting
@@ -139,6 +165,19 @@ export function adopt<T>(
   return { value, server: serverValue, pending }
 }
 
+/** Declare `next` persisted (or about to be). Pure; see `write` below. */
+export function writeValue<T>(state: SyncState<T>, next: T): SyncState<T> {
+  return Object.is(next, state.server)
+    ? // Nothing to echo, so nothing to wait for; just move the control.
+      { ...state, value: next }
+    : { value: next, server: next, pending: { value: next } }
+}
+
+/** Give up on the echo, keeping the value. Pure; see `settle` below. */
+export function settleValue<T>(state: SyncState<T>): SyncState<T> {
+  return state.pending === null ? state : { ...state, pending: null }
+}
+
 /**
  * The value-shaped sibling of `useServerSyncedField`, for controls whose state
  * is a value rather than DOM text: comboboxes, selects, sliders.
@@ -163,14 +202,24 @@ export function useServerSyncedValue<T>(
     server: serverValue,
     pending: null,
   }))
+  // Bumped whenever a write resolves. A server value `adopt` turned away while
+  // that write was travelling still advances `seen`, so without a nudge the
+  // comparison below would never reconsider it and the control would sit on a
+  // value the row does not hold — permanently, since the props need not change
+  // again. The epoch is what forces exactly one more reconciliation.
+  const [epoch, setEpoch] = React.useState(0)
   // The props the current state was reconciled against. Comparing them is what
   // makes the adjustment below run once per change instead of every render.
-  const [seen, setSeen] = React.useState({ serverValue, hold })
+  const [seen, setSeen] = React.useState({ serverValue, hold, epoch })
 
   let current = state
-  if (!Object.is(seen.serverValue, serverValue) || seen.hold !== hold) {
+  if (
+    !Object.is(seen.serverValue, serverValue) ||
+    seen.hold !== hold ||
+    seen.epoch !== epoch
+  ) {
     current = adopt(state, serverValue, hold)
-    setSeen({ serverValue, hold })
+    setSeen({ serverValue, hold, epoch })
     if (current !== state) setState(current)
   }
 
@@ -180,24 +229,28 @@ export function useServerSyncedValue<T>(
   )
 
   const write = React.useCallback((next: T) => {
-    setState((s) =>
-      Object.is(next, s.server)
-        ? // Nothing to echo, so nothing to wait for; just move the control.
-          { ...s, value: next }
-        : { value: next, server: next, pending: { value: next } }
-    )
+    setState((s) => writeValue(s, next))
   }, [])
 
-  const reset = React.useCallback(
-    (next: T) => setState({ value: next, server: next, pending: null }),
-    []
-  )
+  // Both of these end the wait for an echo, so both have to re-arm adoption:
+  // the value that arrived while the write was in flight is the one most likely
+  // to have been turned away, and it is the one nothing else will offer again.
+  const settle = React.useCallback(() => {
+    setState(settleValue)
+    setEpoch((e) => e + 1)
+  }, [])
+
+  const reset = React.useCallback((next: T) => {
+    setState({ value: next, server: next, pending: null })
+    setEpoch((e) => e + 1)
+  }, [])
 
   return {
     value: current.value,
     server: current.server,
     setLocal,
     write,
+    settle,
     reset,
   }
 }
