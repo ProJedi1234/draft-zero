@@ -12,11 +12,13 @@ import { resolveGenerationSettings } from "@/lib/generation/resolve"
 import type {
   AppSettings,
   EntryGeneration,
+  GenerationDefaults,
   GenerationSettings,
   HistoryState,
   LorebookCategory,
   LorebookEntry,
   ModelProfile,
+  ProfileSettings,
   SettledCallStatus,
   Story,
   StoryEntry,
@@ -126,13 +128,27 @@ export function toStoryEntry(
   }
 }
 
+/** A story's own columns, which are always concrete — Custom or not. */
+export function toGenerationSettings(row: StoryRow): GenerationSettings {
+  return {
+    modelId: row.modelId,
+    thinking: row.thinking,
+    providerTag: row.providerTag,
+    temperature: row.temperature,
+    topP: row.topP,
+    maxTokens: row.maxTokens,
+    contextWindow: row.contextWindow,
+    frequencyPenalty: row.frequencyPenalty,
+    presencePenalty: row.presencePenalty,
+  }
+}
+
 /**
- * The settings columns are identical on `stories` and `model_profiles`, so one
- * structural parameter maps both and the two can never drift apart.
+ * A profile's columns, nulls and all. Same field names as the story mapper
+ * above, one type looser: a null slider here is an inherited field, not a
+ * missing one, and only lib/generation/resolve.ts turns it into a number.
  */
-export function toGenerationSettings(
-  row: StoryRow | ModelProfileRow
-): GenerationSettings {
+export function toProfileSettings(row: ModelProfileRow): ProfileSettings {
   return {
     modelId: row.modelId,
     thinking: row.thinking,
@@ -151,7 +167,7 @@ export function toModelProfile(row: ModelProfileRow): ModelProfile {
     id: row.id,
     name: row.name,
     sortOrder: row.sortOrder,
-    settings: toGenerationSettings(row),
+    settings: toProfileSettings(row),
   }
 }
 
@@ -217,6 +233,8 @@ export function toStory(
   entryRows: StoryEntryRow[],
   lorebookRows: LorebookEntryRow[],
   history: HistoryState,
+  /** The global slider defaults a followed profile's null fields fall back to. */
+  defaults: GenerationDefaults,
   costs: ReadonlyMap<string, EntryCost> = new Map()
 ): Story {
   // Slot membership, in variant_index order — the caller's ORDER BY already
@@ -256,7 +274,8 @@ export function toStory(
     profileId: profileRow ? row.profileId : null,
     settings: resolveGenerationSettings(
       toGenerationSettings(row),
-      profileRow ? toModelProfile(profileRow) : null
+      profileRow ? toModelProfile(profileRow) : null,
+      defaults
     ),
     memory: row.memory,
     authorsNote: row.authorsNote,
@@ -274,5 +293,18 @@ export function toAppSettings(row: AppSettingsRow): AppSettings {
     defaultModelId: row.defaultModelId,
     defaultThinking: row.defaultThinking,
     defaultProfileId: row.defaultProfileId,
+    defaultGeneration: toGenerationDefaults(row),
+  }
+}
+
+/** The six shared slider values, unprefixed for everything downstream. */
+export function toGenerationDefaults(row: AppSettingsRow): GenerationDefaults {
+  return {
+    temperature: row.defaultTemperature,
+    topP: row.defaultTopP,
+    maxTokens: row.defaultMaxTokens,
+    contextWindow: row.defaultContextWindow,
+    frequencyPenalty: row.defaultFrequencyPenalty,
+    presencePenalty: row.defaultPresencePenalty,
   }
 }

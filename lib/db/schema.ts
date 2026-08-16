@@ -333,9 +333,13 @@ export const lorebookEntries = pgTable(
 
 /**
  * A named bundle of generation settings, global and shared by every story that
- * follows it. The settings columns mirror the ones on `stories` exactly — same
- * names, same types, same defaults — so both sides map through the one
- * `toGenerationSettings` shape and neither can drift from the other.
+ * follows it. The model columns mirror the ones on `stories` exactly — same
+ * names, same types — so neither side can drift from the other.
+ *
+ * The six slider columns are the exception, and are nullable here where they
+ * are NOT NULL on a story: NULL is not a value but the absence of one, and
+ * means the profile takes app_settings' default for that field. A story has no
+ * such state — a Custom story's columns are always concrete.
  */
 export const modelProfiles = pgTable("model_profiles", {
   id: text("id").primaryKey(),
@@ -346,12 +350,12 @@ export const modelProfiles = pgTable("model_profiles", {
   modelId: text("model_id").notNull(),
   thinking: text("thinking").notNull().default("off").$type<ThinkingLevel>(),
   providerTag: text("provider_tag"),
-  temperature: doublePrecision("temperature").notNull(),
-  topP: doublePrecision("top_p").notNull(),
-  maxTokens: integer("max_tokens").notNull(),
-  contextWindow: integer("context_window").notNull().default(8192),
-  frequencyPenalty: doublePrecision("frequency_penalty").notNull(),
-  presencePenalty: doublePrecision("presence_penalty").notNull(),
+  temperature: doublePrecision("temperature"),
+  topP: doublePrecision("top_p"),
+  maxTokens: integer("max_tokens"),
+  contextWindow: integer("context_window"),
+  frequencyPenalty: doublePrecision("frequency_penalty"),
+  presencePenalty: doublePrecision("presence_penalty"),
 })
 
 /** Single-row table; `id` is always 1. */
@@ -368,6 +372,23 @@ export const appSettings = pgTable("app_settings", {
   // The profile new stories start from. NULL only before the lazy seed in
   // getAppSettings has run. Not a foreign key, matching stories.profile_id.
   defaultProfileId: text("default_profile_id"),
+  // The shared generation defaults every profile inherits per field. NOT NULL
+  // with the app's own defaults on the column, so the single settings row is
+  // never half-populated and a profile always has something to fall back to.
+  defaultTemperature: doublePrecision("default_temperature")
+    .notNull()
+    .default(0.9),
+  defaultTopP: doublePrecision("default_top_p").notNull().default(0.95),
+  defaultMaxTokens: integer("default_max_tokens").notNull().default(1024),
+  defaultContextWindow: integer("default_context_window")
+    .notNull()
+    .default(8192),
+  defaultFrequencyPenalty: doublePrecision("default_frequency_penalty")
+    .notNull()
+    .default(0.15),
+  defaultPresencePenalty: doublePrecision("default_presence_penalty")
+    .notNull()
+    .default(0.1),
 })
 
 export type StoryRow = typeof stories.$inferSelect

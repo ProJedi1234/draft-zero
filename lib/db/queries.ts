@@ -6,6 +6,7 @@ import { and, asc, count, desc, eq, isNotNull, isNull, ne } from "drizzle-orm"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type {
   AppSettings,
+  GenerationDefaults,
   LorebookEntry,
   ModelProfile,
   SettledCallStatus,
@@ -18,6 +19,7 @@ import { readHistoryState } from "./journal"
 import type { EntryCost } from "./mappers"
 import {
   toAppSettings,
+  toGenerationDefaults,
   toLorebookEntry,
   toModelProfile,
   toStory,
@@ -73,7 +75,7 @@ export async function getStory(id: string): Promise<Story | null> {
 
   if (!storyRow) return null
 
-  const [profileRow, entryRows, lorebookRows, history, costRows] =
+  const [profileRow, entryRows, lorebookRows, history, costRows, defaults] =
     await Promise.all([
       // Effective settings are resolved here, not stored: a followed story reads
       // its profile every time, so an edit in Settings reaches every follower
@@ -121,6 +123,10 @@ export async function getStory(id: string): Promise<Story | null> {
             ne(generationCalls.status, "streaming")
           )
         ),
+      // Fetched for every story, followed or not: which of the two it is
+      // depends on profile_id, and branching here would cost a round trip the
+      // Promise.all is already paying for in parallel.
+      getGenerationDefaults(),
     ])
 
   const costs = new Map<string, EntryCost>()
@@ -139,8 +145,26 @@ export async function getStory(id: string): Promise<Story | null> {
     entryRows,
     lorebookRows,
     history,
+    defaults,
     costs
   )
+}
+
+/**
+ * The shared slider defaults, read without the lazy seeding getAppSettings
+ * does. A read path must not write, and the app's own constants are the right
+ * answer in the one moment the settings row does not exist yet — they are what
+ * the row is about to be created holding.
+ */
+export async function getGenerationDefaults(): Promise<GenerationDefaults> {
+  const db = await getDb()
+  const row = await db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.id, 1))
+    .limit(1)
+    .then((rows) => rows[0])
+  return row ? toGenerationDefaults(row) : DEFAULT_GENERATION_SETTINGS
 }
 
 /** One story's lorebook entries, ordered name ASC. */
@@ -235,6 +259,12 @@ export async function getAppSettings(): Promise<AppSettings> {
       defaultModelId: DEFAULT_GENERATION_SETTINGS.modelId,
       defaultThinking: DEFAULT_GENERATION_SETTINGS.thinking,
       defaultProfileId: null,
+      defaultTemperature: DEFAULT_GENERATION_SETTINGS.temperature,
+      defaultTopP: DEFAULT_GENERATION_SETTINGS.topP,
+      defaultMaxTokens: DEFAULT_GENERATION_SETTINGS.maxTokens,
+      defaultContextWindow: DEFAULT_GENERATION_SETTINGS.contextWindow,
+      defaultFrequencyPenalty: DEFAULT_GENERATION_SETTINGS.frequencyPenalty,
+      defaultPresencePenalty: DEFAULT_GENERATION_SETTINGS.presencePenalty,
     }
     await db.insert(appSettings).values(defaults).onConflictDoNothing()
     row = defaults
@@ -252,12 +282,13 @@ export async function getAppSettings(): Promise<AppSettings> {
   await db
     .insert(modelProfiles)
     .values({
-      ...DEFAULT_GENERATION_SETTINGS,
       id: SEEDED_DEFAULT_PROFILE_ID,
       name: "Default",
       sortOrder: 0,
       modelId: row.defaultModelId,
       thinking: row.defaultThinking,
+      // Every slider left NULL: the seeded profile has no opinion of its own,
+      // so it tracks the writer's Generation defaults from the first read.
     })
     .onConflictDoNothing()
   await db

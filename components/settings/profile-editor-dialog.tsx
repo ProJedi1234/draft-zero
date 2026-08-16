@@ -34,11 +34,12 @@ import {
 } from "@/lib/actions/profiles"
 import {
   clampContextWindow,
-  DEFAULT_CONTEXT_WINDOW,
   endpointForTag,
-  type GenerationSettings,
+  type GenerationDefaults,
+  type GenerationOverrides,
   type ModelProfile,
   type OpenRouterModel,
+  type ProfileSettings,
 } from "@/lib/types"
 
 const FALLBACK_ERROR = "Couldn't save the profile."
@@ -81,6 +82,7 @@ export function ProfileEditorDialog({
   open,
   onOpenChange,
   models,
+  defaults,
   isDefault,
   followerCount,
 }: {
@@ -88,6 +90,8 @@ export function ProfileEditorDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   models: OpenRouterModel[]
+  /** The global slider values an inheriting field shows and generates under. */
+  defaults: GenerationDefaults
   /** True when the profile being edited is already the one new stories start from. */
   isDefault: boolean
   /** Stories following the profile being edited; 0 for a create. */
@@ -102,6 +106,7 @@ export function ProfileEditorDialog({
           key={`${target.mode}:${target.profile?.id ?? "new"}`}
           target={target}
           models={models}
+          defaults={defaults}
           isDefault={isDefault}
           followerCount={followerCount}
           onDone={() => onOpenChange(false)}
@@ -113,27 +118,28 @@ export function ProfileEditorDialog({
 
 /**
  * Only reachable with an empty profile table, which getAppSettings' lazy seed
- * makes a momentary state at most — every other draft starts from a real
- * profile's settings rather than from a second copy of the app defaults.
+ * makes a momentary state at most. Every slider inherits: a brand-new profile
+ * has no opinion of its own until the writer gives it one, and there is no
+ * second copy of the app defaults here to drift from the real ones.
  */
-function blankSettings(models: OpenRouterModel[]): GenerationSettings {
+function blankSettings(models: OpenRouterModel[]): ProfileSettings {
   return {
     modelId: models[0]?.id ?? "",
     thinking: "off",
     providerTag: null,
-    temperature: 0.9,
-    topP: 0.95,
-    maxTokens: 1024,
-    contextWindow: DEFAULT_CONTEXT_WINDOW,
-    frequencyPenalty: 0,
-    presencePenalty: 0,
+    temperature: null,
+    topP: null,
+    maxTokens: null,
+    contextWindow: null,
+    frequencyPenalty: null,
+    presencePenalty: null,
   }
 }
 
 function initialDraft(
   target: ProfileEditorTarget,
   models: OpenRouterModel[]
-): { name: string; settings: GenerationSettings } {
+): { name: string; settings: ProfileSettings } {
   if (!target.profile) return { name: "", settings: blankSettings(models) }
   const name =
     target.mode === "create"
@@ -147,12 +153,14 @@ function initialDraft(
 function ProfileEditorForm({
   target,
   models,
+  defaults,
   isDefault,
   followerCount,
   onDone,
 }: {
   target: ProfileEditorTarget
   models: OpenRouterModel[]
+  defaults: GenerationDefaults
   isDefault: boolean
   followerCount: number
   onDone: () => void
@@ -172,14 +180,32 @@ function ProfileEditorForm({
     model?.contextLength ??
     0
   // Clamped for display, and saved that way — the ladder stop the writer can
-  // see is the one the profile should hold.
+  // see is the one the profile should hold. An inherited window shows the
+  // global default through the same clamp: the model's ceiling applies to the
+  // value that will actually be sent, whoever it came from.
   const contextWindow = clampContextWindow(
-    settings.contextWindow,
+    settings.contextWindow ?? defaults.contextWindow,
     contextLength
   )
 
-  function patch(next: Partial<GenerationSettings>) {
+  function patch(next: Partial<ProfileSettings>) {
     setSettings((current) => ({ ...current, ...next }))
+  }
+
+  /**
+   * The props that make one slider an inherit/override pair: what to show, and
+   * the way back. Dragging promotes through the field's own onValueChange —
+   * every one of them writes a number, which is exactly what an override is.
+   */
+  function inherit<K extends keyof GenerationOverrides>(field: K) {
+    return {
+      value: settings[field] ?? defaults[field],
+      inherited: settings[field] === null,
+      onRevert:
+        settings[field] === null
+          ? undefined
+          : () => patch({ [field]: null } as Partial<ProfileSettings>),
+    }
   }
 
   function handleModelChange(nextModelId: string) {
@@ -193,10 +219,16 @@ function ProfileEditorForm({
       modelId: nextModelId,
       providerTag: null,
       thinking: levelForModel(nextModel?.reasoning, settings.thinking),
-      contextWindow: clampContextWindow(
-        settings.contextWindow,
-        nextModel?.contextLength ?? 0
-      ),
+      // An inherited window stays inherited across a model switch: the clamp is
+      // applied to whatever it resolves to at send time, and promoting the
+      // field here would be the model picker silently taking an opinion.
+      contextWindow:
+        settings.contextWindow === null
+          ? null
+          : clampContextWindow(
+              settings.contextWindow,
+              nextModel?.contextLength ?? 0
+            ),
     })
   }
 
@@ -204,12 +236,15 @@ function ProfileEditorForm({
     if (nextProviderTag === settings.providerTag) return
     patch({
       providerTag: nextProviderTag,
-      contextWindow: clampContextWindow(
-        settings.contextWindow,
-        endpointForTag(endpoints, nextProviderTag)?.contextLength ??
-          model?.contextLength ??
-          0
-      ),
+      contextWindow:
+        settings.contextWindow === null
+          ? null
+          : clampContextWindow(
+              settings.contextWindow,
+              endpointForTag(endpoints, nextProviderTag)?.contextLength ??
+                model?.contextLength ??
+                0
+            ),
     })
   }
 
@@ -218,7 +253,12 @@ function ProfileEditorForm({
   function handleSave() {
     if (trimmed === "" || isPending) return
     startTransition(async () => {
-      const saved = { ...settings, contextWindow }
+      // The clamp reaches the row only on an overridden window; an inherited
+      // one saves as the null it is.
+      const saved: ProfileSettings = {
+        ...settings,
+        contextWindow: settings.contextWindow === null ? null : contextWindow,
+      }
       const editing = target.mode === "edit" ? target.profile : null
       try {
         let id: string
@@ -310,9 +350,13 @@ function ProfileEditorForm({
               <ChevronsUpDown className="size-3" />
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-6 pt-4">
+              <p className="text-xs text-muted-foreground">
+                Dimmed fields follow the Generation defaults. Drag one to give
+                this profile its own value.
+              </p>
               <SliderField
                 label="Temperature"
-                value={settings.temperature}
+                {...inherit("temperature")}
                 min={0}
                 max={2}
                 step={0.01}
@@ -320,7 +364,7 @@ function ProfileEditorForm({
               />
               <SliderField
                 label="Top P"
-                value={settings.topP}
+                {...inherit("topP")}
                 min={0}
                 max={1}
                 step={0.01}
@@ -328,7 +372,7 @@ function ProfileEditorForm({
               />
               <SliderField
                 label="Max tokens"
-                value={settings.maxTokens}
+                {...inherit("maxTokens")}
                 min={128}
                 max={4096}
                 step={128}
@@ -337,12 +381,18 @@ function ProfileEditorForm({
               <ContextWindowSlider
                 value={contextWindow}
                 contextLength={contextLength}
+                inherited={settings.contextWindow === null}
+                onRevert={
+                  settings.contextWindow === null
+                    ? undefined
+                    : () => patch({ contextWindow: null })
+                }
                 onValueChange={(next) => patch({ contextWindow: next })}
                 onValueCommitted={(next) => patch({ contextWindow: next })}
               />
               <SliderField
                 label="Frequency penalty"
-                value={settings.frequencyPenalty}
+                {...inherit("frequencyPenalty")}
                 min={-2}
                 max={2}
                 step={0.1}
@@ -352,7 +402,7 @@ function ProfileEditorForm({
               />
               <SliderField
                 label="Presence penalty"
-                value={settings.presencePenalty}
+                {...inherit("presencePenalty")}
                 min={-2}
                 max={2}
                 step={0.1}

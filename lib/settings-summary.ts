@@ -5,10 +5,14 @@
 // resolving each profile's endpoints instead would be one request per row for a
 // line nobody reads twice. A profile pinned to an endpoint therefore shows the
 // tag it pinned and the model's own price.
+//
+// Only the model half of a bundle is printed, which is why the parameter is
+// GenerationIdentity: a profile's sliders may be inherited, and the line would
+// have to resolve them before it could say anything true about them.
 
 import {
   THINKING_LEVEL_LABELS,
-  type GenerationSettings,
+  type GenerationIdentity,
   type OpenRouterModel,
 } from "@/lib/types"
 
@@ -19,7 +23,7 @@ import {
  * degrades to its id, which is still the truth about the bundle.
  */
 export function settingsSummary(
-  settings: GenerationSettings,
+  settings: GenerationIdentity,
   models: OpenRouterModel[]
 ): string {
   const { modelId, providerTag, thinking } = settings
@@ -39,7 +43,7 @@ export function settingsSummary(
  * instead, against the pinned endpoint it can afford to resolve.
  */
 export function settingsSummaryWithPrice(
-  settings: GenerationSettings,
+  settings: GenerationIdentity,
   models: OpenRouterModel[]
 ): string {
   const summary = settingsSummary(settings, models)
