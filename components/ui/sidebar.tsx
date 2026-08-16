@@ -168,6 +168,7 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const popupRef = React.useRef<HTMLDivElement>(null)
 
   if (collapsible === "none") {
     return (
@@ -188,6 +189,19 @@ function Sidebar({
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
         <SheetContent
+          /*
+           * Focus the panel, not its first tabbable child. Base UI already does
+           * this for touch-opened dialogs — precisely so a text field cannot
+           * summon the virtual keyboard — but that only applies when it can see
+           * the interaction, which means opening through its own Trigger.
+           * SidebarTrigger drives `openMobile` instead, so the sheet arrives
+           * with no interaction type and takes the default: focus the first
+           * tabbable element, here the search input. iOS then spends the user's
+           * next tap blurring it, which reads as the sidebar ignoring the first
+           * touch every time it opens.
+           */
+          ref={popupRef}
+          initialFocus={popupRef}
           dir={dir}
           data-sidebar="sidebar"
           data-slot="sidebar"
