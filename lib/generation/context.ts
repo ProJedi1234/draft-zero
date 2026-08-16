@@ -5,7 +5,12 @@
 import type { LorebookEntry, Story } from "@/lib/types"
 import { matchActiveLorebookEntries, recentStoryText } from "./lorebook"
 import { resolveSystemPrompt } from "./system-prompt"
-import type { ActiveLoreEntry, ComposedContext } from "./types"
+import type {
+  ActiveLoreEntry,
+  ComposedContext,
+  ContextFit,
+  PromptBlock,
+} from "./types"
 
 /**
  * The inverse of estimateTokens. Because estimateTokens is ceil(len / 4),
@@ -26,6 +31,12 @@ const PARAGRAPH_SEPARATOR = "\n\n"
 /** Stands in for the story text when there is none, so the turn is never empty. */
 const EMPTY_STORY_MARKER =
   "(This story has no text yet. Write its opening paragraph.)"
+/** Nothing offered, nothing kept — the shape composeContext starts from. */
+const EMPTY_FIT: ContextFit = {
+  loreMatched: 0,
+  storyChars: 0,
+  storyCharsKept: 0,
+}
 
 /**
  * The final `budget` chars of `text`, cut forward to the next paragraph
@@ -131,6 +142,7 @@ export function composeContext(input: {
     authorsNote: story.authorsNote,
     seed: story.entries.length + variant,
     approxTokens: 0,
+    fit: EMPTY_FIT,
   }
 
   // Probe: the same context with nothing budgeted into it yet. Its length is
@@ -144,10 +156,10 @@ export function composeContext(input: {
     Math.floor(remaining * LORE_BUDGET_SHARE)
   )
   context.lore = kept
-  context.storyText = trimStoryText(
-    story.entries.map((entry) => entry.text).join(PARAGRAPH_SEPARATOR),
-    remaining - used
-  )
+  const fullStoryText = story.entries
+    .map((entry) => entry.text)
+    .join(PARAGRAPH_SEPARATOR)
+  context.storyText = trimStoryText(fullStoryText, remaining - used)
 
   // Reconcile. The probe renders the *empty* story shape (two blocks) while a
   // real story renders three, so the estimate is off by a couple of separator
@@ -168,6 +180,16 @@ export function composeContext(input: {
     context.approxTokens = measure(context)
   }
 
+  // Last, because the reconcile loop above is still allowed to drop paragraphs:
+  // what the writer is owed is what SURVIVED, measured against what was offered.
+  context.fit = {
+    loreMatched: activeLore.length,
+    storyChars: fullStoryText.trim().length,
+    // Trimmed at both ends for the same reason renderPrompt trims: the leading
+    // separator a mid-paragraph cut leaves behind is not prose that fit.
+    storyCharsKept: context.storyText.trim().length,
+  }
+
   return context
 }
 
@@ -176,20 +198,36 @@ function measure(ctx: ComposedContext): number {
   return estimateTokens(ctx.systemPrompt + renderPrompt(ctx))
 }
 
-/** The exact prompt string a real provider would send. */
-export function renderPrompt(ctx: ComposedContext): string {
-  const blocks: string[] = []
+/**
+ * The user turn, as the labelled blocks it is actually built from.
+ *
+ * renderPrompt is this joined back together, so the two can never disagree
+ * about what was sent — which is the whole point of splitting it out. The
+ * context viewer slices the prompt by these blocks rather than by searching the
+ * finished string for bracket labels, so a block shape that changes here
+ * changes the breakdown with it and nothing has to be kept in sync.
+ */
+export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
+  const blocks: PromptBlock[] = []
 
   const memory = ctx.memory.trim()
-  if (memory !== "") blocks.push(`[Memory]\n${memory}`)
+  if (memory !== "") {
+    blocks.push({ section: "memory", text: `[Memory]\n${memory}` })
+  }
 
   for (const entry of ctx.lore) {
-    blocks.push(`[Lore: ${entry.name}]\n${entry.content.trim()}`)
+    blocks.push({
+      section: "lore",
+      loreId: entry.id,
+      text: `[Lore: ${entry.name}]\n${entry.content.trim()}`,
+    })
   }
 
   const authorsNote = ctx.authorsNote.trim()
-  const authorsNoteBlock =
-    authorsNote === "" ? null : `[Author's note: ${authorsNote}]`
+  const authorsNoteBlock: PromptBlock | null =
+    authorsNote === ""
+      ? null
+      : { section: "authorsNote", text: `[Author's note: ${authorsNote}]` }
 
   const storyText = ctx.storyText.trim()
   if (storyText === "") {
@@ -198,7 +236,7 @@ export function renderPrompt(ctx: ComposedContext): string {
     // sections and nothing else treats them as a document to format — which is
     // where the screenplays came from. Say plainly that the story is empty and
     // what to do about it. The author's note still applies to the opening.
-    blocks.push(`[Story]\n${EMPTY_STORY_MARKER}`)
+    blocks.push({ section: "story", text: `[Story]\n${EMPTY_STORY_MARKER}` })
     if (authorsNoteBlock) blocks.push(authorsNoteBlock)
   } else {
     const boundary = storyText.lastIndexOf(PARAGRAPH_SEPARATOR)
@@ -208,12 +246,22 @@ export function renderPrompt(ctx: ComposedContext): string {
         ? storyText
         : storyText.slice(boundary + PARAGRAPH_SEPARATOR.length)
 
-    blocks.push(head === "" ? "[Story]" : `[Story]\n${head}`)
+    blocks.push({
+      section: "story",
+      text: head === "" ? "[Story]" : `[Story]\n${head}`,
+    })
     if (authorsNoteBlock) blocks.push(authorsNoteBlock)
-    blocks.push(finalParagraph)
+    blocks.push({ section: "story", text: finalParagraph })
   }
 
-  return blocks.join(PARAGRAPH_SEPARATOR)
+  return blocks
+}
+
+/** The exact prompt string a real provider would send. */
+export function renderPrompt(ctx: ComposedContext): string {
+  return promptBlocks(ctx)
+    .map((block) => block.text)
+    .join(PARAGRAPH_SEPARATOR)
 }
 
 /** ceil(text.length / 4). */

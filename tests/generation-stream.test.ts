@@ -149,6 +149,7 @@ const context: ComposedContext = {
   authorsNote: "",
   seed: 0,
   approxTokens: 128,
+  fit: { loreMatched: 0, storyChars: 0, storyCharsKept: 0 },
 }
 
 function settings(overrides: Partial<GenerationSettings> = {}) {
