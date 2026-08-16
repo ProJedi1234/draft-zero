@@ -3,7 +3,11 @@ import { notFound } from "next/navigation"
 
 import { StoryWorkspace } from "@/components/story/story-workspace"
 import { getStoryCostProfile } from "@/lib/db/cost-queries"
-import { getStory, listLorebookEntries } from "@/lib/db/queries"
+import {
+  getStory,
+  listLorebookEntries,
+  listModelProfiles,
+} from "@/lib/db/queries"
 import { listModels } from "@/lib/generation/models"
 
 type StoryPageProps = {
@@ -36,12 +40,17 @@ export default async function StoryPage({ params }: StoryPageProps) {
   // ledger — the one cost query no index can serve — on every story open, for a
   // figure most opens never reveal. The global "where am I" figures live on
   // /usage, which the ledger links to.
-  const [story, lorebookEntries, models, costProfile] = await Promise.all([
-    getStory(storyId),
-    listLorebookEntries(storyId),
-    listModels(),
-    getStoryCostProfile(storyId),
-  ])
+  // The whole profile list, not just the followed one: the switcher is a menu,
+  // and there are a handful of these rows at most (see the UX doc) — a second
+  // round trip when the writer opens it would be the expensive option.
+  const [story, lorebookEntries, models, costProfile, profiles] =
+    await Promise.all([
+      getStory(storyId),
+      listLorebookEntries(storyId),
+      listModels(),
+      getStoryCostProfile(storyId),
+      listModelProfiles(),
+    ])
 
   if (!story) {
     notFound()
@@ -56,6 +65,7 @@ export default async function StoryPage({ params }: StoryPageProps) {
       lorebookEntries={lorebookEntries}
       models={models}
       costProfile={costProfile}
+      profiles={profiles}
     />
   )
 }

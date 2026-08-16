@@ -110,6 +110,12 @@ export async function startGeneration(
 
     if (!story) return { ok: false, error: "Story not found." }
 
+    // `story.settings` is already EFFECTIVE — getStory resolved it through the
+    // followed profile (see resolveGenerationSettings), so everything from the
+    // endpoint fetch above down to the run's settings is about the profile's
+    // model when the story follows one, and about the story's own columns only
+    // when it is Custom. The clamp below then applies to whichever it was.
+    //
     // The stored window can exceed what the selected model accepts: the catalog
     // is live, so a row written against a bigger model (or against MOCK_MODELS,
     // before a key was configured) outlives the model that justified it. The

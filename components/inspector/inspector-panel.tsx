@@ -40,6 +40,7 @@ import {
   endpointForTag,
   type GenerationSettings,
   type LorebookEntry,
+  type ModelProfile,
   type OpenRouterModel,
   type Story,
   type ThinkingLevel,
@@ -52,11 +53,14 @@ export function InspectorPanel({
   story,
   lorebookEntries,
   models,
+  profiles,
   className,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
+  /** Every profile, in the writer's order — the switcher's list. */
+  profiles: ModelProfile[]
   className?: string
 }) {
   return (
@@ -71,6 +75,7 @@ export function InspectorPanel({
         story={story}
         lorebookEntries={lorebookEntries}
         models={models}
+        profiles={profiles}
       />
     </aside>
   )
@@ -87,10 +92,12 @@ export function InspectorContent({
   story,
   lorebookEntries,
   models,
+  profiles,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
+  profiles: ModelProfile[]
 }) {
   return (
     <InspectorSections
@@ -98,6 +105,7 @@ export function InspectorContent({
       story={story}
       lorebookEntries={lorebookEntries}
       models={models}
+      profiles={profiles}
     />
   )
 }
@@ -106,14 +114,20 @@ function InspectorSections({
   story,
   lorebookEntries,
   models,
+  profiles,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
+  profiles: ModelProfile[]
 }) {
   // Unique per mounted instance: the desktop panel and the mobile sheet can be
   // in the DOM at once, and duplicate ids would cross-wire the labels.
   const uid = React.useId()
+  // A read-only line for now; the switcher that replaces the model block with
+  // this card is the UI layer's.
+  const followedProfile =
+    profiles.find((profile) => profile.id === story.profileId) ?? null
   // These three depend on each other, so an open menu holds all three: adopting
   // a foreign model while the writer is reading one of them would retarget the
   // endpoint list under the cursor, or unmount the thinking menu outright.
@@ -395,6 +409,11 @@ function InspectorSections({
       {/* Bottom pad clears the home indicator; see app/page.tsx. */}
       <div className="space-y-6 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="space-y-3">
+          {followedProfile && (
+            <p className="text-xs text-muted-foreground">
+              Following {followedProfile.name}
+            </p>
+          )}
           <div className="space-y-1">
             <ModelPicker
               models={models}

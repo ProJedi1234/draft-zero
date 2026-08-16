@@ -13,7 +13,12 @@ import type { ActionResult, GenerationSettings } from "@/lib/types"
 
 /**
  * Creates a story with title "Untitled Story" (or given), empty text fields,
- * settings from the app default model + DEFAULT_GENERATION_SETTINGS numerics.
+ * following the default profile.
+ *
+ * The inline settings columns are the story's CUSTOM memory, not its effective
+ * settings, so they start from DEFAULT_GENERATION_SETTINGS rather than from the
+ * profile: a copy of the profile here would be a snapshot that later edits to
+ * the profile could not move, and profile code does not write these columns.
  */
 export async function createStory(input?: {
   title?: string
@@ -33,8 +38,12 @@ export async function createStory(input?: {
     authorsNote: "",
     // null, not "": new stories track the built-in narrator prompt.
     systemPrompt: null,
-    modelId: appSettings.defaultModelId,
-    thinking: appSettings.defaultThinking,
+    // The default profile, which supersedes the app's default model/thinking
+    // pair — those columns are still on disk but nothing reads them now except
+    // the one-time seed in getAppSettings.
+    profileId: appSettings.defaultProfileId,
+    modelId: DEFAULT_GENERATION_SETTINGS.modelId,
+    thinking: DEFAULT_GENERATION_SETTINGS.thinking,
     // Auto: a new story has no reason to pin one provider of its default model.
     providerTag: null,
     temperature: DEFAULT_GENERATION_SETTINGS.temperature,
