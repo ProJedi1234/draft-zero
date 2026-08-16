@@ -2,7 +2,7 @@
 // only consumer today, but everything here is what a real provider would send.
 // Pure and deterministic: same inputs → same ComposedContext, same prompt.
 
-import type { LorebookEntry, Story } from "@/lib/types"
+import type { LorebookEntry, Story, StoryEntry } from "@/lib/types"
 import { matchActiveLorebookEntries, recentStoryText } from "./lorebook"
 import { resolveSystemPrompt } from "./system-prompt"
 import type {
@@ -52,6 +52,20 @@ function trimStoryText(text: string, budget: number): string {
   const boundary = window.indexOf(PARAGRAPH_SEPARATOR)
   if (boundary === -1) return window
   return window.slice(boundary + PARAGRAPH_SEPARATOR.length)
+}
+
+/**
+ * A player turn, chevroned; generated prose, untouched.
+ *
+ * Prompt-only — the stored entry text and the UI bubble never carry the marker.
+ * Without it a turn is just another paragraph opening with "You", which is what
+ * narration looks like too, so the model cannot locate the move it is supposed
+ * to respond to. Every turn is marked rather than only the last one: one
+ * chevron is a character the model has to interpret, while an alternating
+ * column of them is a convention it can read off the page.
+ */
+function markPlayerTurn(entry: StoryEntry): string {
+  return entry.actionKind === null ? entry.text : `> ${entry.text}`
 }
 
 /** What one lore entry actually costs once renderPrompt has wrapped it. */
@@ -156,8 +170,10 @@ export function composeContext(input: {
     Math.floor(remaining * LORE_BUDGET_SHARE)
   )
   context.lore = kept
+  // Markers are applied before budgeting, so `fit` counts the same chars the
+  // budget spends and the two cannot disagree about what a turn costs.
   const fullStoryText = story.entries
-    .map((entry) => entry.text)
+    .map(markPlayerTurn)
     .join(PARAGRAPH_SEPARATOR)
   context.storyText = trimStoryText(fullStoryText, remaining - used)
 
