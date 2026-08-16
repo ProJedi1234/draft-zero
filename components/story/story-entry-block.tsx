@@ -23,6 +23,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { EntryContextButton } from "@/components/context/entry-context-button"
 import { EntryCostChip } from "@/components/cost/entry-cost-chip"
 import { PassageEditor } from "@/components/story/passage-editor"
 import { Prose } from "@/components/story/prose"
@@ -153,6 +154,9 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
         {entry.source === "generated" && (
           <>
             <EntryCostChip entry={entry} />
+            {/* Beside the cost, because they answer the two questions a
+                finished passage raises — what it cost, and what it was told. */}
+            <EntryContextButton storyId={storyId} entryId={entry.id} />
             <Separator orientation="vertical" className="mx-0.5 h-4" />
           </>
         )}

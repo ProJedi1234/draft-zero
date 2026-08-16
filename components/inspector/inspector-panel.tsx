@@ -4,6 +4,7 @@ import * as React from "react"
 import { ChevronsUpDown } from "lucide-react"
 import { toast } from "sonner"
 
+import { ContextDialog } from "@/components/context/context-dialog"
 import { ContextWindowSlider } from "@/components/inspector/context-window-slider"
 import { LoreTab } from "@/components/inspector/lore-tab"
 import { ModelPicker } from "@/components/inspector/model-picker"
@@ -32,6 +33,7 @@ import {
   updateGenerationSettings,
   updateStoryMeta,
 } from "@/lib/actions/stories"
+import { describeContext } from "@/lib/generation/breakdown"
 import { composeContext } from "@/lib/generation/context"
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/generation/system-prompt"
 import {
@@ -684,6 +686,12 @@ function formatApproxTokens(tokens: number): string {
  * real prompt, and against the same budget — so the number the writer sees is
  * the number that gets sent. The window is the *live* slider value, not
  * story.settings, so the meter answers before the commit round-trips.
+ *
+ * It is also the way in to the viewer for a request that has not happened yet.
+ * The same breakdown a finished passage shows, composed here instead of read
+ * from disk: what the lorebook is contributing, and what the window is about to
+ * push out — answerable while the slider is still under the writer's finger,
+ * rather than only after a generation has spent the money.
  */
 function ContextMeter({
   story,
@@ -695,29 +703,50 @@ function ContextMeter({
   /** Selected, model-clamped input budget in tokens. Always a ladder stop. */
   contextWindow: number
 }) {
-  const approxTokens = React.useMemo(
-    () =>
-      composeContext({ story, lorebookEntries, contextWindow }).approxTokens,
+  const [open, setOpen] = React.useState(false)
+  const context = React.useMemo(
+    () => composeContext({ story, lorebookEntries, contextWindow }),
     [story, lorebookEntries, contextWindow]
   )
+  const approxTokens = context.approxTokens
+  // Only while the dialog is open: this runs on every keystroke in the panel
+  // otherwise, to build something nobody is looking at.
+  const breakdown = React.useMemo(
+    () => (open ? describeContext(context, contextWindow) : null),
+    [open, context, contextWindow]
+  )
+
   return (
-    <div className="space-y-1.5">
-      <p className="font-mono text-xs text-muted-foreground tabular-nums">
-        ≈ {formatApproxTokens(approxTokens)} /{" "}
-        {contextWindowLabel(contextWindow)} tokens
-      </p>
-      {/* The smallest stops cannot fit the system prompt alone, so the bar can
-          be pinned full (Meter clamps) while the readout above honestly shows
-          the overflow. */}
-      <Meter
-        value={approxTokens / contextWindow}
-        indicatorClassName="transition-[width] duration-200"
-        role="progressbar"
-        aria-label="Context used"
-        aria-valuemin={0}
-        aria-valuemax={contextWindow}
-        aria-valuenow={approxTokens}
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="View the context for the next generation"
+        className="w-full space-y-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+      >
+        <p className="font-mono text-xs text-muted-foreground tabular-nums">
+          ≈ {formatApproxTokens(approxTokens)} /{" "}
+          {contextWindowLabel(contextWindow)} tokens
+        </p>
+        {/* The smallest stops cannot fit the system prompt alone, so the bar can
+            be pinned full (Meter clamps) while the readout above honestly shows
+            the overflow. */}
+        <Meter
+          value={approxTokens / contextWindow}
+          indicatorClassName="transition-[width] duration-200"
+          role="progressbar"
+          aria-label="Context used"
+          aria-valuemin={0}
+          aria-valuemax={contextWindow}
+          aria-valuenow={approxTokens}
+        />
+      </button>
+      <ContextDialog
+        open={open}
+        onOpenChange={setOpen}
+        caption="Context for the next generation"
+        breakdown={breakdown}
       />
-    </div>
+    </>
   )
 }
