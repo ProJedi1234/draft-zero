@@ -4,10 +4,13 @@ import { desc, eq } from "drizzle-orm"
 
 import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
-import { toGenerationSettings } from "@/lib/db/mappers"
+import { toGenerationSettings, toModelProfile } from "@/lib/db/mappers"
 import { getAppSettings } from "@/lib/db/queries"
 import { appSettings, modelProfiles, stories } from "@/lib/db/schema"
-import { customColumnsFromSettings } from "@/lib/generation/resolve"
+import {
+  customColumnsFromSettings,
+  resolveGenerationSettings,
+} from "@/lib/generation/resolve"
 import {
   isContextWindow,
   REASONING_EFFORTS,
@@ -246,9 +249,14 @@ export async function setStoryProfile(
 }
 
 /**
- * Promotes a Custom story's settings into a named profile and points the story
- * at it — the end of a successful experiment. The story's columns keep the same
- * values they had, so a later return to Custom is still lossless.
+ * Promotes a story's settings into a named profile and points the story at it —
+ * the end of a successful experiment. The story's columns keep the same values
+ * they had, so a later return to Custom is still lossless.
+ *
+ * The new profile is seeded with the story's EFFECTIVE settings, not its raw
+ * columns: the UI only offers this in Custom mode, where the two are the same,
+ * but a story that is already following a profile would otherwise get a profile
+ * copied from custom settings nobody has generated under in a while.
  */
 export async function saveStoryAsProfile(
   storyId: string,
@@ -263,7 +271,23 @@ export async function saveStoryAsProfile(
     .then((rows) => rows[0])
   if (!story) return { ok: false, error: "Story not found." }
 
-  const created = await insertProfile(name, toGenerationSettings(story))
+  const followed =
+    story.profileId === null
+      ? undefined
+      : await db
+          .select()
+          .from(modelProfiles)
+          .where(eq(modelProfiles.id, story.profileId))
+          .limit(1)
+          .then((rows) => rows[0])
+
+  const created = await insertProfile(
+    name,
+    resolveGenerationSettings(
+      toGenerationSettings(story),
+      followed ? toModelProfile(followed) : null
+    )
+  )
   if (!created.ok) return created
 
   await db
