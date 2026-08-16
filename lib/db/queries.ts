@@ -7,6 +7,7 @@ import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type {
   AppSettings,
   LorebookEntry,
+  ModelProfile,
   SettledCallStatus,
   Story,
   StorySummary,
@@ -18,6 +19,7 @@ import type { EntryCost } from "./mappers"
 import {
   toAppSettings,
   toLorebookEntry,
+  toModelProfile,
   toStory,
   toStorySummary,
 } from "./mappers"
@@ -25,6 +27,7 @@ import {
   appSettings,
   generationCalls,
   lorebookEntries,
+  modelProfiles,
   storyEntries,
   stories,
 } from "./schema"
@@ -70,41 +73,55 @@ export async function getStory(id: string): Promise<Story | null> {
 
   if (!storyRow) return null
 
-  const [entryRows, lorebookRows, history, costRows] = await Promise.all([
-    // Every non-deleted row, active takes and alternatives alike. One flat
-    // query rather than a GROUP BY plus a join for the sibling counts: a
-    // manuscript is small and is already loaded whole on every request, so the
-    // extra inactive rows cost less than the second round trip would, and
-    // `toStory` gets everything it needs to fill in variantIndex/variantCount.
-    db
-      .select()
-      .from(storyEntries)
-      .where(and(eq(storyEntries.storyId, id), isNull(storyEntries.deletedAt)))
-      .orderBy(asc(storyEntries.position), asc(storyEntries.variantIndex)),
-    db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
-    readHistoryState(db, id),
-    // The story's spend, as a second small SELECT rather than a join onto the
-    // entries above. A join is the same rows, but a ledger that somehow held two
-    // calls for one take would silently DUPLICATE a passage in the manuscript —
-    // a bookkeeping oddity has no business being able to do that. Indexed on
-    // (story_id, created_at); in-flight calls are excluded because they have no
-    // cost yet and no take.
-    db
-      .select({
-        storyEntryId: generationCalls.storyEntryId,
-        costUsd: generationCalls.costUsd,
-        reasoningTokens: generationCalls.reasoningTokens,
-        status: generationCalls.status,
-      })
-      .from(generationCalls)
-      .where(
-        and(
-          eq(generationCalls.storyId, id),
-          isNotNull(generationCalls.storyEntryId),
-          ne(generationCalls.status, "streaming")
+  const [profileRow, entryRows, lorebookRows, history, costRows] =
+    await Promise.all([
+      // Effective settings are resolved here, not stored: a followed story reads
+      // its profile every time, so an edit in Settings reaches every follower
+      // without touching a single story row. Skipped entirely for Custom.
+      storyRow.profileId === null
+        ? Promise.resolve(undefined)
+        : db
+            .select()
+            .from(modelProfiles)
+            .where(eq(modelProfiles.id, storyRow.profileId))
+            .limit(1)
+            .then((rows) => rows[0]),
+      // Every non-deleted row, active takes and alternatives alike. One flat
+      // query rather than a GROUP BY plus a join for the sibling counts: a
+      // manuscript is small and is already loaded whole on every request, so the
+      // extra inactive rows cost less than the second round trip would, and
+      // `toStory` gets everything it needs to fill in variantIndex/variantCount.
+      db
+        .select()
+        .from(storyEntries)
+        .where(
+          and(eq(storyEntries.storyId, id), isNull(storyEntries.deletedAt))
         )
-      ),
-  ])
+        .orderBy(asc(storyEntries.position), asc(storyEntries.variantIndex)),
+      db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
+      readHistoryState(db, id),
+      // The story's spend, as a second small SELECT rather than a join onto the
+      // entries above. A join is the same rows, but a ledger that somehow held two
+      // calls for one take would silently DUPLICATE a passage in the manuscript —
+      // a bookkeeping oddity has no business being able to do that. Indexed on
+      // (story_id, created_at); in-flight calls are excluded because they have no
+      // cost yet and no take.
+      db
+        .select({
+          storyEntryId: generationCalls.storyEntryId,
+          costUsd: generationCalls.costUsd,
+          reasoningTokens: generationCalls.reasoningTokens,
+          status: generationCalls.status,
+        })
+        .from(generationCalls)
+        .where(
+          and(
+            eq(generationCalls.storyId, id),
+            isNotNull(generationCalls.storyEntryId),
+            ne(generationCalls.status, "streaming")
+          )
+        ),
+    ])
 
   const costs = new Map<string, EntryCost>()
   for (const row of costRows) {
@@ -116,7 +133,14 @@ export async function getStory(id: string): Promise<Story | null> {
     })
   }
 
-  return toStory(storyRow, entryRows, lorebookRows, history, costs)
+  return toStory(
+    storyRow,
+    profileRow ?? null,
+    entryRows,
+    lorebookRows,
+    history,
+    costs
+  )
 }
 
 /** One story's lorebook entries, ordered name ASC. */
@@ -145,23 +169,78 @@ export async function getLorebookEntry(
   return row ? toLorebookEntry(row) : null
 }
 
-/** Reads (and lazily creates with defaults) the single settings row. */
+/** Every profile, in the writer's order. */
+export async function listModelProfiles(): Promise<ModelProfile[]> {
+  const db = await getDb()
+  const rows = await db
+    .select()
+    .from(modelProfiles)
+    .orderBy(asc(modelProfiles.sortOrder), asc(modelProfiles.name))
+  return rows.map(toModelProfile)
+}
+
+/**
+ * Fixed rather than a UUID so the seed below is idempotent under a race: two
+ * concurrent first reads both insert, and the second one conflicts away
+ * instead of leaving a duplicate "Default" behind.
+ */
+const SEEDED_DEFAULT_PROFILE_ID = "default-profile"
+
+/**
+ * Reads (and lazily creates with defaults) the single settings row, then does
+ * the same for the default profile.
+ *
+ * The profile seed is the migration: default_model_id/default_thinking are
+ * still on disk and still hold the writer's existing choice, so the first read
+ * after deploy turns that pair into a real "Default" profile and points
+ * default_profile_id at it. Only when the table is empty — once the writer has
+ * profiles of their own, a null default is their business (they deleted one),
+ * not a gap to fill.
+ */
 export async function getAppSettings(): Promise<AppSettings> {
   const db = await getDb()
-  const existing = await db
+  let row = await db
     .select()
     .from(appSettings)
     .where(eq(appSettings.id, 1))
     .limit(1)
     .then((rows) => rows[0])
 
-  if (existing) return toAppSettings(existing)
-
-  const defaults = {
-    id: 1,
-    defaultModelId: DEFAULT_GENERATION_SETTINGS.modelId,
-    defaultThinking: DEFAULT_GENERATION_SETTINGS.thinking,
+  if (!row) {
+    const defaults = {
+      id: 1,
+      defaultModelId: DEFAULT_GENERATION_SETTINGS.modelId,
+      defaultThinking: DEFAULT_GENERATION_SETTINGS.thinking,
+      defaultProfileId: null,
+    }
+    await db.insert(appSettings).values(defaults).onConflictDoNothing()
+    row = defaults
   }
-  await db.insert(appSettings).values(defaults).onConflictDoNothing()
-  return toAppSettings(defaults)
+
+  if (row.defaultProfileId !== null) return toAppSettings(row)
+
+  const existingProfile = await db
+    .select({ id: modelProfiles.id })
+    .from(modelProfiles)
+    .limit(1)
+    .then((rows) => rows[0])
+  if (existingProfile) return toAppSettings(row)
+
+  await db
+    .insert(modelProfiles)
+    .values({
+      ...DEFAULT_GENERATION_SETTINGS,
+      id: SEEDED_DEFAULT_PROFILE_ID,
+      name: "Default",
+      sortOrder: 0,
+      modelId: row.defaultModelId,
+      thinking: row.defaultThinking,
+    })
+    .onConflictDoNothing()
+  await db
+    .update(appSettings)
+    .set({ defaultProfileId: SEEDED_DEFAULT_PROFILE_ID })
+    .where(eq(appSettings.id, 1))
+
+  return toAppSettings({ ...row, defaultProfileId: SEEDED_DEFAULT_PROFILE_ID })
 }

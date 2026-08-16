@@ -326,6 +326,19 @@ export interface GenerationSettings {
   presencePenalty: number
 }
 
+/**
+ * A named, global bundle of generation settings. A story either follows one —
+ * and then tracks every later edit to it — or is Custom; there is no third,
+ * "followed but edited" state to detect.
+ */
+export interface ModelProfile {
+  id: string
+  name: string
+  /** Position in the switcher and the settings list; ascending. */
+  sortOrder: number
+  settings: GenerationSettings
+}
+
 export interface Story {
   id: string
   title: string
@@ -339,6 +352,13 @@ export interface Story {
   /** Precomputed for static scaffolding — display as-is, do not recompute. */
   wordCount: number
   entries: StoryEntry[]
+  /**
+   * The profile this story follows, or null for Custom. When set, `settings`
+   * below is the profile's; the story's own columns stay untouched underneath,
+   * holding the custom settings it will return to.
+   */
+  profileId: string | null
+  /** Effective settings: the followed profile's, or the story's own. */
   settings: GenerationSettings
   /** NovelAI-style memory: always included at the top of context. */
   memory: string
@@ -429,9 +449,15 @@ export type NewLorebookEntry = Omit<
 
 /** App-level settings (settings page). */
 export interface AppSettings {
+  /** @deprecated Superseded by `defaultProfileId`; only the seed still reads it. */
   defaultModelId: string
-  /** Thinking level new stories start from. "off" unless the writer says otherwise. */
+  /** @deprecated Superseded by `defaultProfileId`; only the seed still reads it. */
   defaultThinking: ThinkingLevel
+  /**
+   * The profile new stories start from. Null only in the window before
+   * getAppSettings has seeded one, which it does on the first read.
+   */
+  defaultProfileId: string | null
 }
 
 /** Uniform server-action result. Actions never throw for expected failures. */
