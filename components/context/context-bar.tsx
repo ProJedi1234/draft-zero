@@ -2,6 +2,7 @@
 
 import type { ContextBreakdown } from "@/lib/generation/breakdown"
 import type { ContextSectionId } from "@/lib/generation/types"
+import { contextWindowLabel } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 import { SECTION_SHADES } from "./section-shades"
@@ -42,27 +43,32 @@ export function ContextBar({
     <div
       className={cn("flex h-2.5 w-full gap-[2px] bg-muted", className)}
       role="img"
-      aria-label={`${breakdown.usedTokens.toLocaleString("en-US")} of ${breakdown.windowTokens.toLocaleString("en-US")} context tokens used`}
+      aria-label={`About ${breakdown.usedTokens.toLocaleString("en-US")} of ${contextWindowLabel(breakdown.windowTokens)} context tokens used`}
       onPointerLeave={() => onHover?.(null)}
     >
-      {breakdown.sections.map((section) => (
-        <div
-          key={section.id}
-          // The list below names every band; announcing them twice would make
-          // the bar a second, worse copy of it.
-          aria-hidden
-          onPointerEnter={() => onHover?.(section.id)}
-          className={cn(
-            MIN_SEGMENT,
-            SECTION_SHADES[section.id],
-            "transition-opacity",
-            // Dimming the others, rather than brightening this one, keeps every
-            // band's own weight — and therefore its identity — unchanged.
-            activeId != null && activeId !== section.id && "opacity-40"
-          )}
-          style={{ width: `${(section.tokens / denominator) * 100}%` }}
-        />
-      ))}
+      {/* A section can be listed with nothing in it — a lorebook trimmed away
+          entirely still owes the writer a row. MIN_SEGMENT would draw it a
+          sliver of bar it did not earn, so it gets a row and no band. */}
+      {breakdown.sections
+        .filter((section) => section.tokens > 0)
+        .map((section) => (
+          <div
+            key={section.id}
+            // The list below names every band; announcing them twice would make
+            // the bar a second, worse copy of it.
+            aria-hidden
+            onPointerEnter={() => onHover?.(section.id)}
+            className={cn(
+              MIN_SEGMENT,
+              SECTION_SHADES[section.id],
+              "transition-opacity",
+              // Dimming the others, rather than brightening this one, keeps every
+              // band's own weight — and therefore its identity — unchanged.
+              activeId != null && activeId !== section.id && "opacity-40"
+            )}
+            style={{ width: `${(section.tokens / denominator) * 100}%` }}
+          />
+        ))}
     </div>
   )
 }

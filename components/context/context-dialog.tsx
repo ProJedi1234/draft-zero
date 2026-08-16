@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import { Loader2 } from "lucide-react"
 
 import {
@@ -46,6 +47,15 @@ export function ContextDialog({
   /** Shown instead of the bar when there is no breakdown to show, and why. */
   emptyMessage?: string
 }) {
+  // The popup stays mounted through its exit animation, so a caller that drops
+  // its breakdown the moment `open` flips — which both of them do, to avoid
+  // composing for a dialog nobody is looking at — would have the body swapped
+  // for the empty state mid-fade. Hold the last one for the way out only;
+  // while open, a null breakdown is the honest answer and is rendered as one.
+  const [retained, setRetained] = React.useState(breakdown)
+  if (breakdown !== null && breakdown !== retained) setRetained(breakdown)
+  const body = open ? breakdown : (breakdown ?? retained)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent sheet className="sm:max-w-xl">
@@ -59,9 +69,9 @@ export function ContextDialog({
               <Loader2 className="size-4 animate-spin" />
               Loading the context…
             </div>
-          ) : breakdown ? (
+          ) : body ? (
             <div className="space-y-4">
-              <ContextBreakdownView breakdown={breakdown} caption={caption} />
+              <ContextBreakdownView breakdown={body} caption={caption} />
               {note && (
                 <p className="text-xs leading-5 text-muted-foreground">
                   {note}
@@ -70,7 +80,7 @@ export function ContextDialog({
             </div>
           ) : (
             <p className="py-8 text-sm text-muted-foreground">
-              {emptyMessage ?? "There's nothing to show for this passage."}
+              {emptyMessage ?? "There's nothing to show here."}
             </p>
           )}
         </DialogBody>

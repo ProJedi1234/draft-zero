@@ -716,29 +716,30 @@ function ContextMeter({
     [open, context, contextWindow]
   )
 
+  const used = formatApproxTokens(approxTokens)
+  const budget = contextWindowLabel(contextWindow)
+
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="View the context for the next generation"
-        className="w-full space-y-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+        // A button's subtree is presentational, so a progressbar and a readout
+        // nested inside one reach no screen reader. The numbers have to BE the
+        // name, or opening the dialog becomes the only way to hear them.
+        aria-label={`Context used: about ${used} of ${budget} tokens. View the context for the next generation.`}
+        className="block w-full space-y-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
       >
-        <p className="font-mono text-xs text-muted-foreground tabular-nums">
-          ≈ {formatApproxTokens(approxTokens)} /{" "}
-          {contextWindowLabel(contextWindow)} tokens
-        </p>
+        <span className="block font-mono text-xs text-muted-foreground tabular-nums">
+          ≈ {used} / {budget} tokens
+        </span>
         {/* The smallest stops cannot fit the system prompt alone, so the bar can
             be pinned full (Meter clamps) while the readout above honestly shows
             the overflow. */}
         <Meter
           value={approxTokens / contextWindow}
           indicatorClassName="transition-[width] duration-200"
-          role="progressbar"
-          aria-label="Context used"
-          aria-valuemin={0}
-          aria-valuemax={contextWindow}
-          aria-valuenow={approxTokens}
+          aria-hidden
         />
       </button>
       <ContextDialog

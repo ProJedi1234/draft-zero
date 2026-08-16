@@ -23,22 +23,22 @@ const LABEL = "View context"
  */
 const CAPTION = "Context for this passage"
 const GONE = "This passage is no longer in the manuscript."
-const FAILED = "Couldn't work out the context for this passage."
+/** Only for a thrown request — the action words its own failures. */
+const FALLBACK_ERROR = "Couldn't work out the context for this passage."
 
 type State =
   | { status: "idle" | "loading" }
   | { status: "loaded"; entry: EntryContext | null }
-  | { status: "failed" }
+  | { status: "failed"; error: string }
 
 /**
  * The per-passage entry point: what this passage is shown, composed from the
  * manuscript up to it.
  *
- * Fetched on open and then held for as long as the block is mounted. The
- * answer can go stale — editing lore moves it — but a writer who edits the
- * lorebook gets a re-render from the revalidated tree anyway, and re-composing
- * a whole story tree on every re-open of a dialog nobody changed is worse. A
- * failure is NOT held, so the next open retries.
+ * Re-fetched on every open rather than cached: the answer moves whenever the
+ * lorebook, memory or window does, and a re-render is not a remount — holding
+ * the first answer would leave a stale breakdown on screen under a note that
+ * promises it reflects the settings as they stand now.
  */
 export function EntryContextButton({
   storyId,
@@ -52,23 +52,29 @@ export function EntryContextButton({
 
   function handleOpenChange(next: boolean) {
     setOpen(next)
-    if (!next || state.status === "loading" || state.status === "loaded") return
+    if (!next || state.status === "loading") return
     setState({ status: "loading" })
     void loadEntryContext(storyId, entryId)
       .then((result) => {
         setState(
           result.ok
             ? { status: "loaded", entry: result.data }
-            : { status: "failed" }
+            : { status: "failed", error: result.error }
         )
       })
-      .catch(() => setState({ status: "failed" }))
+      .catch(() => setState({ status: "failed", error: FALLBACK_ERROR }))
   }
 
   const entry = state.status === "loaded" ? state.entry : null
-  const breakdown = entry
-    ? describeContext(entry.context, entry.contextWindow)
-    : null
+  // Only what is on screen: this holds the whole prompt, and rebuilding it on
+  // every re-render of a block whose dialog is shut is work nobody asked for.
+  const breakdown = React.useMemo(
+    () =>
+      open && entry
+        ? describeContext(entry.context, entry.contextWindow)
+        : null,
+    [open, entry]
+  )
 
   return (
     <>
@@ -91,13 +97,15 @@ export function EntryContextButton({
         open={open}
         onOpenChange={handleOpenChange}
         caption={CAPTION}
-        meta={entry ? shortModelId(entry.modelId) : undefined}
+        // Omitted rather than filled in with today's model when the row never
+        // recorded one: an invented provenance reads exactly like a real one.
+        meta={entry?.modelId ? shortModelId(entry.modelId) : undefined}
         // The one caveat that changes how this should be read, said once,
         // where it is read — not buried in a tooltip.
         note="Composed from the manuscript up to this passage, against the lorebook and settings as they stand now — the same way a retry of it would be."
         breakdown={breakdown}
         loading={state.status === "loading"}
-        emptyMessage={state.status === "failed" ? FAILED : GONE}
+        emptyMessage={state.status === "failed" ? state.error : GONE}
       />
     </>
   )

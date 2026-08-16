@@ -16,6 +16,7 @@ import type {
   ContextSection,
 } from "@/lib/generation/breakdown"
 import type { ContextSectionId } from "@/lib/generation/types"
+import { contextWindowLabel } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 import { ContextBar } from "./context-bar"
@@ -50,9 +51,14 @@ export function ContextBreakdownView({
       <div className="space-y-2">
         <div className="flex items-baseline justify-between gap-4">
           <span className="text-sm">{caption}</span>
+          {/* "≈" because usedTokens is ceil(chars / 4), not a tokenizer's
+              count — the cost chip beside this passage prints the provider's
+              real figure, and the two must not both read as authoritative.
+              The window goes through contextWindowLabel like every other
+              surface that prints a selected stop. */}
           <span className="font-mono text-xs whitespace-nowrap text-muted-foreground tabular-nums">
-            {grouped(breakdown.usedTokens)} / {grouped(breakdown.windowTokens)}{" "}
-            tokens
+            ≈ {grouped(breakdown.usedTokens)} /{" "}
+            {contextWindowLabel(breakdown.windowTokens)} tokens
           </span>
         </div>
         <ContextBar
@@ -132,11 +138,15 @@ function SectionRow({
               "flex w-full items-center gap-3 py-3 text-left transition-opacity outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
               dimmed && "opacity-50"
             )}
-            // Focus only, deliberately not hover: the link runs bar → row, and
-            // making it run both ways means every pointer crossing the list
-            // repaints the whole panel. Keyboard users have no bar to point at,
-            // so focus is where they get the same answer.
-            onFocus={() => onHover(section.id)}
+            // Keyboard focus only, deliberately not hover: the link runs bar →
+            // row, and making it run both ways means every pointer crossing the
+            // list repaints the whole panel. Keyboard users have no bar to
+            // point at, so focus is where they get the same answer — but a
+            // mouse click focuses too, and latching the dimming for as long as
+            // a writer reads an expanded row is not a hover link.
+            onFocus={(event) => {
+              if (event.target.matches(":focus-visible")) onHover(section.id)
+            }}
             onBlur={() => onHover(null)}
           />
         }
@@ -165,10 +175,16 @@ function SectionRow({
           {/* The point of the whole feature: not a summary of what was sent,
               but the characters that were sent. Serif, because it is mostly
               manuscript, and pre-wrap because the paragraph breaks are part of
-              what the model saw. */}
-          <pre className="max-h-72 overflow-auto bg-muted/50 p-3 font-serif text-xs leading-6 whitespace-pre-wrap">
-            {section.text.trim()}
-          </pre>
+              what the model saw. Focusable because it scrolls: without a tab
+              stop the text past the fold is mouse-only. */}
+          {section.text.trim() !== "" && (
+            <pre
+              tabIndex={0}
+              className="max-h-72 overflow-auto bg-muted/50 p-3 font-serif text-xs leading-6 whitespace-pre-wrap focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:outline-none"
+            >
+              {section.text.trim()}
+            </pre>
+          )}
         </div>
       </CollapsibleContent>
     </Collapsible>
