@@ -147,18 +147,20 @@ export function describeContext(
       .filter((span) => span.section === id)
       .map((span) => span.text)
       .join("")
+    const fit = sectionFit(id, ctx)
     // An empty section is not rendered as a zero row: memory nobody wrote and
-    // memory that was dropped look identical in a list of zeros, and only one
-    // of those is worth a writer's attention (it is reported on the section
-    // that did the dropping instead).
-    if (text.trim() === "") continue
+    // memory that was dropped look identical in a list of zeros. The exception
+    // is a source that offered something and had ALL of it trimmed — a fit
+    // below 1 with nothing left to show. That absence is the news, and it is
+    // the one thing this whole feature exists to be able to report.
+    if (text.trim() === "" && (fit === null || fit >= 1)) continue
     sections.push({
       id,
       label: CONTEXT_SECTION_LABELS[id],
       tokens: estimateTokens(text),
       chars: text.length,
       text,
-      fit: sectionFit(id, ctx),
+      fit,
       fitNote: sectionNote(id, ctx),
       items: id === "lore" ? items : [],
     })
@@ -203,12 +205,19 @@ function sectionNote(id: ContextSectionId, ctx: ComposedContext): string {
         return `All ${matched} triggered ${plural(matched, "entry", "entries")} fit.`
       }
       // The one thing this whole feature exists to be able to say.
-      return `${kept} of ${matched} triggered entries fit — ${matched - kept} ${plural(matched - kept, "was", "were")} trimmed for space.`
+      return `${kept} of ${matched} triggered ${plural(matched, "entry", "entries")} fit — ${matched - kept} ${plural(matched - kept, "was", "were")} trimmed for space.`
     }
     case "story": {
       const { storyChars, storyCharsKept } = ctx.fit
       if (storyChars === 0) return "This story has no prose yet."
       if (storyCharsKept >= storyChars) return "The whole manuscript fit."
+      // Nothing survived. The block below is then the empty-story placeholder,
+      // not prose, so saying "0% fit" would caption a body that contradicts it
+      // — and would bury the part that actually matters: the model is being
+      // told this manuscript is blank.
+      if (storyCharsKept === 0) {
+        return "None of the manuscript fit — the model is told the story is empty and asked for an opening paragraph."
+      }
       return `The last ${percent(storyCharsKept / storyChars)} of the manuscript fit; earlier passages were trimmed.`
     }
   }

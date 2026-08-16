@@ -236,6 +236,30 @@ describe("fit reporting", () => {
     expect(loreSection?.items[0]?.matchedKey).toBe("lighthouse")
   })
 
+  test("lore trimmed away ENTIRELY is still reported, not omitted", () => {
+    // The worst case, and the one the empty-section skip used to swallow: a
+    // section with no text left is indistinguishable on screen from a lorebook
+    // that never triggered, and only one of those is the writer's problem.
+    const ctx = composeContext({
+      story: story({
+        entries: [entry("The lighthouse blinked over the cape.")],
+      }),
+      lorebookEntries: [lore({ content: "lighthouse ".repeat(500) })],
+      contextWindow: 2048,
+    })
+    const loreSection = describeContext(ctx, 2048).sections.find(
+      (s) => s.id === "lore"
+    )
+
+    expect(ctx.fit.loreMatched).toBe(1)
+    expect(ctx.lore).toHaveLength(0)
+    expect(loreSection).toBeDefined()
+    expect(loreSection?.fit).toBe(0)
+    expect(loreSection?.fitNote).toBe(
+      "0 of 1 triggered entry fit — 1 was trimmed for space."
+    )
+  })
+
   test("all triggered lore fitting says so", () => {
     const ctx = composeContext({
       story: story({ entries: [entry("The lighthouse blinked.")] }),
@@ -247,6 +271,68 @@ describe("fit reporting", () => {
 
     expect(loreSection?.fit).toBe(1)
     expect(loreSection?.fitNote).toBe("All 1 triggered entry fit.")
+  })
+
+  test("a manuscript trimmed to nothing says so, and never reads 0%", () => {
+    // Overhead alone eats the window, so no prose survives and the [Story]
+    // block becomes the empty-story placeholder. "The last 0% fit" would
+    // caption a body that flatly contradicts it, and would bury the part that
+    // matters: the model is being told this manuscript is blank.
+    const ctx = composeContext({
+      story: story({
+        memory: "remember ".repeat(1200),
+        entries: [entry("The lighthouse blinked."), entry("She waited.")],
+      }),
+      lorebookEntries: [],
+      contextWindow: 2048,
+    })
+    const storySection = describeContext(ctx, 2048).sections.find(
+      (s) => s.id === "story"
+    )
+
+    expect(ctx.fit.storyChars).toBeGreaterThan(0)
+    expect(ctx.fit.storyCharsKept).toBe(0)
+    expect(storySection?.fitNote).toContain("None of the manuscript fit")
+    expect(storySection?.fitNote).toContain("told the story is empty")
+    expect(storySection?.fitNote).not.toContain("0%")
+  })
+
+  test("a share never rounds to a number the sentence contradicts", () => {
+    // One paragraph short of whole must not read "100% fit ... were trimmed".
+    const nearlyWhole = composeContext({
+      story: story({
+        entries: Array.from({ length: 625 }, (_, i) =>
+          entry(`Paragraph ${i} ${"x".repeat(30)}`)
+        ),
+      }),
+      lorebookEntries: [],
+    })
+    const nearlyWholeNote = describeContext(nearlyWhole, 8192).sections.find(
+      (s) => s.id === "story"
+    )?.fitNote
+
+    expect(nearlyWhole.fit.storyCharsKept).toBeLessThan(
+      nearlyWhole.fit.storyChars
+    )
+    expect(nearlyWholeNote).toContain("99%")
+
+    // …and a sliver of a huge manuscript must not read "0% fit" while prose is
+    // demonstrably in the window.
+    const sliver = composeContext({
+      story: story({
+        entries: Array.from({ length: 12_000 }, (_, i) =>
+          entry(`Paragraph ${i} ${"x".repeat(40)}`)
+        ),
+      }),
+      lorebookEntries: [],
+      contextWindow: 2048,
+    })
+    const sliverNote = describeContext(sliver, 2048).sections.find(
+      (s) => s.id === "story"
+    )?.fitNote
+
+    expect(sliver.fit.storyCharsKept).toBeGreaterThan(0)
+    expect(sliverNote).toContain("<1%")
   })
 
   test("untrimmable sections report no fraction", () => {
