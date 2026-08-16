@@ -437,6 +437,7 @@ function InspectorSections({
   function handleProfileChange(next: string | null) {
     if (next === profileId) return
     const previous = profileId
+    const previousLastProfileId = lastProfileId
     // Only the pointer moves: the story's settings columns are its custom
     // memory, so a trip through a profile and back is lossless (§ Semantics).
     setLastProfileId(next === null ? previous : null)
@@ -456,7 +457,9 @@ function InspectorSections({
         profile.settle()
       } else {
         profile.reset(previous)
-        setLastProfileId(null)
+        // The switch never happened, so the "based on" memory is whatever it
+        // was before it — clearing it would strand a Custom story's way back.
+        setLastProfileId(previousLastProfileId)
         toast.error(message)
       }
     })
