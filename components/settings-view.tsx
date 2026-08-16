@@ -5,8 +5,7 @@ import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
-import { ModelCombobox } from "@/components/model-combobox"
-import { levelForModel, ThinkingSelect } from "@/components/thinking-select"
+import { ModelProfilesCard } from "@/components/settings/model-profiles-card"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,97 +15,24 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { useServerSyncedValue } from "@/hooks/use-server-synced"
-import { updateAppSettings, verifyOpenRouterKey } from "@/lib/actions/settings"
-import type { AppSettings, OpenRouterModel, ThinkingLevel } from "@/lib/types"
-
-const FALLBACK_ERROR = "Couldn't save your changes."
-
-/**
- * updateAppSettings, with a thrown action folded into the same shape as a
- * rejected one — a dropped connection mid-save must reach the failure path, or
- * the picker sits waiting for an echo that is never coming.
- */
-async function save(
-  patch: Parameters<typeof updateAppSettings>[0]
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  try {
-    const result = await updateAppSettings(patch)
-    return result.ok ? { ok: true } : { ok: false, error: result.error }
-  } catch (error) {
-    return {
-      ok: false,
-      error:
-        error instanceof Error && error.message
-          ? error.message
-          : FALLBACK_ERROR,
-    }
-  }
-}
+import { verifyOpenRouterKey } from "@/lib/actions/settings"
+import type { AppSettings, ModelProfile, OpenRouterModel } from "@/lib/types"
 
 function SettingsView({
   settings,
   models,
+  profiles,
+  followerCounts,
 }: {
   settings: AppSettings
   models: OpenRouterModel[]
+  profiles: ModelProfile[]
+  /** Stories per profile id, for the editor's "followed by N stories" line. */
+  followerCounts: Record<string, number>
 }) {
   const [verifying, setVerifying] = React.useState(false)
-  // These two are one row shared by every device, so they follow the server the
-  // same way the inspector's do — changing the default on the phone moves the
-  // picker here. See hooks/use-server-synced.ts.
-  const model = useServerSyncedValue(settings.defaultModelId)
-  const thinkingSync = useServerSyncedValue(settings.defaultThinking)
-  const modelId = model.value
-  const thinking = thinkingSync.value
-  const [isPending, startTransition] = React.useTransition()
-
-  function handleModelChange(next: string) {
-    if (next === "" || next === modelId) return
-    const previous = { modelId, thinking }
-    // Same rule as the inspector: a default level the new default model can't
-    // honour would be inherited by every story created afterwards.
-    const nextThinking = levelForModel(
-      models.find((m) => m.id === next)?.reasoning,
-      thinking
-    )
-    model.write(next)
-    thinkingSync.write(nextThinking)
-    startTransition(async () => {
-      const outcome = await save({
-        defaultModelId: next,
-        defaultThinking: nextThinking,
-      })
-      if (outcome.ok) {
-        model.settle()
-        thinkingSync.settle()
-        return
-      }
-      // Nothing was written, so reset rather than write: there is no echo
-      // coming that would clear a pending write.
-      model.reset(previous.modelId)
-      thinkingSync.reset(previous.thinking)
-      toast.error(outcome.error)
-    })
-  }
-
-  function handleThinkingChange(next: ThinkingLevel) {
-    const previous = thinking
-    thinkingSync.write(next)
-    startTransition(async () => {
-      const outcome = await save({ defaultThinking: next })
-      if (outcome.ok) {
-        thinkingSync.settle()
-        return
-      }
-      thinkingSync.reset(previous)
-      toast.error(outcome.error)
-    })
-  }
-
   async function handleVerify() {
     setVerifying(true)
     try {
@@ -174,36 +100,12 @@ function SettingsView({
             </CardContent>
           </Card>
 
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>Generation defaults</CardTitle>
-              <CardDescription>Applied to new stories.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <Label htmlFor="default-model">Default model</Label>
-                <ModelCombobox
-                  id="default-model"
-                  models={models}
-                  value={modelId}
-                  onValueChange={handleModelChange}
-                  disabled={isPending}
-                />
-                <ThinkingSelect
-                  reasoning={
-                    models.find((m) => m.id === modelId)?.reasoning ?? null
-                  }
-                  value={thinking}
-                  onValueChange={handleThinkingChange}
-                  disabled={isPending}
-                />
-                <p className="text-xs text-muted-foreground">
-                  New stories start from this model and thinking level; each
-                  story can override both in the inspector.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <ModelProfilesCard
+            profiles={profiles}
+            models={models}
+            defaultProfileId={settings.defaultProfileId}
+            followerCounts={followerCounts}
+          />
 
           <Card size="sm">
             <CardHeader>

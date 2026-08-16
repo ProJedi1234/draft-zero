@@ -3,8 +3,7 @@
 import * as React from "react"
 import { toast } from "sonner"
 
-import { Label } from "@/components/ui/label"
-import { Slider } from "@/components/ui/slider"
+import { SliderField } from "@/components/slider-field"
 import { useDragHold } from "@/hooks/use-drag-hold"
 import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { updateGenerationSettings } from "@/lib/actions/stories"
@@ -31,11 +30,6 @@ export interface SettingSliderProps {
 }
 
 const FALLBACK_ERROR = "Couldn't save your changes."
-
-/** First element of Base UI's slider value, which is an array here (one thumb). */
-function readValue(next: number | readonly number[], fallback: number): number {
-  return Array.isArray(next) ? (next[0] ?? fallback) : (next as number)
-}
 
 /**
  * A labelled slider that tracks the drag locally and persists exactly once, on
@@ -93,24 +87,16 @@ export function SettingSlider({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-baseline justify-between">
-        <Label className="text-xs">{label}</Label>
-        <span className="font-mono text-xs text-muted-foreground tabular-nums">
-          {step < 1 ? value.toFixed(2) : value.toLocaleString("en-US")}
-        </span>
-      </div>
-      <Slider
-        value={[value]}
-        min={min}
-        max={max}
-        step={step}
-        onValueChange={(next) => setLocal(readValue(next, min))}
-        onValueCommitted={(next) => commit(readValue(next, min))}
-        aria-label={label}
-        {...dragProps}
-      />
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-    </div>
+    <SliderField
+      label={label}
+      value={value}
+      min={min}
+      max={max}
+      step={step}
+      onValueChange={setLocal}
+      onValueCommitted={commit}
+      hint={hint}
+      dragProps={dragProps}
+    />
   )
 }
