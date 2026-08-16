@@ -13,6 +13,40 @@ export interface ActiveLoreEntry {
   matchedKey: string | null
 }
 
+/**
+ * The five things a prompt is assembled from, in the order they are sent.
+ *
+ * "system" never appears in renderPrompt — it rides the system message — but it
+ * is part of what the budget pays for, so it is a section like any other.
+ */
+export type ContextSectionId =
+  "system" | "memory" | "lore" | "story" | "authorsNote"
+
+/** One labelled piece of the rendered user turn. See promptBlocks. */
+export interface PromptBlock {
+  section: ContextSectionId
+  /** Lore only: which entry this block renders. */
+  loreId?: string
+  text: string
+}
+
+/**
+ * What each trimmable source offered against what survived the budget.
+ *
+ * Recorded because the composed context cannot answer it after the fact: an
+ * entry that did not fit is simply absent, and absent is indistinguishable from
+ * "never triggered". This is the difference between a viewer that shows what
+ * was sent and one that can tell a writer their lorebook is being dropped.
+ */
+export interface ContextFit {
+  /** Lore entries the recent text triggered, before the budget had its say. */
+  loreMatched: number
+  /** Characters of manuscript prose the story offered… */
+  storyChars: number
+  /** …and how many of them the budget had room for. */
+  storyCharsKept: number
+}
+
 /** Fully composed generation context — everything a provider needs, provider-agnostic. */
 export interface ComposedContext {
   /** Already resolved: the story's override, or the built-in default. Sent as the system message. */
@@ -40,6 +74,8 @@ export interface ComposedContext {
    * trimmable.
    */
   approxTokens: number
+  /** What the budget could not fit — for the context viewer. */
+  fit: ContextFit
 }
 
 export interface GenerationRequest {

@@ -153,6 +153,7 @@ describe("run loop provider resolution", () => {
         authorsNote: "",
         seed: 0,
         approxTokens: 8,
+        fit: { loreMatched: 0, storyChars: 0, storyCharsKept: 0 },
       },
       settings: {
         modelId: "~test/model",
