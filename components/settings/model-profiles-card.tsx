@@ -33,40 +33,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { setDefaultProfile } from "@/lib/actions/profiles"
-import {
-  THINKING_LEVEL_LABELS,
-  type ModelProfile,
-  type OpenRouterModel,
-} from "@/lib/types"
+import { settingsSummaryWithPrice } from "@/lib/settings-summary"
+import { type ModelProfile, type OpenRouterModel } from "@/lib/types"
 import { cn } from "@/lib/utils"
-
-/**
- * The row's second line: model, endpoint, thinking, price. Built from the model
- * catalog the page already loaded rather than from each profile's endpoints —
- * six rows would be six requests for a line nobody reads twice, so a profile
- * pinned to an endpoint shows the tag it pinned and the model's own price.
- *
- * A model the catalog doesn't know (retired, or a catalog fetch that failed)
- * degrades to its id with no price, which is still the truth about the profile.
- */
-function profileSummary(
-  profile: ModelProfile,
-  models: OpenRouterModel[]
-): string {
-  const { modelId, providerTag, thinking } = profile.settings
-  const model = models.find((m) => m.id === modelId)
-  const parts = [
-    model?.name ?? modelId,
-    providerTag ?? "Auto",
-    thinking === "off"
-      ? "off"
-      : `think ${THINKING_LEVEL_LABELS[thinking].toLowerCase()}`,
-  ]
-  if (model) {
-    parts.push(`${model.pricing.prompt}/${model.pricing.completion}`)
-  }
-  return parts.join(" · ")
-}
 
 /**
  * Manage the named bundles new stories start from and stories follow.
@@ -144,7 +113,7 @@ export function ModelProfilesCard({
               <ProfileRow
                 key={profile.id}
                 profile={profile}
-                summary={profileSummary(profile, models)}
+                summary={settingsSummaryWithPrice(profile.settings, models)}
                 isDefault={profile.id === defaultProfileId}
                 onEdit={() => openEditor({ mode: "edit", profile })}
                 onDuplicate={() => openEditor({ mode: "duplicate", profile })}

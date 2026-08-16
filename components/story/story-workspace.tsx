@@ -50,6 +50,7 @@ export function StoryWorkspace({
   models,
   costProfile,
   profiles,
+  defaultProfileId,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
@@ -58,6 +59,8 @@ export function StoryWorkspace({
   costProfile: StoryCostProfile
   /** Every profile, in the writer's order — the inspector's switcher list. */
   profiles: ModelProfile[]
+  /** The profile new stories start from; starred in the switcher. */
+  defaultProfileId: string | null
 }) {
   const [inspectorOpen, setInspectorOpen] = useInspectorOpen()
   const [mobileInspectorOpen, setMobileInspectorOpen] = React.useState(false)
@@ -108,6 +111,7 @@ export function StoryWorkspace({
           lorebookEntries={lorebookEntries}
           models={models}
           profiles={profiles}
+          defaultProfileId={defaultProfileId}
           className={cn("hidden", inspectorOpen && "lg:flex")}
         />
       </div>
@@ -125,6 +129,7 @@ export function StoryWorkspace({
             lorebookEntries={lorebookEntries}
             models={models}
             profiles={profiles}
+            defaultProfileId={defaultProfileId}
           />
         </SheetContent>
       </Sheet>

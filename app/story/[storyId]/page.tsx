@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { StoryWorkspace } from "@/components/story/story-workspace"
 import { getStoryCostProfile } from "@/lib/db/cost-queries"
 import {
+  getAppSettings,
   getStory,
   listLorebookEntries,
   listModelProfiles,
@@ -40,6 +41,10 @@ export default async function StoryPage({ params }: StoryPageProps) {
   // ledger — the one cost query no index can serve — on every story open, for a
   // figure most opens never reveal. The global "where am I" figures live on
   // /usage, which the ledger links to.
+  //
+  // getAppSettings first, and alone: it lazily seeds the "Default" profile, so
+  // a list read in parallel with it can come back empty on a fresh database.
+  const settings = await getAppSettings()
   // The whole profile list, not just the followed one: the switcher is a menu,
   // and there are a handful of these rows at most (see the UX doc) — a second
   // round trip when the writer opens it would be the expensive option.
@@ -66,6 +71,7 @@ export default async function StoryPage({ params }: StoryPageProps) {
       models={models}
       costProfile={costProfile}
       profiles={profiles}
+      defaultProfileId={settings.defaultProfileId}
     />
   )
 }
