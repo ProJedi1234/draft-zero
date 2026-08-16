@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { GenerationDefaultsCard } from "@/components/settings/generation-defaults-card"
 import { ModelProfilesCard } from "@/components/settings/model-profiles-card"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -100,9 +101,12 @@ function SettingsView({
             </CardContent>
           </Card>
 
+          <GenerationDefaultsCard defaults={settings.defaultGeneration} />
+
           <ModelProfilesCard
             profiles={profiles}
             models={models}
+            defaults={settings.defaultGeneration}
             defaultProfileId={settings.defaultProfileId}
             followerCounts={followerCounts}
           />

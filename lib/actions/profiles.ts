@@ -4,18 +4,23 @@ import { desc, eq } from "drizzle-orm"
 
 import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
-import { toGenerationSettings, toModelProfile } from "@/lib/db/mappers"
-import { getAppSettings } from "@/lib/db/queries"
+import {
+  toGenerationSettings,
+  toModelProfile,
+  toProfileSettings,
+} from "@/lib/db/mappers"
+import { getAppSettings, getGenerationDefaults } from "@/lib/db/queries"
 import { appSettings, modelProfiles, stories } from "@/lib/db/schema"
 import {
   customColumnsFromSettings,
   resolveGenerationSettings,
+  resolveProfileSettings,
 } from "@/lib/generation/resolve"
 import {
   isContextWindow,
   REASONING_EFFORTS,
   type ActionResult,
-  type GenerationSettings,
+  type ProfileSettings,
 } from "@/lib/types"
 
 const NOT_FOUND = "Profile not found."
@@ -30,8 +35,11 @@ const NOT_FOUND = "Profile not found."
  * providerTag is deliberately unchecked, exactly as on a story: the endpoint
  * list is a live remote catalog and a stale tag is dropped at send time by
  * providerParam(), not rejected on the way in.
+ *
+ * A null contextWindow passes: it is not an off-ladder window but the absence
+ * of one, and the ladder is enforced on the global default instead.
  */
-function validateSettings(patch: Partial<GenerationSettings>): string | null {
+function validateSettings(patch: Partial<ProfileSettings>): string | null {
   if (patch.modelId !== undefined && patch.modelId.trim() === "") {
     return "Pick a model."
   }
@@ -44,6 +52,7 @@ function validateSettings(patch: Partial<GenerationSettings>): string | null {
   }
   if (
     patch.contextWindow !== undefined &&
+    patch.contextWindow !== null &&
     !isContextWindow(patch.contextWindow)
   ) {
     return "Unsupported context window."
@@ -66,7 +75,7 @@ async function nextSortOrder(): Promise<number> {
 /** Shared by createProfile and saveStoryAsProfile — same row, two entry points. */
 async function insertProfile(
   name: string,
-  settings: GenerationSettings
+  settings: ProfileSettings
 ): Promise<ActionResult<{ id: string }>> {
   const trimmed = name.trim()
   if (trimmed === "") return { ok: false, error: "Name the profile." }
@@ -86,7 +95,7 @@ async function insertProfile(
 
 export async function createProfile(input: {
   name: string
-  settings: GenerationSettings
+  settings: ProfileSettings
 }): Promise<ActionResult<{ id: string }>> {
   const created = await insertProfile(input.name, input.settings)
   if (!created.ok) return created
@@ -99,7 +108,7 @@ export async function createProfile(input: {
 
 export async function updateProfile(
   id: string,
-  patch: { name?: string; settings?: Partial<GenerationSettings> }
+  patch: { name?: string; settings?: Partial<ProfileSettings> }
 ): Promise<ActionResult> {
   const values: Partial<typeof modelProfiles.$inferInsert> = {}
   if (patch.name !== undefined) {
@@ -116,6 +125,8 @@ export async function updateProfile(
   // null is Auto, a real value, so only `undefined` means "not patched".
   if (settings.providerTag !== undefined)
     values.providerTag = settings.providerTag
+  // Same rule one field wider on the sliders: null is "inherit the default",
+  // a state the writer chose, so it is written; only `undefined` is skipped.
   if (settings.temperature !== undefined)
     values.temperature = settings.temperature
   if (settings.topP !== undefined) values.topP = settings.topP
@@ -182,6 +193,12 @@ export async function deleteProfile(id: string): Promise<ActionResult> {
     return { ok: false, error: "Make another profile the default first." }
   }
 
+  // Read outside the transaction: the followers are frozen at the values they
+  // were generating under, and an inherited slider has to become the number the
+  // default currently holds — after the profile is gone there is nothing left
+  // to inherit through.
+  const defaults = await getGenerationDefaults()
+
   const db = await getDb()
   const deleted = await db.transaction(async (tx) => {
     const profile = await tx
@@ -197,7 +214,9 @@ export async function deleteProfile(id: string): Promise<ActionResult> {
     await tx
       .update(stories)
       .set({
-        ...customColumnsFromSettings(toGenerationSettings(profile)),
+        ...customColumnsFromSettings(
+          resolveProfileSettings(toProfileSettings(profile), defaults)
+        ),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(stories.profileId, id))
@@ -281,11 +300,15 @@ export async function saveStoryAsProfile(
           .limit(1)
           .then((rows) => rows[0])
 
+  // Every slider written as an explicit override, not as an inherit: the writer
+  // is promoting settings they tuned on this story, and a profile that quietly
+  // tracked the global defaults instead would not be the thing they saved.
   const created = await insertProfile(
     name,
     resolveGenerationSettings(
       toGenerationSettings(story),
-      followed ? toModelProfile(followed) : null
+      followed ? toModelProfile(followed) : null,
+      await getGenerationDefaults()
     )
   )
   if (!created.ok) return created

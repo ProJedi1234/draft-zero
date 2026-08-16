@@ -289,23 +289,12 @@ export function clampContextWindow(
   return Math.min(value, allowed)
 }
 
-/** Generation parameters attached to a story (OpenRouter-shaped). */
-export interface GenerationSettings {
-  /** OpenRouter model id, e.g. "~anthropic/claude-sonnet-latest". */
-  modelId: string
-  /**
-   * How hard the model should think before writing. Always "off" for a new
-   * story — thinking is opt-in, and non-thinking models ignore it entirely.
-   */
-  thinking: ThinkingLevel
-  /**
-   * Which upstream endpoint serves the model, as an OpenRouter endpoint tag
-   * ("deepinfra/turbo", "groq"). NULL is Auto — OpenRouter's own routing — and
-   * is what every new story starts on. Model-specific by construction: the tag
-   * only means anything for the model whose endpoint list it came from, so
-   * changing models resets it (see the inspector's handleModelChange).
-   */
-  providerTag: string | null
+/**
+ * The six sampling/budget knobs, split out from the model identity because they
+ * are the half a profile may leave unset: one global set of them lives in
+ * app settings, and a profile overrides only what it cares about.
+ */
+export interface GenerationDefaults {
   /** Range 0–2. */
   temperature: number
   /** Range 0–1. */
@@ -326,17 +315,70 @@ export interface GenerationSettings {
   presencePenalty: number
 }
 
+/** The slider fields, in the order every editor lists them. */
+export const GENERATION_DEFAULT_KEYS = [
+  "temperature",
+  "topP",
+  "maxTokens",
+  "contextWindow",
+  "frequencyPenalty",
+  "presencePenalty",
+] as const satisfies readonly (keyof GenerationDefaults)[]
+
+/** Generation parameters attached to a story (OpenRouter-shaped). */
+export interface GenerationSettings extends GenerationDefaults {
+  /** OpenRouter model id, e.g. "~anthropic/claude-sonnet-latest". */
+  modelId: string
+  /**
+   * How hard the model should think before writing. Always "off" for a new
+   * story — thinking is opt-in, and non-thinking models ignore it entirely.
+   */
+  thinking: ThinkingLevel
+  /**
+   * Which upstream endpoint serves the model, as an OpenRouter endpoint tag
+   * ("deepinfra/turbo", "groq"). NULL is Auto — OpenRouter's own routing — and
+   * is what every new story starts on. Model-specific by construction: the tag
+   * only means anything for the model whose endpoint list it came from, so
+   * changing models resets it (see the inspector's handleModelChange).
+   */
+  providerTag: string | null
+}
+
+/** The model half of a bundle — what a profile always states for itself. */
+export type GenerationIdentity = Pick<
+  GenerationSettings,
+  "modelId" | "thinking" | "providerTag"
+>
+
+/**
+ * The six sliders as a profile stores them: null is not a value but the absence
+ * of one, meaning "whatever the global default currently says".
+ */
+export type GenerationOverrides = {
+  [K in keyof GenerationDefaults]: GenerationDefaults[K] | null
+}
+
+/**
+ * What a profile holds. The identity is required — a profile that named no
+ * model would not be a profile — while every slider is an override.
+ */
+export type ProfileSettings = GenerationIdentity & GenerationOverrides
+
 /**
  * A named, global bundle of generation settings. A story either follows one —
  * and then tracks every later edit to it — or is Custom; there is no third,
  * "followed but edited" state to detect.
+ *
+ * `settings` is not the effective bundle: its sliders may be null, meaning the
+ * profile defers to AppSettings.defaultGeneration. Run it through
+ * resolveProfileSettings to get something a story can generate under.
  */
 export interface ModelProfile {
   id: string
   name: string
   /** Position in the switcher and the settings list; ascending. */
   sortOrder: number
-  settings: GenerationSettings
+  settings: ProfileSettings
 }
 
 export interface Story {
@@ -458,6 +500,12 @@ export interface AppSettings {
    * getAppSettings has seeded one, which it does on the first read.
    */
   defaultProfileId: string | null
+  /**
+   * The sampling and budget values every profile falls back to, field by field.
+   * Shared rather than copied: the writer tunes temperature once and every
+   * profile that never disagreed with it moves.
+   */
+  defaultGeneration: GenerationDefaults
 }
 
 /** Uniform server-action result. Actions never throw for expected failures. */

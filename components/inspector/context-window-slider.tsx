@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { Label } from "@/components/ui/label"
+import { SliderFieldHeader, type InheritProps } from "@/components/slider-field"
 import { Slider } from "@/components/ui/slider"
 import { formatContextLength } from "@/lib/format"
 import {
@@ -11,6 +11,7 @@ import {
   clampContextWindow,
   contextWindowLabel,
 } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 const LABEL = "Context window"
 
@@ -26,7 +27,7 @@ function readIndex(next: number | readonly number[], fallback: number): number {
   return Array.isArray(next) ? (next[0] ?? fallback) : (next as number)
 }
 
-export interface ContextWindowSliderProps {
+export interface ContextWindowSliderProps extends InheritProps {
   /** Selected window in tokens. Always one of CONTEXT_WINDOWS. */
   value: number
   /** Selected model's window; 0 when the model is unknown to the catalog (no clamp). */
@@ -68,6 +69,8 @@ export function ContextWindowSlider({
   onValueChange,
   onValueCommitted,
   dragProps,
+  inherited,
+  onRevert,
 }: ContextWindowSliderProps) {
   const maxIndex = stopIndex(
     clampContextWindow(
@@ -79,13 +82,15 @@ export function ContextWindowSlider({
   const clamped = maxIndex < CONTEXT_WINDOWS.length - 1
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-baseline justify-between">
-        <Label className="text-xs">{LABEL}</Label>
-        <span className="font-mono text-xs text-muted-foreground tabular-nums">
-          {contextWindowLabel(CONTEXT_WINDOWS[index])}
-        </span>
-      </div>
+    // See SliderField: dimmed, never disabled — a drag is how the writer takes
+    // an inherited field over.
+    <div className={cn("space-y-2", inherited && "opacity-50")}>
+      <SliderFieldHeader
+        label={LABEL}
+        readout={contextWindowLabel(CONTEXT_WINDOWS[index])}
+        inherited={inherited}
+        onRevert={onRevert}
+      />
       <Slider
         value={[index]}
         min={0}

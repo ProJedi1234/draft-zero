@@ -34,7 +34,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { setDefaultProfile } from "@/lib/actions/profiles"
 import { settingsSummaryWithPrice } from "@/lib/settings-summary"
-import { type ModelProfile, type OpenRouterModel } from "@/lib/types"
+import {
+  type GenerationDefaults,
+  type ModelProfile,
+  type OpenRouterModel,
+} from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 /**
@@ -47,11 +51,14 @@ import { cn } from "@/lib/utils"
 export function ModelProfilesCard({
   profiles,
   models,
+  defaults,
   defaultProfileId,
   followerCounts,
 }: {
   profiles: ModelProfile[]
   models: OpenRouterModel[]
+  /** The shared slider values a profile's unset fields fall back to. */
+  defaults: GenerationDefaults
   defaultProfileId: string | null
   /** Stories per profile id; a profile nobody follows is simply absent. */
   followerCounts: Record<string, number>
@@ -133,6 +140,7 @@ export function ModelProfilesCard({
           open={editorOpen}
           onOpenChange={setEditorOpen}
           models={models}
+          defaults={defaults}
           isDefault={
             editorTarget.mode === "edit" &&
             editorTarget.profile?.id === defaultProfileId
