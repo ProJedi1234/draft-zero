@@ -299,9 +299,17 @@ describe("fit reporting", () => {
 
   test("a share never rounds to a number the sentence contradicts", () => {
     // One paragraph short of whole must not read "100% fit ... were trimmed".
+    //
+    // systemPrompt is pinned because this case has to land in the narrow band
+    // where exactly one paragraph is trimmed, and the prompt is fixed overhead
+    // subtracted from the same budget. Left on the default, the row count is
+    // really a measurement of how long that prompt happens to be, and rewording
+    // it moves the whole manuscript inside the window — which is how this test
+    // failed when the default was cut to a third of its size.
     const nearlyWhole = composeContext({
       story: story({
-        entries: Array.from({ length: 625 }, (_, i) =>
+        systemPrompt: "System.",
+        entries: Array.from({ length: 720 }, (_, i) =>
           entry(`Paragraph ${i} ${"x".repeat(30)}`)
         ),
       }),
