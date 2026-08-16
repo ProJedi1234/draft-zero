@@ -552,6 +552,7 @@ export const MOCK_STORIES: Story[] = [
     canRedo: false,
     undoSummary: null,
     redoSummary: null,
+    profileId: null,
     settings: {
       modelId: "~anthropic/claude-sonnet-latest",
       thinking: "off",
@@ -615,6 +616,7 @@ export const MOCK_STORIES: Story[] = [
     canRedo: false,
     undoSummary: null,
     redoSummary: null,
+    profileId: null,
     settings: {
       modelId: "~openai/gpt-latest",
       thinking: "off",
@@ -672,6 +674,7 @@ export const MOCK_STORIES: Story[] = [
     canRedo: false,
     undoSummary: null,
     redoSummary: null,
+    profileId: null,
     settings: {
       modelId: "~anthropic/claude-opus-latest",
       thinking: "off",
@@ -720,6 +723,7 @@ export const MOCK_STORIES: Story[] = [
     canRedo: false,
     undoSummary: null,
     redoSummary: null,
+    profileId: null,
     settings: { ...DEFAULT_GENERATION_SETTINGS },
     entries: [],
   },

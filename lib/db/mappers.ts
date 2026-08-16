@@ -15,6 +15,7 @@ import type {
   HistoryState,
   LorebookCategory,
   LorebookEntry,
+  ModelProfile,
   SettledCallStatus,
   Story,
   StoryEntry,
@@ -24,6 +25,7 @@ import type {
 import type {
   AppSettingsRow,
   LorebookEntryRow,
+  ModelProfileRow,
   StoryEntryRow,
   StoryRow,
 } from "./schema"
@@ -123,7 +125,13 @@ export function toStoryEntry(
   }
 }
 
-export function toGenerationSettings(row: StoryRow): GenerationSettings {
+/**
+ * The settings columns are identical on `stories` and `model_profiles`, so one
+ * structural parameter maps both and the two can never drift apart.
+ */
+export function toGenerationSettings(
+  row: StoryRow | ModelProfileRow
+): GenerationSettings {
   return {
     modelId: row.modelId,
     thinking: row.thinking,
@@ -134,6 +142,15 @@ export function toGenerationSettings(row: StoryRow): GenerationSettings {
     contextWindow: row.contextWindow,
     frequencyPenalty: row.frequencyPenalty,
     presencePenalty: row.presencePenalty,
+  }
+}
+
+export function toModelProfile(row: ModelProfileRow): ModelProfile {
+  return {
+    id: row.id,
+    name: row.name,
+    sortOrder: row.sortOrder,
+    settings: toGenerationSettings(row),
   }
 }
 
@@ -227,6 +244,7 @@ export function toStory(
     updatedAt: row.updatedAt,
     wordCount: countEntryWords(entries),
     entries,
+    profileId: row.profileId,
     settings: toGenerationSettings(row),
     memory: row.memory,
     authorsNote: row.authorsNote,
@@ -243,5 +261,6 @@ export function toAppSettings(row: AppSettingsRow): AppSettings {
   return {
     defaultModelId: row.defaultModelId,
     defaultThinking: row.defaultThinking,
+    defaultProfileId: row.defaultProfileId,
   }
 }

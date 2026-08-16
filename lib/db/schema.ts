@@ -38,7 +38,14 @@ export const stories = pgTable("stories", {
   // is a different state from an empty override and lets the default keep
   // evolving for every story that never set one.
   systemPrompt: text("system_prompt"),
-  // Generation settings live inline (1:1 with the story).
+  // The profile this story follows, or NULL for Custom. Not a foreign key, for
+  // the same reason provider_tag isn't: deleting a profile is not a cascade but
+  // a state change on its followers (they flip to Custom seeded with the
+  // deleted profile's settings), which the delete action does transactionally.
+  profileId: text("profile_id"),
+  // Generation settings live inline (1:1 with the story). Once a story follows
+  // a profile these columns keep holding its CUSTOM settings — profile code
+  // never writes them — which is what makes Custom ⇄ profile lossless.
   modelId: text("model_id").notNull(),
   // Reasoning effort, or "off". Thinking is opt-in, so "off" is the default
   // for new stories and for every story that predates this column.
@@ -324,14 +331,43 @@ export const lorebookEntries = pgTable(
   ]
 )
 
+/**
+ * A named bundle of generation settings, global and shared by every story that
+ * follows it. The settings columns mirror the ones on `stories` exactly — same
+ * names, same types, same defaults — so both sides map through the one
+ * `toGenerationSettings` shape and neither can drift from the other.
+ */
+export const modelProfiles = pgTable("model_profiles", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  // Explicit rather than ordering by name or creation: the list is short and
+  // hand-curated, and the writer's order is the order the switcher shows.
+  sortOrder: integer("sort_order").notNull().default(0),
+  modelId: text("model_id").notNull(),
+  thinking: text("thinking").notNull().default("off").$type<ThinkingLevel>(),
+  providerTag: text("provider_tag"),
+  temperature: doublePrecision("temperature").notNull(),
+  topP: doublePrecision("top_p").notNull(),
+  maxTokens: integer("max_tokens").notNull(),
+  contextWindow: integer("context_window").notNull().default(8192),
+  frequencyPenalty: doublePrecision("frequency_penalty").notNull(),
+  presencePenalty: doublePrecision("presence_penalty").notNull(),
+})
+
 /** Single-row table; `id` is always 1. */
 export const appSettings = pgTable("app_settings", {
   id: integer("id").primaryKey(),
+  // Superseded by default_profile_id, which new stories read instead. Kept
+  // (not dropped) so the migration is non-destructive and so the lazily seeded
+  // "Default" profile has the writer's existing choice to seed from.
   defaultModelId: text("default_model_id").notNull(),
   defaultThinking: text("default_thinking")
     .notNull()
     .default("off")
     .$type<ThinkingLevel>(),
+  // The profile new stories start from. NULL only before the lazy seed in
+  // getAppSettings has run. Not a foreign key, matching stories.profile_id.
+  defaultProfileId: text("default_profile_id"),
 })
 
 export type StoryRow = typeof stories.$inferSelect
@@ -341,3 +377,5 @@ export type GenerationCallRow = typeof generationCalls.$inferSelect
 export type NewGenerationCallRow = typeof generationCalls.$inferInsert
 export type LorebookEntryRow = typeof lorebookEntries.$inferSelect
 export type AppSettingsRow = typeof appSettings.$inferSelect
+export type ModelProfileRow = typeof modelProfiles.$inferSelect
+export type NewModelProfileRow = typeof modelProfiles.$inferInsert

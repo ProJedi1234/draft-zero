@@ -9,6 +9,7 @@ import { closeDb, getDb } from "@/lib/db/client"
 import {
   appSettings,
   lorebookEntries,
+  modelProfiles,
   storyEntries,
   stories,
 } from "@/lib/db/schema"
@@ -25,6 +26,9 @@ async function seed() {
   await db.delete(lorebookEntries)
   await db.delete(stories)
   await db.delete(appSettings)
+  // Wiped alongside app_settings: a leftover profile would stop getAppSettings
+  // from lazily seeding the default that the fresh settings row points at.
+  await db.delete(modelProfiles)
 
   let entryCount = 0
 

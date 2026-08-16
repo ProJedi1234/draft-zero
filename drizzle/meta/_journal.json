@@ -78,6 +78,13 @@
       "when": 1786670299928,
       "tag": "0010_legal_daimon_hellstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786842690811,
+      "tag": "0011_nifty_skaar",
+      "breakpoints": true
     }
   ]
 }
