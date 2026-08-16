@@ -4,6 +4,7 @@ import { Geist_Mono, Inter, Source_Serif_4 } from "next/font/google"
 import "./globals.css"
 import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { SyncListener } from "@/components/sync-listener"
+import { StatusBarTint } from "@/components/status-bar-tint"
 import { ThemeProvider } from "@/components/theme-provider"
 import { ViewportHeightSync } from "@/components/viewport-height-sync"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -104,6 +105,9 @@ export default async function RootLayout({
       <body>
         <ThemeProvider>
           <SidebarProvider>
+            {/* Inside the provider: it tints the status bar from the sheet's
+                open state, which only exists in this context. */}
+            <StatusBarTint />
             <AppSidebar stories={stories} />
             <SidebarInset>{children}</SidebarInset>
           </SidebarProvider>
