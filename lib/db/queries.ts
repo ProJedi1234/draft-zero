@@ -73,41 +73,55 @@ export async function getStory(id: string): Promise<Story | null> {
 
   if (!storyRow) return null
 
-  const [entryRows, lorebookRows, history, costRows] = await Promise.all([
-    // Every non-deleted row, active takes and alternatives alike. One flat
-    // query rather than a GROUP BY plus a join for the sibling counts: a
-    // manuscript is small and is already loaded whole on every request, so the
-    // extra inactive rows cost less than the second round trip would, and
-    // `toStory` gets everything it needs to fill in variantIndex/variantCount.
-    db
-      .select()
-      .from(storyEntries)
-      .where(and(eq(storyEntries.storyId, id), isNull(storyEntries.deletedAt)))
-      .orderBy(asc(storyEntries.position), asc(storyEntries.variantIndex)),
-    db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
-    readHistoryState(db, id),
-    // The story's spend, as a second small SELECT rather than a join onto the
-    // entries above. A join is the same rows, but a ledger that somehow held two
-    // calls for one take would silently DUPLICATE a passage in the manuscript —
-    // a bookkeeping oddity has no business being able to do that. Indexed on
-    // (story_id, created_at); in-flight calls are excluded because they have no
-    // cost yet and no take.
-    db
-      .select({
-        storyEntryId: generationCalls.storyEntryId,
-        costUsd: generationCalls.costUsd,
-        reasoningTokens: generationCalls.reasoningTokens,
-        status: generationCalls.status,
-      })
-      .from(generationCalls)
-      .where(
-        and(
-          eq(generationCalls.storyId, id),
-          isNotNull(generationCalls.storyEntryId),
-          ne(generationCalls.status, "streaming")
+  const [profileRow, entryRows, lorebookRows, history, costRows] =
+    await Promise.all([
+      // Effective settings are resolved here, not stored: a followed story reads
+      // its profile every time, so an edit in Settings reaches every follower
+      // without touching a single story row. Skipped entirely for Custom.
+      storyRow.profileId === null
+        ? Promise.resolve(undefined)
+        : db
+            .select()
+            .from(modelProfiles)
+            .where(eq(modelProfiles.id, storyRow.profileId))
+            .limit(1)
+            .then((rows) => rows[0]),
+      // Every non-deleted row, active takes and alternatives alike. One flat
+      // query rather than a GROUP BY plus a join for the sibling counts: a
+      // manuscript is small and is already loaded whole on every request, so the
+      // extra inactive rows cost less than the second round trip would, and
+      // `toStory` gets everything it needs to fill in variantIndex/variantCount.
+      db
+        .select()
+        .from(storyEntries)
+        .where(
+          and(eq(storyEntries.storyId, id), isNull(storyEntries.deletedAt))
         )
-      ),
-  ])
+        .orderBy(asc(storyEntries.position), asc(storyEntries.variantIndex)),
+      db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
+      readHistoryState(db, id),
+      // The story's spend, as a second small SELECT rather than a join onto the
+      // entries above. A join is the same rows, but a ledger that somehow held two
+      // calls for one take would silently DUPLICATE a passage in the manuscript —
+      // a bookkeeping oddity has no business being able to do that. Indexed on
+      // (story_id, created_at); in-flight calls are excluded because they have no
+      // cost yet and no take.
+      db
+        .select({
+          storyEntryId: generationCalls.storyEntryId,
+          costUsd: generationCalls.costUsd,
+          reasoningTokens: generationCalls.reasoningTokens,
+          status: generationCalls.status,
+        })
+        .from(generationCalls)
+        .where(
+          and(
+            eq(generationCalls.storyId, id),
+            isNotNull(generationCalls.storyEntryId),
+            ne(generationCalls.status, "streaming")
+          )
+        ),
+    ])
 
   const costs = new Map<string, EntryCost>()
   for (const row of costRows) {
@@ -119,7 +133,14 @@ export async function getStory(id: string): Promise<Story | null> {
     })
   }
 
-  return toStory(storyRow, entryRows, lorebookRows, history, costs)
+  return toStory(
+    storyRow,
+    profileRow ?? null,
+    entryRows,
+    lorebookRows,
+    history,
+    costs
+  )
 }
 
 /** One story's lorebook entries, ordered name ASC. */
