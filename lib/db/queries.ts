@@ -1,7 +1,7 @@
 // lib/db/queries.ts — Read layer. Server-only: imported by server components
 // and server actions. Every call reads fresh from Postgres (no caching layer).
 
-import { and, asc, desc, eq, isNotNull, isNull, ne } from "drizzle-orm"
+import { and, asc, count, desc, eq, isNotNull, isNull, ne } from "drizzle-orm"
 
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type {
@@ -177,6 +177,29 @@ export async function listModelProfiles(): Promise<ModelProfile[]> {
     .from(modelProfiles)
     .orderBy(asc(modelProfiles.sortOrder), asc(modelProfiles.name))
   return rows.map(toModelProfile)
+}
+
+/**
+ * How many stories follow each profile, keyed by profile id. Profiles nobody
+ * follows are absent rather than zero — the settings list reads through a
+ * default of 0, and one grouped count beats a query per row.
+ *
+ * Counted here rather than joined onto listModelProfiles because the switcher
+ * has no use for it: only the editor, which warns that a save moves N stories.
+ */
+export async function countProfileFollowers(): Promise<Record<string, number>> {
+  const db = await getDb()
+  const rows = await db
+    .select({ profileId: stories.profileId, followers: count() })
+    .from(stories)
+    .where(isNotNull(stories.profileId))
+    .groupBy(stories.profileId)
+
+  const counts: Record<string, number> = {}
+  for (const row of rows) {
+    if (row.profileId !== null) counts[row.profileId] = row.followers
+  }
+  return counts
 }
 
 /**
