@@ -5,6 +5,7 @@ import * as React from "react"
 import type {
   ActionKind,
   LorebookEntry,
+  ModelProfile,
   OpenRouterModel,
   Story,
   StoryCostProfile,
@@ -48,12 +49,15 @@ export function StoryWorkspace({
   lorebookEntries,
   models,
   costProfile,
+  profiles,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
   /** Server-read spend for this story — the header chip's ledger. */
   costProfile: StoryCostProfile
+  /** Every profile, in the writer's order — the inspector's switcher list. */
+  profiles: ModelProfile[]
 }) {
   const [inspectorOpen, setInspectorOpen] = useInspectorOpen()
   const [mobileInspectorOpen, setMobileInspectorOpen] = React.useState(false)
@@ -103,6 +107,7 @@ export function StoryWorkspace({
           story={story}
           lorebookEntries={lorebookEntries}
           models={models}
+          profiles={profiles}
           className={cn("hidden", inspectorOpen && "lg:flex")}
         />
       </div>
@@ -119,6 +124,7 @@ export function StoryWorkspace({
             story={story}
             lorebookEntries={lorebookEntries}
             models={models}
+            profiles={profiles}
           />
         </SheetContent>
       </Sheet>

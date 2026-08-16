@@ -8,6 +8,7 @@ import {
   matchActiveLorebookEntries,
   recentStoryText,
 } from "@/lib/generation/lorebook"
+import { resolveGenerationSettings } from "@/lib/generation/resolve"
 import type {
   AppSettings,
   EntryGeneration,
@@ -253,7 +254,10 @@ export function toStory(
     wordCount: countEntryWords(entries),
     entries,
     profileId: profileRow ? row.profileId : null,
-    settings: toGenerationSettings(profileRow ?? row),
+    settings: resolveGenerationSettings(
+      toGenerationSettings(row),
+      profileRow ? toModelProfile(profileRow) : null
+    ),
     memory: row.memory,
     authorsNote: row.authorsNote,
     systemPrompt: row.systemPrompt,
