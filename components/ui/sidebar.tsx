@@ -138,7 +138,12 @@ function SidebarProvider({
           } as React.CSSProperties
         }
         className={cn(
-          "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
+          // min-h-full, not min-h-svh: svh resolves against the screen, which
+          // on iOS standalone is taller than the layout viewport. That made the
+          // document taller than the viewport no matter what the shell did, and
+          // the overflow is what let the whole thing scroll up off the bottom.
+          // Inheriting body's height keeps this on the layout viewport.
+          "group/sidebar-wrapper flex min-h-full w-full has-data-[variant=inset]:bg-sidebar",
           className
         )}
         {...props}

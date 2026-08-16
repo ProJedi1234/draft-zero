@@ -33,29 +33,28 @@ export const metadata: Metadata = {
   },
   description: "A local-first studio for AI-assisted fiction.",
   /*
-   * `black-translucent` is what lets the app paint under the status bar.
+   * Was `black-translucent`, to paint the app under the status bar. That is
+   * what stranded the bottom edge: iOS hands the web view the full screen but a
+   * layout viewport still sized to screen-minus-status-bar, so anything sized
+   * to the screen (100dvh, min-h-svh) is taller than the document that holds
+   * it. The overflow let the shell scroll up, taking the composer off the
+   * bottom of the screen while the manuscript kept painting underneath it — and
+   * because whether it happened depended on iOS's per-launch geometry, it came
+   * and went at random. Two rounds of fixes treated symptoms of this.
    *
-   * viewport-fit=cover alone is not enough when installed: under the default
-   * status bar style iOS hands the web view a viewport that *starts* below the
-   * status bar and fills the strip itself, so safe-area-inset-top is 0 and the
-   * sidebar's background stops in a hard line under the clock — the tell that
-   * this is a web page in a frame rather than an app. A single theme_color
-   * cannot paper over it either: the strip spans a sidebar and a content pane
-   * that are deliberately different colours, so whichever one it matched would
-   * be wrong above the other.
+   * Under `default` the web view starts below the status bar, the two viewports
+   * agree, and there is nothing left to displace.
    *
-   * With this, the web view becomes full-height, the inset turns non-zero, and
-   * the panels below pad themselves so their backgrounds bleed up while their
-   * contents stay clear of the clock.
+   * Cost: no bleed under the clock, so the strip is a flat theme-color band. It
+   * matches --background, which is what sits below it in the ordinary case.
    *
-   * Cost: iOS draws the status bar glyphs in white for this style regardless of
-   * what is behind them, which is fine over the dark theme's sidebar and poor
-   * over the light one's near-white. Worth checking in light mode on device.
+   * iOS reads this at Add-to-Home-Screen time — changing it does nothing to an
+   * already-installed copy until the icon is deleted and re-added.
    */
   appleWebApp: {
     capable: true,
     title: "draft zero",
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
   },
 }
 
