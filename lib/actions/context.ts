@@ -2,16 +2,22 @@
 
 import { getStory, listLorebookEntries } from "@/lib/db/queries"
 import { composeContext } from "@/lib/generation/context"
+import { listModelEndpoints } from "@/lib/generation/endpoints"
+import { listModels } from "@/lib/generation/models"
 import type { ComposedContext } from "@/lib/generation/types"
-import type { ActionResult } from "@/lib/types"
+import {
+  clampContextWindow,
+  endpointForTag,
+  type ActionResult,
+} from "@/lib/types"
 
 /** A passage's context, composed on demand. */
 export interface EntryContext {
   context: ComposedContext
-  /** The budget it was composed against — the story's window as it stands. */
+  /** The budget it was composed against — clamped the way a real request is. */
   contextWindow: number
-  /** The model that wrote the passage, frozen on the row; today's when unknown. */
-  modelId: string
+  /** The model that wrote the passage. Null when the row never recorded one. */
+  modelId: string | null
 }
 
 /**
@@ -45,16 +51,31 @@ export async function loadEntryContext(
   entryId: string
 ): Promise<ActionResult<EntryContext | null>> {
   try {
-    const [story, lorebookEntries] = await Promise.all([
+    const [story, lorebookEntries, models] = await Promise.all([
       getStory(storyId),
       listLorebookEntries(storyId),
+      // Cached for an hour in-process, so this is nearly free — see models.ts.
+      listModels(),
     ])
     if (!story) return { ok: false, error: "Story not found." }
 
     const index = story.entries.findIndex((entry) => entry.id === entryId)
     if (index === -1) return { ok: true, data: null }
 
-    const contextWindow = story.settings.contextWindow
+    // The same clamp startGeneration applies, for the same reason: the stored
+    // window can outlive the model that justified it, and a viewer composed
+    // against a budget no request would use is worse than no viewer.
+    const endpoints =
+      story.settings.providerTag == null
+        ? []
+        : await listModelEndpoints(story.settings.modelId)
+    const contextWindow = clampContextWindow(
+      story.settings.contextWindow,
+      endpointForTag(endpoints, story.settings.providerTag)?.contextLength ??
+        models.find((m) => m.id === story.settings.modelId)?.contextLength ??
+        0
+    )
+
     return {
       ok: true,
       data: {
@@ -64,8 +85,9 @@ export async function loadEntryContext(
           contextWindow,
         }),
         contextWindow,
-        modelId:
-          story.entries[index].generation?.modelId ?? story.settings.modelId,
+        // Never today's model as a stand-in: a guess here is indistinguishable
+        // from a recorded fact, which is the one thing provenance may not be.
+        modelId: story.entries[index].generation?.modelId ?? null,
       },
     }
   } catch (err) {
