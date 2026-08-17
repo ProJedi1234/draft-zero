@@ -13,6 +13,7 @@ import { useModelSettings } from "@/hooks/use-model-settings"
 import type {
   LorebookEntry,
   ModelProfile,
+  OpenRouterImageModel,
   OpenRouterModel,
   Story,
 } from "@/lib/types"
@@ -32,6 +33,8 @@ export function InspectorPanel({
   story,
   lorebookEntries,
   models,
+  imageModels,
+  imageModelPrice,
   profiles,
   defaultProfileId,
   requireZdr,
@@ -42,6 +45,9 @@ export function InspectorPanel({
   story: Story
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
+  imageModels: OpenRouterImageModel[]
+  /** What the SELECTED image model costs per image, or null when unknown. */
+  imageModelPrice: string | null
   /** Every profile, in the writer's order — the switcher's list. */
   profiles: ModelProfile[]
   /** The profile new stories start from; starred in the switcher. */
@@ -75,6 +81,8 @@ export function InspectorPanel({
           story={story}
           lorebookEntries={lorebookEntries}
           models={models}
+          imageModels={imageModels}
+          imageModelPrice={imageModelPrice}
           profiles={profiles}
           defaultProfileId={defaultProfileId}
           requireZdr={requireZdr}
@@ -97,6 +105,8 @@ export function InspectorContent({
   story,
   lorebookEntries,
   models,
+  imageModels,
+  imageModelPrice,
   profiles,
   defaultProfileId,
   requireZdr,
@@ -106,6 +116,8 @@ export function InspectorContent({
   story: Story
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
+  imageModels: OpenRouterImageModel[]
+  imageModelPrice: string | null
   profiles: ModelProfile[]
   defaultProfileId: string | null
   requireZdr: boolean
@@ -118,6 +130,8 @@ export function InspectorContent({
       story={story}
       lorebookEntries={lorebookEntries}
       models={models}
+      imageModels={imageModels}
+      imageModelPrice={imageModelPrice}
       profiles={profiles}
       defaultProfileId={defaultProfileId}
       requireZdr={requireZdr}
@@ -140,6 +154,8 @@ function InspectorSections({
   story,
   lorebookEntries,
   models,
+  imageModels,
+  imageModelPrice,
   profiles,
   defaultProfileId,
   requireZdr,
@@ -149,6 +165,8 @@ function InspectorSections({
   story: Story
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
+  imageModels: OpenRouterImageModel[]
+  imageModelPrice: string | null
   profiles: ModelProfile[]
   defaultProfileId: string | null
   requireZdr: boolean
@@ -235,6 +253,8 @@ function InspectorSections({
               <ModelSection
                 story={story}
                 models={models}
+                imageModels={imageModels}
+                imageModelPrice={imageModelPrice}
                 profiles={profiles}
                 defaultProfileId={defaultProfileId}
                 requireZdr={requireZdr}

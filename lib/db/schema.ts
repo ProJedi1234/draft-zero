@@ -24,6 +24,7 @@ import type {
   CostSource,
   GenerationCallStatus,
   GenerationRequestKind,
+  ImageAspectRatio,
   ThinkingLevel,
 } from "@/lib/types"
 
@@ -61,11 +62,16 @@ export const stories = pgTable("stories", {
   // app_settings.require_zdr ORs on top at read time, so a false here is "this
   // story asks for nothing extra", not "this story opts out".
   zdr: boolean("zdr").notNull().default(false),
+  // Which image model this story draws with. NULL means "whatever the catalog
+  // lists first", which is also every story that predates the column — not a
+  // foreign key, and not defaulted to a literal id, because the image catalog
+  // is a live remote list and a hardcoded default would outlive the model.
+  imageModelId: text("image_model_id"),
+  maxTokens: integer("max_tokens").notNull(),
   // doublePrecision, not real: Postgres `real` is 4-byte and would silently
   // round the slider values that SQLite stored at 8-byte precision.
   temperature: doublePrecision("temperature").notNull(),
   topP: doublePrecision("top_p").notNull(),
-  maxTokens: integer("max_tokens").notNull(),
   // Input-token budget for composeContext, not an output cap. Defaulted in the
   // schema (not just in application code) so the generated ALTER TABLE
   // backfills every story that predates the column with the same 8192.
@@ -327,6 +333,14 @@ export const generationCalls = pgTable(
      * sums after the entries are gone.
      */
     origVariantGroupId: text("orig_variant_group_id"),
+    // The illustration this call paid for, and the FK-free copy of its slot —
+    // the same pair as story_entry_id/orig_variant_group_id, for the same
+    // reason: the id nulls if the image is hard-deleted, the slot copy stays,
+    // so a picture's takes still sum after one of them is gone.
+    storyImageId: text("story_image_id").references(() => storyImages.id, {
+      onDelete: "set null",
+    }),
+    origImageGroupId: text("orig_image_group_id"),
     /** Survives story deletion so a global ledger still reads as English. */
     storyTitle: text("story_title"),
     /** What the writer asked for. */
@@ -429,6 +443,61 @@ export const lorebookEntries = pgTable(
   },
   (table) => [
     index("lorebook_entries_story_id_name_idx").on(table.storyId, table.name),
+  ]
+)
+
+/**
+ * Illustrations, as beats in the story rather than decorations on a passage.
+ *
+ * An image is its own kind of generation: it is asked for from the composer,
+ * it lands at the end of the manuscript like a passage does, and it stands on
+ * its own. An earlier design hung each picture under the passage that inspired
+ * it, which made an illustration a property of some prose and left no way to
+ * ask for one that simply comes next.
+ *
+ * `position` is drawn from a counter SHARED with story_entries (see
+ * nextStoryPosition), so the two tables interleave into one ordered timeline
+ * with no ties to break. Deliberately not a unique index: the sequence is
+ * allocated per insert, and a collision would be a bug in that allocator rather
+ * than something to discover at write time in the middle of a generation.
+ *
+ * Shaped after `story_entries` otherwise — takes in a group, one active, soft
+ * delete — because retrying a picture is the same idea as retrying a passage,
+ * and a second, subtly different variant mechanism is a second set of bugs.
+ *
+ * The bytes are on disk (see lib/images/store.ts), not here: a base64 column
+ * would put megabytes into every story read, and getStory loads the whole
+ * manuscript on every request.
+ */
+export const storyImages = pgTable(
+  "story_images",
+  {
+    id: text("id").primaryKey(),
+    storyId: text("story_id")
+      .notNull()
+      .references(() => stories.id, { onDelete: "cascade" }),
+    /** Shared ordering key with story_entries — see nextStoryPosition. */
+    position: integer("position").notNull(),
+    imageGroupId: text("image_group_id").notNull(),
+    /** Order among the slot's takes; newest is highest, so next is MAX + 1. */
+    imageIndex: integer("image_index").notNull().default(0),
+    /** Exactly one take per slot is rendered; the rest are kept and reachable. */
+    isActive: boolean("is_active").notNull().default(true),
+    /** NULL means live. Soft delete, so undo is one UPDATE. */
+    deletedAt: text("deleted_at"),
+    prompt: text("prompt").notNull(),
+    // Nullable and undefaulted: NULL means "not derived", which is a different
+    // claim from "derived to the same words the writer kept".
+    derivedPrompt: text("derived_prompt"),
+    modelId: text("model_id").notNull(),
+    aspectRatio: text("aspect_ratio").notNull().$type<ImageAspectRatio>(),
+    seed: integer("seed").notNull(),
+    mediaType: text("media_type").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("story_images_position_idx").on(table.storyId, table.position),
+    index("story_images_group_idx").on(table.storyId, table.imageGroupId),
   ]
 )
 
@@ -548,6 +617,8 @@ export type StoryOpRow = typeof storyOps.$inferSelect
 export type GenerationCallRow = typeof generationCalls.$inferSelect
 export type NewGenerationCallRow = typeof generationCalls.$inferInsert
 export type LorebookEntryRow = typeof lorebookEntries.$inferSelect
+export type StoryImageRow = typeof storyImages.$inferSelect
+export type NewStoryImageRow = typeof storyImages.$inferInsert
 export type AppSettingsRow = typeof appSettings.$inferSelect
 export type ModelProfileRow = typeof modelProfiles.$inferSelect
 export type NewModelProfileRow = typeof modelProfiles.$inferInsert

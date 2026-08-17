@@ -34,7 +34,12 @@ import { resolveGenerationSettings } from "@/lib/generation/resolve"
 
 import { getDb, type DrizzleDb } from "./client"
 import { readHistoryState } from "./journal"
-import type { EntryCost, ManuscriptWindow, SlotMeta } from "./mappers"
+import type {
+  EntryCost,
+  ImageCost,
+  ManuscriptWindow,
+  SlotMeta,
+} from "./mappers"
 import {
   deriveSlotMeta,
   toAppSettings,
@@ -53,6 +58,7 @@ import {
   lorebookEntries,
   modelProfiles,
   storyEntries,
+  storyImages,
   storyRecaps,
   stories,
 } from "./schema"
@@ -498,11 +504,22 @@ export async function getStory(
     baseline
   )
 
-  const [manuscript, lorebookRows, history, recap, costRows] =
+  const [manuscript, imageRows, lorebookRows, history, recap, costRows, imageCostRows] =
     await Promise.all([
       opts.full
         ? readFullManuscript(db, id)
         : readManuscriptTail(db, id, effective.contextWindow),
+      // Every non-deleted illustration, alternatives included: toStory derives
+      // imageIndex/imageCount from the whole slot, and a query that returned
+      // only the active take could not tell a picture that has been retried
+      // twice from one that never has. All of them, not just the window's —
+      // pictures are few, and a windowed read would drop the beats above the
+      // fold.
+      db
+        .select()
+        .from(storyImages)
+        .where(and(eq(storyImages.storyId, id), isNull(storyImages.deletedAt)))
+        .orderBy(asc(storyImages.imageIndex)),
       db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
       readHistoryState(db, id),
       resolveStoryRecap(id),
@@ -527,6 +544,25 @@ export async function getStory(
             ne(generationCalls.status, "streaming")
           )
         ),
+      // The same read for pictures — see the imageCosts map below. A separate
+      // SELECT rather than a UNION: they key by different columns, and an
+      // image billed per megapixel has no business being summed with a
+      // passage billed per token.
+      db
+        .select({
+          storyImageId: generationCalls.storyImageId,
+          origImageGroupId: generationCalls.origImageGroupId,
+          costUsd: generationCalls.costUsd,
+          status: generationCalls.status,
+        })
+        .from(generationCalls)
+        .where(
+          and(
+            eq(generationCalls.storyId, id),
+            isNotNull(generationCalls.storyImageId),
+            ne(generationCalls.status, "streaming")
+          )
+        ),
     ])
 
   const costs = new Map<string, EntryCost>()
@@ -539,16 +575,66 @@ export async function getStory(
     })
   }
 
+  const imageCosts = new Map<string, ImageCost>()
+  // Slot totals, summed with the ledger's own decimal arithmetic rather than in
+  // JS: Number() on a numeric(20,12) is exactly the rounding this codebase
+  // refuses everywhere else money is added up.
+  const slotRows = await (async () => {
+    const groups = [
+      ...new Set(
+        imageCostRows
+          .map((row) => row.origImageGroupId)
+          .filter((group): group is string => group !== null)
+      ),
+    ]
+    if (groups.length === 0) return []
+    return db
+      .select({
+        group: generationCalls.origImageGroupId,
+        total: sql<string>`SUM(${generationCalls.costUsd})`,
+        unpriced: sql<number>`COUNT(*) FILTER (WHERE ${generationCalls.costUsd} IS NULL)`,
+      })
+      .from(generationCalls)
+      .where(
+        and(
+          eq(generationCalls.storyId, id),
+          inArray(generationCalls.origImageGroupId, groups),
+          ne(generationCalls.status, "streaming")
+        )
+      )
+      .groupBy(generationCalls.origImageGroupId)
+  })()
+
+  const slotTotals = new Map(
+    slotRows.map((row) => [
+      row.group ?? "",
+      { total: row.total, unpriced: Number(row.unpriced) },
+    ])
+  )
+
+  for (const row of imageCostRows) {
+    if (row.storyImageId === null) continue
+    const slot = slotTotals.get(row.origImageGroupId ?? "")
+    imageCosts.set(row.storyImageId, {
+      costUsd: row.costUsd,
+      status: row.status as SettledCallStatus,
+      slotCostUsd: slot?.total ?? row.costUsd,
+      slotUnpricedCalls: slot?.unpriced ?? 0,
+    })
+  }
+
   return toStory(
     storyRow,
     profileRow ?? null,
     manuscript.rows,
     manuscript.slots,
+    imageRows,
     lorebookRows,
     history,
     recap?.text ?? "",
     baseline,
     costs,
+    imageCosts,
     manuscript.window
   )
 }
@@ -571,6 +657,27 @@ export async function getStoryTitle(id: string): Promise<string | null> {
     .limit(1)
     .then((rows) => rows[0])
   return row?.title ?? null
+}
+
+/**
+ * The two fields the image route needs to find an illustration's bytes.
+ *
+ * Deliberately narrow, and deliberately NOT filtered by deleted_at or is_active:
+ * this answers "what are these bytes", which stays true of a picture the writer
+ * deleted a second ago and may undo. Access control is not a concern the route
+ * has — every surface of this app already reads every story.
+ */
+export async function getStoryImageMedia(
+  imageId: string
+): Promise<{ mediaType: string } | null> {
+  const db = await getDb()
+  const row = await db
+    .select({ mediaType: storyImages.mediaType })
+    .from(storyImages)
+    .where(eq(storyImages.id, imageId))
+    .limit(1)
+    .then((rows) => rows[0])
+  return row ?? null
 }
 
 /**

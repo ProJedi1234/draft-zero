@@ -327,3 +327,34 @@ export async function updateGenerationSettings(
   commitChange(id)
   return { ok: true, data: null }
 }
+
+/**
+ * Which image model this story draws with.
+ *
+ * Its own action rather than a field on updateGenerationSettings, because it is
+ * not a generation setting: those columns are the ones a model profile can
+ * override, and this one is deliberately outside that system — there are few
+ * enough image models that bundling them into named profiles would be ceremony.
+ * Keeping it separate is what lets a story that FOLLOWS a profile still pick
+ * its own image model.
+ *
+ * Unvalidated against the catalog, for the same reason providerTag is: the
+ * image catalog is a live remote list, and paying for a fetch on every change
+ * to reject an id that the next request would reject anyway is a poor trade.
+ */
+export async function setStoryImageModel(
+  id: string,
+  imageModelId: string
+): Promise<ActionResult> {
+  const db = await getDb()
+  const updated = await db
+    .update(stories)
+    .set({ imageModelId, updatedAt: new Date().toISOString() })
+    .where(eq(stories.id, id))
+    .returning({ id: stories.id })
+
+  if (updated.length === 0) return { ok: false, error: "Story not found." }
+
+  commitChange(id)
+  return { ok: true, data: null }
+}

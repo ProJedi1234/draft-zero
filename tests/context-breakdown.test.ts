@@ -78,6 +78,8 @@ function story(overrides: Partial<Story> = {}): Story {
     tintHue: null,
     tintStrength: 1,
     entries: [],
+    images: [],
+    imageModelId: null,
     // Custom, i.e. following no profile — so `settings` below is the story's
     // own, which is what every case here is written against.
     profileId: null,

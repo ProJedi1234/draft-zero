@@ -67,6 +67,8 @@ function story(entries: StoryEntry[], contextWindow = 8192): Story {
     tintHue: null,
     tintStrength: 1,
     entries,
+    images: [],
+    imageModelId: null,
     profileId: null,
     settings: {
       modelId: "test/model",

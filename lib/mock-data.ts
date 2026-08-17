@@ -7,6 +7,7 @@ import type {
   LorebookCategory,
   LorebookEntry,
   ModelEndpoint,
+  OpenRouterImageModel,
   OpenRouterModel,
   Story,
   StoryEntry,
@@ -69,6 +70,69 @@ function proseEntry(
  * aliases keep pointing at whatever is current, so `aliasTarget` below records
  * what each one redirected to when the fixture was written, not a promise.
  */
+/**
+ * The image catalog's offline fallback — real OpenRouter ids, the same
+ * convention MOCK_MODELS follows for text. Prices live in MOCK_IMAGE_PRICES,
+ * mirroring the live catalog, which does not carry them either.
+ *
+ * Kept short deliberately: it is a fallback for a picker, not a mirror of the
+ * catalog, and a stale list of thirty entries would be thirty chances to offer
+ * a model that no longer exists. These are the families the API documents.
+ *
+ * Note what selecting one of these does OFFLINE: nothing but change the seed.
+ * The mock provider draws every picture itself (see lib/images/mock-provider.ts),
+ * so the id is recorded as what was ASKED for, and the surfaces that show a
+ * picture's provenance say when the offline provider served it instead.
+ */
+export const MOCK_IMAGE_MODELS: OpenRouterImageModel[] = [
+  {
+    id: "black-forest-labs/flux-1.1-pro",
+    name: "FLUX 1.1 Pro",
+    provider: "Black Forest Labs",
+  },
+  {
+    id: "bytedance-seed/seedream-4.5",
+    name: "Seedream 4.5",
+    provider: "ByteDance",
+  },
+  {
+    id: "google/gemini-3-pro-image",
+    name: "Gemini 3 Pro Image",
+    provider: "Google",
+  },
+  {
+    id: "openai/gpt-image-1",
+    name: "GPT Image 1",
+    provider: "OpenAI",
+  },
+  {
+    id: "recraft/recraft-v3",
+    name: "Recraft V3",
+    provider: "Recraft",
+  },
+  {
+    id: "x-ai/grok-imagine",
+    name: "Grok Imagine",
+    provider: "xAI",
+  },
+]
+
+/**
+ * Offline prices for MOCK_IMAGE_MODELS, keyed by id.
+ *
+ * Separate from the catalog entries because live pricing is separate too: it
+ * comes from a per-model endpoints resource, not from the list. Keeping the
+ * shapes parallel means getImageModelPrice has one contract in both modes.
+ */
+export const MOCK_IMAGE_PRICES: Record<string, string> = {
+  "black-forest-labs/flux-1.1-pro": "$0.0400 / image",
+  "bytedance-seed/seedream-4.5": "$0.0300 / image",
+  "google/gemini-3-pro-image": "$0.0600 / image",
+  "openai/gpt-image-1": "$0.0800 / image",
+  "recraft/recraft-v3": "$0.0400 / image",
+  "x-ai/grok-imagine": "$0.0200 / image",
+}
+
 export const MOCK_MODELS: OpenRouterModel[] = [
   {
     id: "~anthropic/claude-sonnet-latest",
@@ -768,6 +832,8 @@ export const MOCK_STORIES: Story[] = [
       frequencyPenalty: 0.15,
       presencePenalty: 0.1,
     },
+    images: [],
+    imageModelId: null,
     entries: [
       proseEntry({
         id: "entry-cart-1",
@@ -838,6 +904,8 @@ export const MOCK_STORIES: Story[] = [
       frequencyPenalty: 0.3,
       presencePenalty: 0.2,
     },
+    images: [],
+    imageModelId: null,
     entries: [
       proseEntry({
         id: "entry-static-1",
@@ -902,6 +970,8 @@ export const MOCK_STORIES: Story[] = [
       frequencyPenalty: 0.1,
       presencePenalty: 0.05,
     },
+    images: [],
+    imageModelId: null,
     entries: [
       proseEntry({
         id: "entry-light-1",
@@ -945,6 +1015,8 @@ export const MOCK_STORIES: Story[] = [
     redoSummary: null,
     profileId: null,
     settings: { ...DEFAULT_GENERATION_SETTINGS },
+    images: [],
+    imageModelId: null,
     entries: [],
   },
 
@@ -1002,6 +1074,8 @@ export const MOCK_STORIES: Story[] = [
       frequencyPenalty: 0.15,
       presencePenalty: 0.1,
     },
+    images: [],
+    imageModelId: null,
     entries: [
       proseEntry({
         id: "entry-mer-1",

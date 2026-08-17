@@ -70,6 +70,8 @@ function makeStory(over: Partial<Story> = {}): Story {
     tintHue: null,
     tintStrength: 1,
     entries: ENTRIES,
+    images: [],
+    imageModelId: null,
     profileId: null,
     settings: {
       modelId: "test/model",

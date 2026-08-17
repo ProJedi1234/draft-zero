@@ -75,6 +75,8 @@ function story(overrides: Partial<Story> = {}): Story {
     tintHue: null,
     tintStrength: 1,
     entries: [],
+    images: [],
+    imageModelId: null,
     profileId: null,
     settings: {
       modelId: "~test/model",
