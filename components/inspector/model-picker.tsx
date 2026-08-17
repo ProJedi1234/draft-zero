@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ChevronsUpDownIcon, Star } from "lucide-react"
+import { ChevronsUpDownIcon, Loader2, Star } from "lucide-react"
 
 import { ModelCombobox } from "@/components/model-combobox"
 import { ProviderCombobox } from "@/components/provider-combobox"
@@ -160,6 +160,7 @@ export function ProfileCard({
   profileId,
   defaultProfileId,
   onProfileChange,
+  switching = false,
   models,
   endpoints,
   basedOnName,
@@ -170,6 +171,14 @@ export function ProfileCard({
   profileId: string | null
   defaultProfileId: string | null
   onProfileChange: (profileId: string | null) => void
+  /**
+   * True while this card is ahead of the server. The card itself moves on the
+   * click, but everything derived from the story's resolved settings — the
+   * context meter above all — is still the previous profile's until the tree
+   * comes back, and a stale token count that looks live is worse than a slow
+   * one that says so.
+   */
+  switching?: boolean
   models: OpenRouterModel[]
   /** Endpoints serving the effective model, for the pinned endpoint's price. */
   endpoints: ModelEndpoint[]
@@ -197,7 +206,23 @@ export function ProfileCard({
 
   return (
     <div className="space-y-2">
-      <Label>Profile</Label>
+      <Label className="gap-1.5">
+        Profile
+        {/* Polite, and the text is for screen readers only: the spinner is the
+            whole message sighted, and a label that grows a word would shift the
+            card under the pointer that just clicked it. */}
+        <span aria-live="polite" className="flex items-center">
+          {switching ? (
+            <>
+              <Loader2
+                aria-hidden
+                className="size-3 animate-spin text-muted-foreground"
+              />
+              <span className="sr-only">Switching profile…</span>
+            </>
+          ) : null}
+        </span>
+      </Label>
       <DropdownMenu open={open} onOpenChange={changeOpen}>
         <DropdownMenuTrigger
           render={

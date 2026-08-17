@@ -151,6 +151,14 @@ function InspectorSections({
     version: story.updatedAt,
   })
   const profileId = profile.value
+  // The switch is not over when the action resolves — it is over when the tree
+  // comes back carrying it, because everything below this card is still the old
+  // profile's until then. The context meter in particular reads the story's
+  // resolved settings, so it answers with the previous window for the length of
+  // the round trip, and there is nothing on screen to say so. This comparison
+  // IS that gap: the card is showing one profile and the props still say
+  // another. It clears the instant the numbers underneath become true.
+  const profileSwitching = profileId !== story.profileId
   const followedProfile =
     profiles.find((candidate) => candidate.id === profileId) ?? null
   const isCustom = followedProfile === null
@@ -484,6 +492,7 @@ function InspectorSections({
             profileId={profileId}
             defaultProfileId={defaultProfileId}
             onProfileChange={handleProfileChange}
+            switching={profileSwitching}
             models={models}
             endpoints={endpoints}
             basedOnName={basedOnProfile?.name ?? null}
