@@ -60,24 +60,6 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-/** First `maxWords` whitespace-delimited words, whitespace between them preserved. */
-function truncateToWords(text: string, maxWords: number): string {
-  if (!Number.isFinite(maxWords) || maxWords <= 0) return ""
-  const tokens = text.match(/\s+|\S+/g)
-  if (!tokens) return ""
-
-  let out = ""
-  let words = 0
-  for (const token of tokens) {
-    if (!/^\s/.test(token)) {
-      if (words === maxWords) break
-      words += 1
-    }
-    out += token
-  }
-  return words === 0 ? "" : out.replace(/\s+$/, "")
-}
-
 export class MockGenerationProvider implements GenerationProvider {
   private readonly initialDelayMs: number
   private readonly chunkDelayMs: number
@@ -97,7 +79,7 @@ export class MockGenerationProvider implements GenerationProvider {
 
   /**
    * The continuation is `fixtures[context.seed % fixtures.length]`, truncated to
-   * `settings.maxTokens` words. Consecutive passages therefore cycle through the
+   * the whole fixture. Consecutive passages therefore cycle through the
    * pool, and a Retry (incremented variant → incremented seed) yields a
    * different text than the one it replaces — deterministically.
    *
@@ -111,7 +93,12 @@ export class MockGenerationProvider implements GenerationProvider {
     const { context, settings, signal } = request
     const pool = this.fixtures
     const index = ((context.seed % pool.length) + pool.length) % pool.length
-    const text = truncateToWords(pool[index], settings.maxTokens)
+    // The whole fixture. It used to be truncated to settings.maxTokens words,
+    // which no longer exists: passage length is the system prompt's business
+    // now, and the fixtures are already written to its target (40-100 words
+    // per paragraph). Truncating to a token budget was never a length control
+    // anyway — it was a cut mid-sentence.
+    const text = pool[index]
     if (text === "") return
 
     // Shaped like the real stream so the client's meta handling is exercised

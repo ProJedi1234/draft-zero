@@ -806,7 +806,6 @@ export async function getAppSettings(): Promise<AppSettings> {
       requireZdr: false,
       defaultTemperature: DEFAULT_GENERATION_SETTINGS.temperature,
       defaultTopP: DEFAULT_GENERATION_SETTINGS.topP,
-      defaultMaxTokens: DEFAULT_GENERATION_SETTINGS.maxTokens,
       defaultLoreBudget: DEFAULT_GENERATION_SETTINGS.loreBudget,
       defaultContextWindow: DEFAULT_GENERATION_SETTINGS.contextWindow,
       defaultFrequencyPenalty: DEFAULT_GENERATION_SETTINGS.frequencyPenalty,

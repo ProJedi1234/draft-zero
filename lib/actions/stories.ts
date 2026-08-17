@@ -48,7 +48,6 @@ export async function createStory(input?: {
     providerTag: null,
     temperature: DEFAULT_GENERATION_SETTINGS.temperature,
     topP: DEFAULT_GENERATION_SETTINGS.topP,
-    maxTokens: DEFAULT_GENERATION_SETTINGS.maxTokens,
     contextWindow: DEFAULT_GENERATION_SETTINGS.contextWindow,
     frequencyPenalty: DEFAULT_GENERATION_SETTINGS.frequencyPenalty,
     presencePenalty: DEFAULT_GENERATION_SETTINGS.presencePenalty,
@@ -291,7 +290,6 @@ export async function updateGenerationSettings(
   if (patch.zdr !== undefined) values.zdr = patch.zdr
   if (patch.temperature !== undefined) values.temperature = patch.temperature
   if (patch.topP !== undefined) values.topP = patch.topP
-  if (patch.maxTokens !== undefined) values.maxTokens = patch.maxTokens
   if (patch.contextWindow !== undefined) {
     // The only settings field with a closed value set, so it is the only one
     // worth guarding: a stop that is not on the ladder would render as a blank

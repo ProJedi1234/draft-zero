@@ -234,7 +234,6 @@ describe("run loop provider resolution", () => {
         zdr: false,
         temperature: 1,
         topP: 1,
-        maxTokens: 6,
         contextWindow: 8192,
         loreBudget: 25,
         frequencyPenalty: 0,

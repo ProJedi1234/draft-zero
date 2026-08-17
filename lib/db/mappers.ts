@@ -214,7 +214,6 @@ export function toGenerationSettings(row: StoryRow): GenerationSettings {
     zdr: row.zdr,
     temperature: row.temperature,
     topP: row.topP,
-    maxTokens: row.maxTokens,
     contextWindow: row.contextWindow,
     loreBudget: row.loreBudget,
     frequencyPenalty: row.frequencyPenalty,
@@ -235,7 +234,6 @@ export function toProfileSettings(row: ModelProfileRow): ProfileSettings {
     zdr: row.zdr,
     temperature: row.temperature,
     topP: row.topP,
-    maxTokens: row.maxTokens,
     contextWindow: row.contextWindow,
     loreBudget: row.loreBudget,
     frequencyPenalty: row.frequencyPenalty,
@@ -495,7 +493,6 @@ export function toGenerationDefaults(row: AppSettingsRow): GenerationDefaults {
   return {
     temperature: row.defaultTemperature,
     topP: row.defaultTopP,
-    maxTokens: row.defaultMaxTokens,
     contextWindow: row.defaultContextWindow,
     loreBudget: row.defaultLoreBudget,
     frequencyPenalty: row.defaultFrequencyPenalty,

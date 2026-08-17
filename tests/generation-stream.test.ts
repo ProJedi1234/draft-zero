@@ -181,7 +181,6 @@ function settings(overrides: Partial<GenerationSettings> = {}) {
     providerTag: null,
     temperature: 1,
     topP: 1,
-    maxTokens: 200,
     frequencyPenalty: 0,
     presencePenalty: 0,
     contextWindow: 8192,
@@ -936,7 +935,7 @@ describe("the run registry and loop", () => {
     // Few words → few chunks; the mock's real pacing is the point, not speed.
     const sub = attach(
       storyId,
-      launch(storyId, { settings: settings({ maxTokens: 6 }) })
+      launch(storyId, { settings: settings() })
     )
     const end = await sub.ended
 

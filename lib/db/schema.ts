@@ -67,7 +67,6 @@ export const stories = pgTable("stories", {
   // foreign key, and not defaulted to a literal id, because the image catalog
   // is a live remote list and a hardcoded default would outlive the model.
   imageModelId: text("image_model_id"),
-  maxTokens: integer("max_tokens").notNull(),
   // doublePrecision, not real: Postgres `real` is 4-byte and would silently
   // round the slider values that SQLite stored at 8-byte precision.
   temperature: doublePrecision("temperature").notNull(),
@@ -526,7 +525,6 @@ export const modelProfiles = pgTable("model_profiles", {
   zdr: boolean("zdr").notNull().default(false),
   temperature: doublePrecision("temperature"),
   topP: doublePrecision("top_p"),
-  maxTokens: integer("max_tokens"),
   contextWindow: integer("context_window"),
   loreBudget: integer("lore_budget"),
   frequencyPenalty: doublePrecision("frequency_penalty"),
@@ -596,7 +594,6 @@ export const appSettings = pgTable("app_settings", {
     .notNull()
     .default(0.9),
   defaultTopP: doublePrecision("default_top_p").notNull().default(0.95),
-  defaultMaxTokens: integer("default_max_tokens").notNull().default(1024),
   defaultContextWindow: integer("default_context_window")
     .notNull()
     .default(8192),

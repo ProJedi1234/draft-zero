@@ -150,7 +150,11 @@ export function ModelPicker({
         onValueChange={onThinkingChange}
         onOpenChange={(next) => report("thinking", next)}
       />
-      <PricingLine pricing={pricing} contextLength={contextLength} />
+      <PricingLine
+        pricing={pricing}
+        contextLength={contextLength}
+        maxCompletionTokens={selected?.maxCompletionTokens}
+      />
       <div className="pt-1">
         <ZdrSwitch
           checked={zdr}
@@ -170,10 +174,13 @@ export function ModelPicker({
 function PricingLine({
   pricing,
   contextLength,
+  maxCompletionTokens,
   className,
 }: {
   pricing: OpenRouterModel["pricing"] | undefined
   contextLength: number | undefined
+  /** The model's own output ceiling. Null when the catalog does not publish one. */
+  maxCompletionTokens?: number | null
   className?: string
 }) {
   if (!pricing || contextLength === undefined) return null
@@ -181,6 +188,13 @@ function PricingLine({
     <p className={cn("text-xs text-muted-foreground", className)}>
       In {pricing.prompt} · Out {pricing.completion} per 1M ·{" "}
       {formatContextLength(contextLength)} context
+      {/* Reported, not set. Passage length is the system prompt's job, so this
+          is the ceiling a generation runs under rather than a budget anyone
+          chose — worth stating precisely because there is no longer a slider
+          saying it. Omitted entirely when the catalog does not publish one:
+          absent means unknown, and a guess here would read as a limit. */}
+      {maxCompletionTokens != null &&
+        ` · up to ${formatContextLength(maxCompletionTokens)} out`}
     </p>
   )
 }
@@ -310,6 +324,7 @@ export function ProfileCard({
                 <PricingLine
                   className="truncate"
                   pricing={endpoint?.pricing ?? model?.pricing}
+                  maxCompletionTokens={model?.maxCompletionTokens}
                   contextLength={
                     endpoint?.contextLength ?? model?.contextLength
                   }

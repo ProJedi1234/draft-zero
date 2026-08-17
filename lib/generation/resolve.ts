@@ -36,7 +36,6 @@ export function resolveProfileSettings(
     zdr: settings.zdr || requireZdr,
     temperature: settings.temperature ?? defaults.temperature,
     topP: settings.topP ?? defaults.topP,
-    maxTokens: settings.maxTokens ?? defaults.maxTokens,
     contextWindow: settings.contextWindow ?? defaults.contextWindow,
     loreBudget: settings.loreBudget ?? defaults.loreBudget,
     frequencyPenalty: settings.frequencyPenalty ?? defaults.frequencyPenalty,
@@ -93,7 +92,6 @@ export function customColumnsFromSettings(settings: GenerationSettings): {
   zdr: boolean
   temperature: number
   topP: number
-  maxTokens: number
   contextWindow: number
   loreBudget: number
   frequencyPenalty: number
@@ -111,7 +109,6 @@ export function customColumnsFromSettings(settings: GenerationSettings): {
     zdr: settings.zdr,
     temperature: settings.temperature,
     topP: settings.topP,
-    maxTokens: settings.maxTokens,
     contextWindow: settings.contextWindow,
     loreBudget: settings.loreBudget,
     frequencyPenalty: settings.frequencyPenalty,

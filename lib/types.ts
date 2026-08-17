@@ -374,15 +374,18 @@ export interface GenerationDefaults {
   temperature: number
   /** Range 0–1. */
   topP: number
-  /** Max tokens generated per continuation. */
-  maxTokens: number
   /**
    * Token budget for the assembled INPUT context — the ceiling composeContext
    * (lib/generation/context.ts) trims memory, lore and story prose down to.
    *
-   * Deliberately distinct from maxTokens, which caps OUTPUT: a writer wants a
-   * long memory of the story without paying for long continuations, and vice
-   * versa. Always one of CONTEXT_WINDOWS.
+   * The only token budget a writer sets. There is deliberately no OUTPUT
+   * counterpart: passage length is the system prompt's job ("write ONE
+   * paragraph, roughly 40 to 100 words"), and a max_tokens ceiling on top of
+   * that was never a length control — it was a truncation that fired only when
+   * the model overran, mid-sentence, and on a reasoning model fired against the
+   * thinking rather than the prose and returned nothing at all.
+   *
+   * Always one of CONTEXT_WINDOWS.
    */
   contextWindow: number
   /**
@@ -406,7 +409,6 @@ export interface GenerationDefaults {
 export const GENERATION_DEFAULT_KEYS = [
   "temperature",
   "topP",
-  "maxTokens",
   "contextWindow",
   "loreBudget",
   "frequencyPenalty",
@@ -880,6 +882,16 @@ export interface OpenRouterModel {
   /** Provider display name, e.g. "Anthropic". */
   provider: string
   contextLength: number
+  /**
+   * Most tokens this model will generate in one reply, from the catalog's
+   * `top_provider`. Null when OpenRouter does not publish one (~12% of the
+   * catalog), which is not a small limit but an unknown one.
+   *
+   * Displayed, never sent: omitting `max_tokens` already gets the model's own
+   * ceiling, and sending this number instead could exceed what a PINNED
+   * endpoint serves, turning a routing choice into a rejected request.
+   */
+  maxCompletionTokens: number | null
   /** Display strings, USD per 1M tokens, e.g. { prompt: "$3.00", completion: "$15.00" }. */
   pricing: {
     prompt: string

@@ -138,16 +138,6 @@ export function ModelSection({
                 max={1}
                 step={0.01}
               />
-              <SettingSlider
-                storyId={story.id}
-                version={story.updatedAt}
-                field="maxTokens"
-                label="Max tokens"
-                serverValue={story.settings.maxTokens}
-                min={128}
-                max={4096}
-                step={128}
-              />
               <ContextWindowSlider
                 value={settings.contextWindow}
                 contextLength={settings.contextLength}

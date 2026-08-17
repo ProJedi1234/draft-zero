@@ -139,6 +139,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Claude Sonnet Latest",
     provider: "Anthropic",
     contextLength: 1_000_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$2.00", completion: "$10.00" },
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh", "max"],
@@ -152,6 +153,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Claude Opus Latest",
     provider: "Anthropic",
     contextLength: 1_000_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$5.00", completion: "$25.00" },
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh", "max"],
@@ -165,6 +167,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Claude Haiku Latest",
     provider: "Anthropic",
     contextLength: 200_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$1.00", completion: "$5.00" },
     reasoning: {
       efforts: ["minimal", "low", "medium", "high", "xhigh", "max"],
@@ -178,6 +181,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "GPT Latest",
     provider: "OpenAI",
     contextLength: 1_050_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$5.00", completion: "$30.00" },
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh", "max"],
@@ -191,6 +195,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "GPT Mini Latest",
     provider: "OpenAI",
     contextLength: 400_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$0.75", completion: "$4.50" },
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh"],
@@ -204,6 +209,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Gemini Pro Latest",
     provider: "Google",
     contextLength: 1_048_576,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$2.00", completion: "$12.00" },
     reasoning: { efforts: ["low", "medium", "high"], mandatory: true },
     zdr: true,
@@ -214,6 +220,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Gemini Flash Latest",
     provider: "Google",
     contextLength: 1_048_576,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$1.50", completion: "$7.50" },
     reasoning: {
       efforts: ["minimal", "low", "medium", "high"],
@@ -227,6 +234,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Grok Latest",
     provider: "xAI",
     contextLength: 500_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$2.00", completion: "$6.00" },
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh"],
@@ -240,6 +248,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Kimi Latest",
     provider: "MoonshotAI",
     contextLength: 1_048_576,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$2.80", completion: "$14.00" },
     reasoning: { efforts: ["low", "high", "max"], mandatory: false },
     zdr: false,
@@ -250,6 +259,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "DeepSeek V4 Flash Latest",
     provider: "DeepSeek",
     contextLength: 1_048_576,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$0.08", completion: "$0.25" },
     reasoning: { efforts: ["low", "high", "max"], mandatory: false },
     zdr: false,
@@ -437,13 +447,6 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   // The share the lorebook may claim of the free context — what the old
   // hard-coded constant was, so a new story composes as stories always have.
   loreBudget: DEFAULT_LORE_BUDGET,
-  // A hard ceiling on the runaway case, not a target. The system prompt asks
-  // for a single paragraph; this is what stops a model that ignores it from
-  // filling most of a page before the writer can reach Stop. Sized for a
-  // thinking model rather than for the paragraph: reasoning tokens are billed
-  // against the same budget, so a ceiling tight enough to fit only the prose
-  // truncates the answer before the prose starts.
-  maxTokens: 1024,
   // Roughly 30k characters of assembled context: enough for memory, the active
   // lore and several pages of recent prose without making every continuation
   // an expensive re-read of the whole draft.
@@ -827,7 +830,6 @@ export const MOCK_STORIES: Story[] = [
       temperature: 0.9,
       topP: 0.95,
       loreBudget: DEFAULT_LORE_BUDGET,
-      maxTokens: 1024,
       contextWindow: 16384,
       frequencyPenalty: 0.15,
       presencePenalty: 0.1,
@@ -899,7 +901,6 @@ export const MOCK_STORIES: Story[] = [
       temperature: 1.1,
       topP: 0.9,
       loreBudget: DEFAULT_LORE_BUDGET,
-      maxTokens: 800,
       contextWindow: 8192,
       frequencyPenalty: 0.3,
       presencePenalty: 0.2,
@@ -965,7 +966,6 @@ export const MOCK_STORIES: Story[] = [
       temperature: 0.8,
       topP: 0.98,
       loreBudget: DEFAULT_LORE_BUDGET,
-      maxTokens: 1200,
       contextWindow: 12288,
       frequencyPenalty: 0.1,
       presencePenalty: 0.05,
@@ -1069,7 +1069,6 @@ export const MOCK_STORIES: Story[] = [
       temperature: 0.9,
       topP: 0.95,
       loreBudget: DEFAULT_LORE_BUDGET,
-      maxTokens: 1024,
       contextWindow: 8192,
       frequencyPenalty: 0.15,
       presencePenalty: 0.1,

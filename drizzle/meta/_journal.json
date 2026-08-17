@@ -148,6 +148,13 @@
       "when": 1787705855007,
       "tag": "0020_sudden_kulan_gath",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1787270104539,
+      "tag": "0022_drop_max_tokens",
+      "breakpoints": true
     }
   ]
 }

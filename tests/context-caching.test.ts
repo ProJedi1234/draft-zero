@@ -85,7 +85,6 @@ function story(overrides: Partial<Story> = {}): Story {
       zdr: false,
       temperature: 1,
       topP: 1,
-      maxTokens: 512,
       contextWindow: 8192,
       loreBudget: 25,
       frequencyPenalty: 0,

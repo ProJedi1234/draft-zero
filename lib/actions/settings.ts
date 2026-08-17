@@ -111,7 +111,6 @@ export async function updateGenerationDefaults(
   if (patch.temperature !== undefined)
     values.defaultTemperature = patch.temperature
   if (patch.topP !== undefined) values.defaultTopP = patch.topP
-  if (patch.maxTokens !== undefined) values.defaultMaxTokens = patch.maxTokens
   if (patch.contextWindow !== undefined) {
     if (!isContextWindow(patch.contextWindow)) {
       return { ok: false, error: "Unsupported context window." }
