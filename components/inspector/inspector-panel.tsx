@@ -146,7 +146,10 @@ function InspectorSections({
   const menuOpen = pickerOpen || profileMenuOpen
   // Which mode the story is in. Following a profile, the settings below are the
   // profile's and nothing here may write them; Custom, they are the story's own.
-  const profile = useServerSyncedValue(story.profileId, { hold: menuOpen })
+  const profile = useServerSyncedValue(story.profileId, {
+    hold: menuOpen,
+    version: story.updatedAt,
+  })
   const profileId = profile.value
   const followedProfile =
     profiles.find((candidate) => candidate.id === profileId) ?? null
@@ -163,12 +166,15 @@ function InspectorSections({
   // own write is still travelling; see hooks/use-server-synced.ts.
   const model = useServerSyncedValue(story.settings.modelId, {
     hold: menuOpen,
+    version: story.updatedAt,
   })
   const thinkingSync = useServerSyncedValue(story.settings.thinking, {
     hold: menuOpen,
+    version: story.updatedAt,
   })
   const provider = useServerSyncedValue(story.settings.providerTag, {
     hold: menuOpen,
+    version: story.updatedAt,
   })
   const modelId = model.value
   const thinking = thinkingSync.value
@@ -192,6 +198,7 @@ function InspectorSections({
     reset: resetContextWindow,
   } = useServerSyncedValue(story.settings.contextWindow, {
     hold: draggingWindow,
+    version: story.updatedAt,
   })
   const [titleEmpty, setTitleEmpty] = React.useState(false)
   const [, startTransition] = React.useTransition()
@@ -514,6 +521,7 @@ function InspectorSections({
                 <CollapsibleContent className="space-y-6 pt-4">
                   <SettingSlider
                     storyId={story.id}
+                    version={story.updatedAt}
                     field="temperature"
                     label="Temperature"
                     serverValue={story.settings.temperature}
@@ -523,6 +531,7 @@ function InspectorSections({
                   />
                   <SettingSlider
                     storyId={story.id}
+                    version={story.updatedAt}
                     field="topP"
                     label="Top P"
                     serverValue={story.settings.topP}
@@ -532,6 +541,7 @@ function InspectorSections({
                   />
                   <SettingSlider
                     storyId={story.id}
+                    version={story.updatedAt}
                     field="maxTokens"
                     label="Max tokens"
                     serverValue={story.settings.maxTokens}
@@ -559,6 +569,7 @@ function InspectorSections({
                   />
                   <SettingSlider
                     storyId={story.id}
+                    version={story.updatedAt}
                     field="frequencyPenalty"
                     label="Frequency penalty"
                     serverValue={story.settings.frequencyPenalty}
@@ -568,6 +579,7 @@ function InspectorSections({
                   />
                   <SettingSlider
                     storyId={story.id}
+                    version={story.updatedAt}
                     field="presencePenalty"
                     label="Presence penalty"
                     serverValue={story.settings.presencePenalty}

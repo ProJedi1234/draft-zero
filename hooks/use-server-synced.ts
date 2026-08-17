@@ -14,17 +14,33 @@
 // Both answer the same question the same way. An incoming server value is
 // adopted only when this control has no write of its own in flight, because
 // the props that arrive during a save are frequently older than the save —
-// adopting them would roll the control backwards under the writer's hands. So
-// each records what it last wrote and waits to see that exact value handed
-// back before it trusts props again. `hold` extends the same courtesy to a
-// gesture: a slider mid-drag is an edit in progress even though nothing has
-// been written yet.
+// adopting them would roll the control backwards under the writer's hands.
+// `hold` extends the same courtesy to a gesture: a slider mid-drag is an edit
+// in progress even though nothing has been written yet.
 //
-// The echo is an optimisation, not the contract: a save can fail, and a write
-// from another device can win the row, and in neither case is our value ever
-// coming back. So every caller must tell its control how the save ended —
-// `settle()` or `reset()` — or the control waits forever and silently stops
-// following the server, which is the one failure this file exists to prevent.
+// Which props are "older" is not a question a control can answer by looking at
+// the value. An earlier version of this file tried: it recorded what it wrote
+// and waited to see that exact value handed back. That works right up until the
+// moment it matters — a server action resolves before the tree it revalidated
+// has been applied, so the props on hand at that moment are still the ones from
+// before the write, and every rule phrased in terms of value equality read them
+// as news. The model picker showed the new model, dropped back to the old one,
+// and returned when the payload finally landed.
+//
+// So the arbitration is by row version instead. `version` is the row's
+// `updated_at`, bumped by every write and monotonic across devices, and it
+// makes staleness decidable rather than guessable: a payload no newer than the
+// one already on display is a render that was in flight when the row moved, and
+// is ignored no matter what it says. Callers with no version to give (the
+// settings page's defaults live in a row that has no `updated_at`) fall back to
+// following a change of the value itself, which is what this file did before.
+//
+// The other half is that a local write suspends adoption until it resolves —
+// counted, because the writer can get ahead of the network and two switches can
+// be travelling at once. So every caller must tell its control how the save
+// ended, `settle()` or `reset()`, or the count never returns to zero and the
+// control silently stops following the server, which is the one failure this
+// file exists to prevent.
 
 import * as React from "react"
 
@@ -110,16 +126,15 @@ export interface ServerSyncedValue<T> {
   /** Declare `next` persisted (or about to be), so its own echo isn't mistaken for a foreign change. */
   write: (next: T) => void
   /**
-   * Declare the write in flight resolved successfully. The row is now whatever
-   * the server says it is — our value, or a later write from another device
-   * that beat ours to it — so stop holding out for an echo that may never
-   * match, and let the next server value through.
+   * Declare the write in flight resolved successfully — the row moved, and the
+   * payload carrying it is on its way. One call per `write`, or the control
+   * never resumes following the server.
    */
   settle: () => void
   /**
-   * Put the control back on a value and forget the write in flight — for a
-   * save that came back `{ ok: false }`, where the row never moved and waiting
-   * for an echo that is never coming would freeze this control on stale props.
+   * Put the control back on a value and end the write — for a save that came
+   * back `{ ok: false }`, where the row never moved and leaving the write
+   * counted would freeze this control for the life of the mount.
    */
   reset: (next: T) => void
 }
@@ -128,11 +143,23 @@ export interface SyncState<T> {
   value: T
   server: T
   /**
-   * Our own write, awaiting its echo. Boxed because `null` is a real value here
-   * (a null providerTag means Auto) and could not otherwise be told apart from
-   * "nothing in flight".
+   * Local writes dispatched and not yet resolved. Following the server is
+   * suspended while this is above zero: our own value is the newest thing
+   * anyone knows about until the save says otherwise.
+   *
+   * Counted rather than a flag because the writer can outrun the network —
+   * two model switches in a second are two writes in flight, and the first
+   * one resolving must not hand the control back to props that predate the
+   * second.
    */
-  pending: { value: T } | null
+  inFlight: number
+  /**
+   * The row version the displayed server value came from — `updated_at`, as an
+   * ISO-8601 UTC string, so string order is chronological order. Null when the
+   * caller has no version to give, which drops the arbitration back to
+   * following a change of the value itself.
+   */
+  version: string | null
 }
 
 /**
@@ -143,83 +170,135 @@ export interface SyncState<T> {
 export function adopt<T>(
   state: SyncState<T>,
   serverValue: T,
+  version: string | null,
   hold: boolean
 ): SyncState<T> {
-  let pending = state.pending
-  if (pending !== null) {
-    // Still travelling. Only our own value coming back proves the server has
-    // caught up; anything else is a prop older than our write.
-    if (!Object.is(serverValue, pending.value)) return state
-    pending = null
+  // Our own write outranks anything the server can say until it resolves. This
+  // is what stops a payload rendered before the write from undoing it, and what
+  // keeps the first of two rapid switches from overwriting the second.
+  if (state.inFlight > 0) return state
+  // A payload no newer than the one on display was already in flight when the
+  // row moved. It is not news whatever it says, and taking it is exactly the
+  // backwards jump this file exists to prevent.
+  if (version !== null && state.version !== null && version <= state.version) {
+    return state
   }
-  // `server` moves even while held, so a release that lands back on the value
-  // from before the gesture is still recognised as a change worth saving.
-  const value = hold ? state.value : serverValue
+  if (hold) {
+    // The row is tracked through a gesture so a release that lands back on the
+    // value from before it still counts as a change worth saving. The version
+    // deliberately is NOT taken: the value is still owed to the control, and
+    // taking it here would mean the release had nothing left to adopt.
+    return Object.is(serverValue, state.server)
+      ? state
+      : { ...state, server: serverValue }
+  }
   if (
-    pending === state.pending &&
-    Object.is(value, state.value) &&
-    Object.is(serverValue, state.server)
+    Object.is(serverValue, state.value) &&
+    Object.is(serverValue, state.server) &&
+    version === state.version
   ) {
     return state
   }
-  return { value, server: serverValue, pending }
-}
-
-/** Declare `next` persisted (or about to be). Pure; see `write` below. */
-export function writeValue<T>(state: SyncState<T>, next: T): SyncState<T> {
-  return Object.is(next, state.server)
-    ? // Nothing to echo, so nothing to wait for; just move the control.
-      { ...state, value: next }
-    : { value: next, server: next, pending: { value: next } }
-}
-
-/** Give up on the echo, keeping the value. Pure; see `settle` below. */
-export function settleValue<T>(state: SyncState<T>): SyncState<T> {
-  return state.pending === null ? state : { ...state, pending: null }
+  return { value: serverValue, server: serverValue, inFlight: 0, version }
 }
 
 /**
- * The value-shaped sibling of `useServerSyncedField`, for controls whose state
- * is a value rather than DOM text: comboboxes, selects, sliders.
+ * Declare `next` persisted (or about to be). Pure; see `write` below.
  *
- * `hold` is the gesture equivalent of that hook's focus check — pass `true`
- * while a drag is in progress and an incoming value waits until the thumb is
- * let go. Waits, not discarded: a change of `hold` re-runs the adoption, so the
- * value that arrived mid-drag lands the moment the gesture ends, unless the
- * release itself wrote something (a write beats an adoption, having happened
- * later).
- *
- * Reconciled during render rather than from an effect — this is React's
- * adjusting-state-when-a-prop-changes pattern, and doing it in an effect would
- * paint the stale value for a frame first.
+ * A write onto the value the row already holds is not a save and gets no
+ * count: callers commit unconditionally and decide afterwards whether anything
+ * changed (a thumb released where it started), and counting that one would
+ * leave a write outstanding that no `settle` is ever coming for.
  */
+export function writeValue<T>(state: SyncState<T>, next: T): SyncState<T> {
+  return Object.is(next, state.server)
+    ? { ...state, value: next }
+    : { ...state, value: next, server: next, inFlight: state.inFlight + 1 }
+}
+
+/** End one write, keeping the value. Pure; see `settle` below. */
+export function settleValue<T>(state: SyncState<T>): SyncState<T> {
+  // Clamped rather than trusted: an unbalanced settle is a caller bug, and
+  // going negative would suspend this control forever, which is the worse of
+  // the two failures by a wide margin.
+  return state.inFlight === 0
+    ? state
+    : { ...state, inFlight: state.inFlight - 1 }
+}
+
+/** End one write and put the value back. Pure; see `reset` below. */
+export function resetValue<T>(state: SyncState<T>, next: T): SyncState<T> {
+  return {
+    ...settleValue(state),
+    value: next,
+    server: next,
+  }
+}
+
+/**
+ * Whether the reconciliation is owed another run. Purely a question about what
+ * has moved since the last one — `adopt` is what decides the outcome, and the
+ * two must not both hold opinions or they disagree.
+ *
+ * The `inFlight` term is the one worth explaining. A payload that arrives while
+ * a local write is travelling is refused by `adopt` and, crucially, does not
+ * advance the version — so nothing would ever offer it again, and a control
+ * that lost a race to another device would sit on a value the row does not hold
+ * for the life of the mount. Running once more as the last write resolves is
+ * what finds it, and the version test in `adopt` is what makes running then
+ * safe: a payload older than the row we are displaying is turned away rather
+ * than mistaken for the news this run went looking for.
+ *
+ * A caller with no version has no such protection, so it does not get the extra
+ * run — a stale payload and a fresh one are indistinguishable to it, and the
+ * cure would be worse than the rare disease.
+ */
+export function isNews<T>(
+  seen: {
+    serverValue: T
+    hold: boolean
+    version: string | null
+    inFlight: number
+  },
+  state: SyncState<T>,
+  serverValue: T,
+  version: string | null,
+  hold: boolean
+): boolean {
+  if (seen.hold !== hold) return true
+  if (!Object.is(seen.serverValue, serverValue)) return true
+  if (seen.version !== version) return true
+  return version !== null && seen.inFlight !== state.inFlight
+}
+
 export function useServerSyncedValue<T>(
   serverValue: T,
-  { hold = false }: { hold?: boolean } = {}
+  {
+    hold = false,
+    version = null,
+  }: { hold?: boolean; version?: string | null } = {}
 ): ServerSyncedValue<T> {
   const [state, setState] = React.useState<SyncState<T>>(() => ({
     value: serverValue,
     server: serverValue,
-    pending: null,
+    inFlight: 0,
+    version,
   }))
-  // Bumped whenever a write resolves. A server value `adopt` turned away while
-  // that write was travelling still advances `seen`, so without a nudge the
-  // comparison below would never reconsider it and the control would sit on a
-  // value the row does not hold — permanently, since the props need not change
-  // again. The epoch is what forces exactly one more reconciliation.
-  const [epoch, setEpoch] = React.useState(0)
-  // The props the current state was reconciled against. Comparing them is what
-  // makes the adjustment below run once per change instead of every render.
-  const [seen, setSeen] = React.useState({ serverValue, hold, epoch })
+  // What the current state was last reconciled against. Comparing it is what
+  // makes the adjustment below run once per change instead of every render,
+  // which is not an optimisation: `setSeen` allocates, so a gate that stayed
+  // open would re-render forever.
+  const [seen, setSeen] = React.useState({
+    serverValue,
+    hold,
+    version,
+    inFlight: 0,
+  })
 
   let current = state
-  if (
-    !Object.is(seen.serverValue, serverValue) ||
-    seen.hold !== hold ||
-    seen.epoch !== epoch
-  ) {
-    current = adopt(state, serverValue, hold)
-    setSeen({ serverValue, hold, epoch })
+  if (isNews(seen, state, serverValue, version, hold)) {
+    current = adopt(state, serverValue, version, hold)
+    setSeen({ serverValue, hold, version, inFlight: state.inFlight })
     if (current !== state) setState(current)
   }
 
@@ -232,17 +311,16 @@ export function useServerSyncedValue<T>(
     setState((s) => writeValue(s, next))
   }, [])
 
-  // Both of these end the wait for an echo, so both have to re-arm adoption:
-  // the value that arrived while the write was in flight is the one most likely
-  // to have been turned away, and it is the one nothing else will offer again.
+  // Neither of these adopts anything. They end one write, and the state that
+  // leaves — a count back at zero, against a version that has not moved — is
+  // what lets the reconciliation above take the payload when it lands, and
+  // ignore everything that was already in flight before the row moved.
   const settle = React.useCallback(() => {
     setState(settleValue)
-    setEpoch((e) => e + 1)
   }, [])
 
   const reset = React.useCallback((next: T) => {
-    setState({ value: next, server: next, pending: null })
-    setEpoch((e) => e + 1)
+    setState((s) => resetValue(s, next))
   }, [])
 
   return {
