@@ -233,19 +233,21 @@ export function StoryCanvas({
         ) : (
           <>
             <div className="space-y-1">
-              {/* `isLast` is measured against the FILTERED list — the one being
-                  rendered — so the Retry action always sits on the block the
-                  reader can actually see at the end of the manuscript. While a
-                  retry is in flight its own passage is hidden and the block
-                  above inherits the action, which is harmless: everything in
-                  the cluster is disabled by `busy` for the whole of it. */}
+              {/* `followingCount` is measured against the FILTERED list — the
+                  one being rendered — so Retry always sits on the block the
+                  reader can actually see at the end of the manuscript, and a
+                  rewind offers to remove the number of passages they can
+                  actually count. While a retry is in flight its own passage is
+                  hidden and the block above inherits the action, which is
+                  harmless: everything in the cluster is disabled by `busy` for
+                  the whole of it. */}
               {entries.map((entry, index) => (
                 <StoryEntryBlock
                   key={entry.id}
                   entry={entry}
                   storyId={story.id}
                   busy={busy}
-                  isLast={index === entries.length - 1}
+                  followingCount={entries.length - 1 - index}
                   onRetry={onRetry}
                 />
               ))}

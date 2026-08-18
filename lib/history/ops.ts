@@ -8,7 +8,8 @@
 import type { ActionKind } from "@/lib/types"
 
 /** Stored verbatim in `story_ops.kind`. */
-export type OpKind = "turn" | "edit" | "delete" | "retry" | "switch-take"
+export type OpKind =
+  "turn" | "edit" | "delete" | "retry" | "switch-take" | "rewind"
 
 /**
  * The writer's action and the passage it produced, under one op so ⌘Z takes
@@ -56,8 +57,29 @@ export interface SwitchTakePayload {
   toEntryId: string
 }
 
+/**
+ * Everything after one passage, cut in a single move.
+ *
+ * The ids are enumerated at rewind time rather than stored as "every entry past
+ * position N": positions are not the identity of a passage, and a rewind has to
+ * put back exactly what it took — not whatever happens to sit past that
+ * position when the writer presses ⌘Z. Only the takes that were actually
+ * showing are listed; the inactive siblings of a cut slot were already
+ * invisible, so leaving them alone is what makes undo land on the state the
+ * writer rewound from rather than a slot with two live takes in it.
+ */
+export interface RewindPayload {
+  kind: "rewind"
+  entryIds: string[]
+}
+
 export type OpPayload =
-  TurnPayload | EditPayload | DeletePayload | RetryPayload | SwitchTakePayload
+  | TurnPayload
+  | EditPayload
+  | DeletePayload
+  | RetryPayload
+  | SwitchTakePayload
+  | RewindPayload
 
 export type EntryMutation =
   | { type: "set-deleted"; entryId: string; deleted: boolean }
@@ -84,6 +106,14 @@ export function undoPlan(payload: OpPayload): EntryMutation[] {
       return takeSwap(payload.newEntryId, payload.previousEntryId)
     case "switch-take":
       return takeSwap(payload.toEntryId, payload.fromEntryId)
+    // The whole tail comes back at once, which is the point: a rewind is one
+    // move to the writer, so it is one ⌘Z.
+    case "rewind":
+      return payload.entryIds.map((entryId) => ({
+        type: "set-deleted" as const,
+        entryId,
+        deleted: false,
+      }))
   }
 }
 
@@ -106,6 +136,12 @@ export function redoPlan(payload: OpPayload): EntryMutation[] {
       return takeSwap(payload.previousEntryId, payload.newEntryId)
     case "switch-take":
       return takeSwap(payload.fromEntryId, payload.toEntryId)
+    case "rewind":
+      return payload.entryIds.map((entryId) => ({
+        type: "set-deleted" as const,
+        entryId,
+        deleted: true,
+      }))
   }
 }
 
@@ -144,6 +180,13 @@ export function summarize(payload: OpPayload): string {
       return "Retry"
     case "switch-take":
       return "Switch take"
+    // The only op whose size is not obvious from the manuscript — the passages
+    // it took are gone from the page — so the count goes in the phrase the
+    // undo tooltip shows.
+    case "rewind":
+      return payload.entryIds.length === 1
+        ? "Rewind 1 passage"
+        : `Rewind ${payload.entryIds.length} passages`
   }
 }
 
@@ -187,7 +230,8 @@ export function parsePayload(json: string): OpPayload | null {
     kind === "edit" ||
     kind === "delete" ||
     kind === "retry" ||
-    kind === "switch-take"
+    kind === "switch-take" ||
+    kind === "rewind"
   ) {
     return parsed as OpPayload
   }
