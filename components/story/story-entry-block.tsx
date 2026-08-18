@@ -1,10 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react"
+import { Loader2, Pencil, RefreshCw, Trash2, Undo2 } from "lucide-react"
 import { toast } from "sonner"
 
-import { deleteEntry } from "@/lib/actions/entries"
+import { deleteEntry, rewindToEntry } from "@/lib/actions/entries"
 import type { StoryEntry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -34,29 +34,37 @@ import { VariantSwitcher } from "@/components/story/variant-switcher"
  * second, and none of these props change while it streams. Without this every
  * persisted passage (each carrying three Tooltip roots and a Dialog root, plus
  * the switcher's three once a slot has more than one take) re-renders on every
- * chunk. `isLast` and `onRetry` are both stable for the same reason: only the
- * final block ever sees `isLast` flip, and `onRetry` needs no entry id because
- * the only retryable passage is that last one.
+ * chunk. `followingCount` holds still through a stream for the same reason the
+ * rest do — the persisted entries do not change until the turn settles — and
+ * `onRetry` needs no entry id because the only retryable passage is the last.
  */
 export const StoryEntryBlock = React.memo(function StoryEntryBlock({
   entry,
   storyId,
   busy,
-  isLast,
+  followingCount,
   onRetry,
 }: {
   entry: StoryEntry
   storyId: string
   busy: boolean
-  /** Last block in the manuscript — the only one that may be regenerated. */
-  isLast: boolean
+  /**
+   * How many passages the manuscript shows after this one. A count rather than
+   * an `isLast` flag because both things hanging off it need the number: zero
+   * means this is the last block, the only one that may be regenerated, and any
+   * other value is what a rewind here would set aside.
+   */
+  followingCount: number
   onRetry: () => void
 }) {
   const [editing, setEditing] = React.useState(false)
   const [confirmOpen, setConfirmOpen] = React.useState(false)
+  const [rewindOpen, setRewindOpen] = React.useState(false)
   const [isDeleting, startDeleting] = React.useTransition()
+  const [isRewinding, startRewinding] = React.useTransition()
 
-  const locked = busy || editing || isDeleting
+  const isLast = followingCount === 0
+  const locked = busy || editing || isDeleting || isRewinding
 
   function handleDelete() {
     startDeleting(async () => {
@@ -67,6 +75,19 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
       }
       // Silent on success (§4.6) — the block vanishing is the confirmation.
       setConfirmOpen(false)
+    })
+  }
+
+  function handleRewind() {
+    startRewinding(async () => {
+      const res = await rewindToEntry(storyId, entry.id)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      // Silent for the same reason as delete, and more so: the manuscript
+      // ending here is a larger confirmation than any toast.
+      setRewindOpen(false)
     })
   }
 
@@ -99,6 +120,22 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
           },
         ]
       : []),
+    // Where the writer ends the story, not where they restart it: the passages
+    // after this one are set aside, nothing is regenerated, and one ⌘Z brings
+    // the whole tail back — which is why the glyph is undo's and not a
+    // scissors or a trash can. Never on the last block, where it would offer
+    // to remove nothing, so it and Retry are mutually exclusive and the
+    // cluster stays three buttons wide.
+    ...(isLast
+      ? []
+      : [
+          {
+            key: "rewind",
+            icon: Undo2,
+            label: "Rewind to here",
+            onClick: () => setRewindOpen(true),
+          },
+        ]),
     {
       key: "delete",
       icon: Trash2,
@@ -179,6 +216,44 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
           </Tooltip>
         ))}
       </div>
+
+      <Dialog open={rewindOpen} onOpenChange={setRewindOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rewind to here?</DialogTitle>
+            {/* The count is the whole point of the sentence: the passages this
+                takes are the ones scrolled off the bottom of the screen, so it
+                is the one removal the writer cannot see the size of. Same undo
+                promise as Delete, and it is one step, not one per passage. */}
+            <DialogDescription>
+              {followingCount === 1
+                ? "The passage after this one leaves the story."
+                : `The ${followingCount} passages after this one leave the story.`}{" "}
+              This passage stays, and undo brings the rest back in one step.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose
+              render={
+                <Button variant="outline" size="sm" disabled={isRewinding}>
+                  Cancel
+                </Button>
+              }
+            />
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleRewind}
+              disabled={isRewinding}
+            >
+              {isRewinding && (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              )}
+              Rewind
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="sm:max-w-sm">

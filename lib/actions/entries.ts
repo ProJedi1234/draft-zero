@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq, isNull } from "drizzle-orm"
+import { and, eq, gt, isNull } from "drizzle-orm"
 
 import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
@@ -284,6 +284,93 @@ export async function deleteEntry(
   return result
 }
 
+/**
+ * Rewinds the manuscript to one passage: every live passage AFTER it leaves the
+ * story, the anchor itself stays, and the whole cut is one op — so one ⌘Z puts
+ * the tail back and ⌘⇧Z takes it away again.
+ *
+ * Soft deletes, like every other removal here, and positions are kept. That is
+ * what makes the undo safe: `nextPosition` counts deleted rows too, so passages
+ * written after a rewind take fresh numbers and can never collide with the ones
+ * the rewind is holding.
+ *
+ * Only the takes that were showing are cut. An inactive sibling of a rewound
+ * slot is already invisible, and leaving it alone means undo restores the slot
+ * exactly as the writer left it rather than as a slot with two live takes.
+ *
+ * Note this is NOT the "Retry from here" that used to live below. Nothing is
+ * regenerated and nothing branches: the writer is choosing where the story
+ * ends, and the passages after it are reversibly set aside.
+ */
+export async function rewindToEntry(
+  storyId: string,
+  entryId: string
+): Promise<ActionResult> {
+  // Same guard as deleteEntry, and the one that matters most here: a rewind
+  // from a device that isn't mirroring the run would cut the tail the run is
+  // still writing into, and the passage the writer is paying for is dropped.
+  const running = refuseDuringRun(storyId)
+  if (running) return running
+
+  const db = await getDb()
+  const now = new Date().toISOString()
+
+  const result = await db.transaction(async (tx): Promise<ActionResult> => {
+    // The anchor has to be a passage the writer can actually see: rewinding to
+    // a deleted row or an inactive take would cut from a position nothing is
+    // rendered at, and the count in the confirmation would have been a guess
+    // about a different manuscript.
+    const anchor = await tx
+      .select({ position: storyEntries.position })
+      .from(storyEntries)
+      .where(
+        and(
+          eq(storyEntries.id, entryId),
+          eq(storyEntries.storyId, storyId),
+          eq(storyEntries.isActive, true),
+          isNull(storyEntries.deletedAt)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0])
+
+    if (!anchor) return { ok: false, error: "Passage not found." }
+
+    // One statement, and the ids come back from it: a SELECT-then-UPDATE would
+    // record an op naming rows a concurrent delete had already taken, and undo
+    // would then restore a passage the writer deleted on another device.
+    const removed = await tx
+      .update(storyEntries)
+      .set({ deletedAt: now })
+      .where(
+        and(
+          eq(storyEntries.storyId, storyId),
+          gt(storyEntries.position, anchor.position),
+          eq(storyEntries.isActive, true),
+          isNull(storyEntries.deletedAt)
+        )
+      )
+      .returning({ id: storyEntries.id })
+
+    // The button is only rendered on a passage with prose after it, so this is
+    // a stale render or a forged call — and an op naming no rows would be an
+    // undo step that does nothing when taken.
+    if (removed.length === 0)
+      return { ok: false, error: "There's nothing after this passage." }
+
+    await recordOp(tx, storyId, {
+      kind: "rewind",
+      entryIds: removed.map((row) => row.id),
+    })
+    await touchStoryRow(tx, storyId, now)
+
+    return { ok: true, data: null }
+  })
+
+  if (result.ok) commitChange(storyId)
+  return result
+}
+
 // `undoLastEntry` and `deleteEntriesFrom` used to live here. Both are gone on
 // purpose.
 //
@@ -295,3 +382,6 @@ export async function deleteEntry(
 // chosen block so a new generation could replace it. That is branching, which
 // this design removes: regeneration is confined to the last block, where a
 // retry adds a take beside the one showing and nothing downstream is destroyed.
+// rewindToEntry above truncates too, and is deliberately not that feature: it
+// generates nothing, so there is no second version of the story to reconcile,
+// and the cut is a single journal op the writer can take back.

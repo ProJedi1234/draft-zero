@@ -78,6 +78,13 @@ const SWITCH: OpPayload = {
   fromEntryId: "take-2",
   toEntryId: "take-1",
 }
+const REWIND: OpPayload = {
+  kind: "rewind",
+  entryIds: ["tail-1", "tail-2", "tail-3"],
+}
+// A rewind past a single passage. Its own row because the summary pluralises
+// and because one-passage is the cut a writer makes most often.
+const REWIND_ONE: OpPayload = { kind: "rewind", entryIds: ["tail-1"] }
 
 type PlanCase = readonly [
   name: string,
@@ -136,6 +143,17 @@ const UNDO_CASES: readonly PlanCase[] = [
       { type: "set-active", entryId: "take-2", active: true },
     ],
   ],
+  // The whole tail in one plan, which is the property that makes a rewind one
+  // ⌘Z rather than one per passage it took.
+  [
+    "rewind — every cut passage comes back at once",
+    REWIND,
+    [
+      { type: "set-deleted", entryId: "tail-1", deleted: false },
+      { type: "set-deleted", entryId: "tail-2", deleted: false },
+      { type: "set-deleted", entryId: "tail-3", deleted: false },
+    ],
+  ],
 ]
 
 const REDO_CASES: readonly PlanCase[] = [
@@ -181,6 +199,15 @@ const REDO_CASES: readonly PlanCase[] = [
     [
       { type: "set-active", entryId: "take-2", active: false },
       { type: "set-active", entryId: "take-1", active: true },
+    ],
+  ],
+  [
+    "rewind — cuts the same tail again, by id and not by position",
+    REWIND,
+    [
+      { type: "set-deleted", entryId: "tail-1", deleted: true },
+      { type: "set-deleted", entryId: "tail-2", deleted: true },
+      { type: "set-deleted", entryId: "tail-3", deleted: true },
     ],
   ],
 ]
@@ -272,6 +299,15 @@ const ROUND_TRIPS: readonly RoundTripCase[] = [
     SWITCH,
     { "take-2": row({ active: false }), "take-1": row({ active: true }) },
   ],
+  [
+    "rewind",
+    REWIND,
+    {
+      "tail-1": row({ deleted: true }),
+      "tail-2": row({ deleted: true }),
+      "tail-3": row({ deleted: true }),
+    },
+  ],
 ]
 
 describe("undo then redo is the identity", () => {
@@ -334,6 +370,7 @@ describe("coalesceEdit", () => {
     ["delete", DELETE],
     ["retry", RETRY],
     ["switch-take", SWITCH],
+    ["rewind", REWIND],
   ]
 
   for (const [name, previous] of NON_EDIT_PREVIOUS) {
@@ -362,6 +399,10 @@ describe("summarize", () => {
     [DELETE, "Delete passage"],
     [RETRY, "Retry"],
     [SWITCH, "Switch take"],
+    // The count is in the phrase because it is the one op whose size the
+    // manuscript no longer shows — the passages it took are off the page.
+    [REWIND, "Rewind 3 passages"],
+    [REWIND_ONE, "Rewind 1 passage"],
   ]
 
   for (const [payload, expected] of CASES) {
@@ -373,7 +414,7 @@ describe("summarize", () => {
 
 describe("parsePayload", () => {
   test("round-trips every op kind through JSON", () => {
-    for (const payload of [TURN, EDIT, DELETE, RETRY, SWITCH]) {
+    for (const payload of [TURN, EDIT, DELETE, RETRY, SWITCH, REWIND]) {
       expect(parsePayload(JSON.stringify(payload))).toEqual(payload)
     }
   })
