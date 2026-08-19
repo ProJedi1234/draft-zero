@@ -48,6 +48,14 @@ interface PronounRule {
    * sentence-initial "We" this guard used to swallow.
    */
   skipAllCaps?: boolean
+  /**
+   * The source is capitalised wherever it sits, so its case says nothing about
+   * its position. Set on `I` and its contractions: copying that capital onto
+   * the replacement is what used to put a "You" in the middle of a sentence.
+   * An ALL-CAPS match still carries intent ("I'VE HAD ENOUGH"), so only the
+   * initial-capital inference is dropped.
+   */
+  alwaysCapitalized?: boolean
 }
 
 /**
@@ -67,10 +75,10 @@ const PRONOUN_RULES: readonly PronounRule[] = [
   { source: "we['’]ve", to: "you've" },
   { source: "we['’]ll", to: "you'll" },
   { source: "we['’]d", to: "you'd" },
-  { source: "I['’]ve", to: "you've" },
-  { source: "I['’]ll", to: "you'll" },
-  { source: "I['’]m", to: "you're" },
-  { source: "I['’]d", to: "you'd" },
+  { source: "I['’]ve", to: "you've", alwaysCapitalized: true },
+  { source: "I['’]ll", to: "you'll", alwaysCapitalized: true },
+  { source: "I['’]m", to: "you're", alwaysCapitalized: true },
+  { source: "I['’]d", to: "you'd", alwaysCapitalized: true },
   { source: "ours", to: "yours" },
   // "mine" is a noun as often as it is a pronoun. Refusing to rewrite it after a
   // determiner is what keeps "I enter the abandoned mine" from becoming "You
@@ -88,7 +96,7 @@ const PRONOUN_RULES: readonly PronounRule[] = [
   { source: "us", to: "you", skipAllCaps: true },
   { source: "we", to: "you", skipAllCaps: true },
   { source: "me", to: "you" },
-  { source: "I", to: "you" },
+  { source: "I", to: "you", alwaysCapitalized: true },
 ]
 
 const PRONOUN_PATTERN = new RegExp(
@@ -234,15 +242,28 @@ function unwrapQuotes(text: string): string {
 }
 
 /**
+ * Everything before the match, when the match opens a sentence. `capitalize`
+ * only reaches the first letter of the turn, so an `I` starting a *later*
+ * sentence has to be recognised here or "I open the door. I step inside" comes
+ * back with a lowercase second half.
+ */
+const SENTENCE_START = /(?:^|[.?!…]["”]?)\s*$/
+
+/**
  * Rewrites first-person pronouns as second-person ones. Used by Do only — see
  * the comment in `translateSay` for why Say must never call this.
  */
 function shiftPronouns(text: string): string {
-  return text.replace(PRONOUN_PATTERN, (matched) => {
+  return text.replace(PRONOUN_PATTERN, (matched, offset: number) => {
     const index = PRONOUN_MATCHERS.findIndex((matcher) => matcher.test(matched))
     if (index === -1) return matched
     const rule = PRONOUN_RULES[index]
     if (rule.skipAllCaps && isAllCaps(matched)) return matched
+    if (rule.alwaysCapitalized && !isAllCaps(matched)) {
+      return SENTENCE_START.test(text.slice(0, offset))
+        ? capitalize(rule.to)
+        : rule.to
+    }
     return matchCase(rule.to, matched)
   })
 }

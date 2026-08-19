@@ -67,9 +67,37 @@ const DO_CASES: readonly Case[] = [
   // Terminal punctuation the writer already supplied is left alone.
   ["I run!", "You run!"],
   ["I hesitate…", "You hesitate…"],
-  // ACCEPTED: casing is copied from the match, and "I" is always capitalised,
-  // so a mid-sentence "I" becomes a mid-sentence "You".
-  ["do I dare?", "You do You dare?"],
+  // "I" is capitalised wherever it stands, so its case cannot be copied onto
+  // the replacement — a second one mid-sentence must not become "You".
+  [
+    "I kick a rock feeling bored as I walk through the trees",
+    "You kick a rock feeling bored as you walk through the trees.",
+  ],
+  [
+    "I open the door before I lose my nerve",
+    "You open the door before you lose your nerve.",
+  ],
+  [
+    "I wait until I'm sure the hall is empty",
+    "You wait until you're sure the hall is empty.",
+  ],
+  [
+    "I run because I've seen what it does",
+    "You run because you've seen what it does.",
+  ],
+  [
+    "I duck low and I'll circle around the back",
+    "You duck low and you'll circle around the back.",
+  ],
+  [
+    "I stop, and I'd rather not go further",
+    "You stop, and you'd rather not go further.",
+  ],
+  ["I hide because I’m afraid", "You hide because you're afraid."],
+  // A shouted first person is still shouted: ALL CAPS says something about the
+  // writer's intent where a lone initial capital on "I" does not.
+  ["I scream because I'VE HAD ENOUGH", "You scream because YOU'VE HAD ENOUGH."],
+  ["do I dare?", "You do you dare?"],
 
   // Input that already speaks in the second person is not prefixed twice.
   ["You open the door", "You open the door."],
@@ -86,6 +114,11 @@ const DO_CASES: readonly Case[] = [
   // ACCEPTED: only the first sentence of a multi-sentence Do is prefixed, and
   // only the first letter of the whole turn is capitalised.
   ["open the door. step inside", "You open the door. step inside."],
+  // …but an "I" that opens a later sentence keeps its capital, because there
+  // the capital really is positional.
+  ["I open the door. I step inside", "You open the door. You step inside."],
+  ["I freeze! I'm not ready", "You freeze! You're not ready."],
+  ["I run. and I hide", "You run. and you hide."],
 
   // ACCEPTED: "we" collapses companions into the single second-person "you".
   ["we run for the door", "You run for the door."],
