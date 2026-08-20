@@ -32,6 +32,7 @@ export function StatusStrip({
   contextWindow,
   models,
   identity,
+  onModelClick,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
@@ -45,6 +46,8 @@ export function StatusStrip({
    * two inches above it.
    */
   identity: GenerationIdentity
+  /** Jump to the segment that owns these settings. */
+  onModelClick: () => void
 }) {
   const parts = settingsSummaryParts(identity, models)
 
@@ -52,12 +55,17 @@ export function StatusStrip({
     // The safe-area pad moved here from the scroll body: this is the app's
     // bottom edge now, and the scroll no longer reaches it.
     <div className="shrink-0 space-y-1.5 border-t bg-muted/40 px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-      <div className="flex items-baseline justify-between gap-2">
+      <button
+        type="button"
+        onClick={onModelClick}
+        aria-label={`Model: ${parts.model}, ${parts.provider}, ${parts.thinking}. Show model settings.`}
+        className="flex w-full items-baseline justify-between gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+      >
         <span className="truncate text-xs font-medium">{parts.model}</span>
         <span className="shrink-0 text-xs text-muted-foreground">
           {parts.provider} · {parts.thinking}
         </span>
-      </div>
+      </button>
       <ContextMeter
         story={story}
         lorebookEntries={lorebookEntries}
