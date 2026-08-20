@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils"
 import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { RetryButton } from "@/components/story/retry-profile-menu"
 import {
   Tooltip,
   TooltipContent,
@@ -313,22 +314,14 @@ export function Composer({
               <TooltipContent>{redoLabel}</TooltipContent>
             </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Retry last generation"
-                    disabled={!canRetry}
-                    onClick={onRetry}
-                  />
-                }
-              >
-                <RotateCcw />
-              </TooltipTrigger>
-              <TooltipContent>Retry last generation</TooltipContent>
-            </Tooltip>
+            <RetryButton
+              icon={RotateCcw}
+              label="Retry last generation"
+              size="sm"
+              disabled={!canRetry}
+              onRetry={onRetry}
+              revealCaret
+            />
 
             <Tooltip>
               <TooltipTrigger

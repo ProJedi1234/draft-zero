@@ -27,6 +27,11 @@ const buttonVariants = cva(
         lg: "h-11 gap-1.5 px-8 has-data-[icon=inline-end]:pr-5 has-data-[icon=inline-start]:pl-5",
         icon: "size-10",
         "icon-xs": "size-7 [&_svg:not([class*='size-'])]:size-3",
+        // Narrow sliver beside an icon button, for a split control's caret —
+        // full height so the pair reads as one button, a third of the width so
+        // it never competes with the action it qualifies.
+        "icon-caret-xs": "h-7 w-4 [&_svg:not([class*='size-'])]:size-3",
+        "icon-caret-sm": "h-9 w-[18px] [&_svg:not([class*='size-'])]:size-3",
         "icon-sm": "size-9",
         "icon-lg": "size-11",
       },
