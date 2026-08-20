@@ -201,6 +201,8 @@ const MOCK_ENDPOINT_POOL: ReadonlyArray<{
   uptime: number | null
   quantization: string | null
   priceFactor: number
+  /** Whether this stand-in keeps nothing — mixed on purpose, as the real list is. */
+  zdr: boolean
 }> = [
   {
     tag: "groq",
@@ -209,6 +211,7 @@ const MOCK_ENDPOINT_POOL: ReadonlyArray<{
     uptime: 0.998,
     quantization: "fp8",
     priceFactor: 0.9,
+    zdr: true,
   },
   {
     tag: "cerebras",
@@ -217,6 +220,7 @@ const MOCK_ENDPOINT_POOL: ReadonlyArray<{
     uptime: 0.991,
     quantization: "bf16",
     priceFactor: 1.1,
+    zdr: true,
   },
   {
     tag: "fireworks",
@@ -225,6 +229,7 @@ const MOCK_ENDPOINT_POOL: ReadonlyArray<{
     uptime: 0.999,
     quantization: "fp8",
     priceFactor: 0.95,
+    zdr: true,
   },
   {
     tag: "deepinfra/turbo",
@@ -233,6 +238,7 @@ const MOCK_ENDPOINT_POOL: ReadonlyArray<{
     uptime: 0.984,
     quantization: "fp8",
     priceFactor: 0.6,
+    zdr: false,
   },
   {
     tag: "together",
@@ -241,6 +247,7 @@ const MOCK_ENDPOINT_POOL: ReadonlyArray<{
     uptime: 0.996,
     quantization: "fp16",
     priceFactor: 1.05,
+    zdr: true,
   },
   {
     tag: "novita",
@@ -249,6 +256,7 @@ const MOCK_ENDPOINT_POOL: ReadonlyArray<{
     uptime: null,
     quantization: null,
     priceFactor: 0.7,
+    zdr: false,
   },
 ]
 
@@ -285,6 +293,9 @@ export function mockEndpoints(model: OpenRouterModel): ModelEndpoint[] {
     throughput: 68 + (hashString(model.id) % 40),
     uptime: 0.997,
     quantization: null,
+    // The lab's own endpoint retains nothing, which is true of most of the
+    // first-party ones the real list carries.
+    zdr: true,
   }
   const hash = hashString(model.id)
   const count = 2 + (hash % 3)
@@ -302,6 +313,7 @@ export function mockEndpoints(model: OpenRouterModel): ModelEndpoint[] {
       throughput: pooled.throughput,
       uptime: pooled.uptime,
       quantization: pooled.quantization,
+      zdr: pooled.zdr,
     }
   })
   // Closed models are single-source in reality; pretending Groq serves Claude
@@ -342,6 +354,10 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   // Auto — OpenRouter picks the endpoint. Pinning one in the defaults would
   // pin it for every new story, including stories on other models.
   providerTag: null,
+  // Off, and asked for rather than assumed: zero data retention costs a writer
+  // providers (and sometimes the model they wanted), so it is a choice the
+  // writer makes in Settings, not one a new story arrives holding.
+  zdr: false,
   temperature: 0.9,
   topP: 0.95,
   // The share the lorebook may claim of the free context — what the old
@@ -729,6 +745,7 @@ export const MOCK_STORIES: Story[] = [
       modelId: "~anthropic/claude-sonnet-latest",
       thinking: "off",
       providerTag: null,
+      zdr: false,
       temperature: 0.9,
       topP: 0.95,
       loreBudget: DEFAULT_LORE_BUDGET,
@@ -794,6 +811,7 @@ export const MOCK_STORIES: Story[] = [
       modelId: "~openai/gpt-latest",
       thinking: "off",
       providerTag: null,
+      zdr: false,
       temperature: 1.1,
       topP: 0.9,
       loreBudget: DEFAULT_LORE_BUDGET,
@@ -853,6 +871,7 @@ export const MOCK_STORIES: Story[] = [
       modelId: "~anthropic/claude-opus-latest",
       thinking: "off",
       providerTag: null,
+      zdr: false,
       temperature: 0.8,
       topP: 0.98,
       loreBudget: DEFAULT_LORE_BUDGET,
@@ -944,6 +963,7 @@ export const MOCK_STORIES: Story[] = [
       modelId: "~anthropic/claude-sonnet-latest",
       thinking: "off",
       providerTag: null,
+      zdr: false,
       temperature: 0.9,
       topP: 0.95,
       loreBudget: DEFAULT_LORE_BUDGET,

@@ -238,6 +238,10 @@ export async function updateGenerationSettings(
   // tag that no longer serves this model is dropped at send time by
   // providerParam() rather than rejected on the way in — see openrouter.ts.
   if (patch.providerTag !== undefined) values.providerTag = patch.providerTag
+  // A plain boolean with no closed set to guard and no clamp to apply. What it
+  // cannot do is lower the app-wide floor: this column is the story's own ask,
+  // and lib/generation/resolve.ts ORs the policy on top of whatever it says.
+  if (patch.zdr !== undefined) values.zdr = patch.zdr
   if (patch.temperature !== undefined) values.temperature = patch.temperature
   if (patch.topP !== undefined) values.topP = patch.topP
   if (patch.maxTokens !== undefined) values.maxTokens = patch.maxTokens

@@ -27,6 +27,7 @@ const SETTINGS: GenerationSettings = {
   modelId: "anthropic/claude-sonnet-5",
   thinking: "medium",
   providerTag: null,
+  zdr: false,
   temperature: 0.9,
   topP: 0.95,
   maxTokens: 1024,

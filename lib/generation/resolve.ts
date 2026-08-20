@@ -6,7 +6,7 @@
 // a repeated ternary that can drift.
 
 import type {
-  GenerationDefaults,
+  GenerationBaseline,
   GenerationSettings,
   ModelProfile,
   ProfileSettings,
@@ -19,15 +19,21 @@ import type {
  * Field by field rather than all-or-nothing, which is the whole point of the
  * feature — a profile that only disagrees about temperature still follows the
  * writer when they retune max tokens globally.
+ *
+ * `zdr` is the one field that is not a fallback: see the comment on it below.
  */
 export function resolveProfileSettings(
   settings: ProfileSettings,
-  defaults: GenerationDefaults
+  baseline: GenerationBaseline
 ): GenerationSettings {
+  const { defaults, requireZdr } = baseline
   return {
     modelId: settings.modelId,
     thinking: settings.thinking,
     providerTag: settings.providerTag,
+    // ORed, not defaulted: the app-wide policy is a floor under every bundle,
+    // and a profile that says nothing about retention still sits on it.
+    zdr: settings.zdr || requireZdr,
     temperature: settings.temperature ?? defaults.temperature,
     topP: settings.topP ?? defaults.topP,
     maxTokens: settings.maxTokens ?? defaults.maxTokens,
@@ -48,16 +54,21 @@ export function resolveProfileSettings(
  * (deleted out of band) passes null and gets Custom, which is the honest answer:
  * the columns the story kept are the last settings it had.
  *
- * A Custom story never touches `defaults`: its columns are concrete, and
- * inheritance is a thing profiles do, not a thing every story does.
+ * A Custom story never touches `baseline.defaults`: its columns are concrete,
+ * and inheritance is a thing profiles do, not a thing every story does. It does
+ * touch the retention floor, which is not inheritance but policy.
  */
 export function resolveGenerationSettings(
   storySettings: GenerationSettings,
   profile: ModelProfile | null,
-  defaults: GenerationDefaults
+  baseline: GenerationBaseline
 ): GenerationSettings {
-  return profile
-    ? resolveProfileSettings(profile.settings, defaults)
+  if (profile) return resolveProfileSettings(profile.settings, baseline)
+  // The one thing a Custom story does read from the baseline. Its columns are
+  // concrete, but the retention floor is not one of its settings — it belongs
+  // to the app, and a story cannot be under it and not under it at once.
+  return baseline.requireZdr && !storySettings.zdr
+    ? { ...storySettings, zdr: true }
     : storySettings
 }
 
@@ -79,6 +90,7 @@ export function customColumnsFromSettings(settings: GenerationSettings): {
   modelId: string
   thinking: GenerationSettings["thinking"]
   providerTag: string | null
+  zdr: boolean
   temperature: number
   topP: number
   maxTokens: number
@@ -92,6 +104,11 @@ export function customColumnsFromSettings(settings: GenerationSettings): {
     modelId: settings.modelId,
     thinking: settings.thinking,
     providerTag: settings.providerTag,
+    // Frozen as the resolved value, exactly like an inherited slider: what the
+    // story was generating under is what it keeps. If the floor was what put it
+    // there, lowering the floor later leaves the story where it was rather than
+    // quietly widening its data policy.
+    zdr: settings.zdr,
     temperature: settings.temperature,
     topP: settings.topP,
     maxTokens: settings.maxTokens,

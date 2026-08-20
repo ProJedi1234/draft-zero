@@ -7,12 +7,14 @@
 // tag it pinned and the model's own price.
 //
 // Only the model half of a bundle is printed, which is why the parameter is
-// GenerationIdentity: a profile's sliders may be inherited, and the line would
-// have to resolve them before it could say anything true about them.
+// GenerationSummaryIdentity: a profile's sliders may be inherited, and the line
+// would have to resolve them before it could say anything true about them. The
+// data policy is left out of the same type on purpose — it is a mark, not a
+// word in a sentence about sampling.
 
 import {
   THINKING_LEVEL_LABELS,
-  type GenerationIdentity,
+  type GenerationSummaryIdentity,
   type OpenRouterModel,
 } from "@/lib/types"
 
@@ -26,7 +28,7 @@ import {
  * degrades to its id, which is still the truth about the bundle.
  */
 export function settingsSummaryParts(
-  settings: GenerationIdentity,
+  settings: GenerationSummaryIdentity,
   models: OpenRouterModel[]
 ): { model: string; provider: string; thinking: string } {
   const { modelId, providerTag, thinking } = settings
@@ -43,7 +45,7 @@ export function settingsSummaryParts(
 
 /** "Claude Sonnet 5 · Auto · think med". */
 export function settingsSummary(
-  settings: GenerationIdentity,
+  settings: GenerationSummaryIdentity,
   models: OpenRouterModel[]
 ): string {
   const { model, provider, thinking } = settingsSummaryParts(settings, models)
@@ -56,7 +58,7 @@ export function settingsSummary(
  * instead, against the pinned endpoint it can afford to resolve.
  */
 export function settingsSummaryWithPrice(
-  settings: GenerationIdentity,
+  settings: GenerationSummaryIdentity,
   models: OpenRouterModel[]
 ): string {
   const summary = settingsSummary(settings, models)

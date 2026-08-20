@@ -130,6 +130,7 @@ function blankSettings(models: OpenRouterModel[]): ProfileSettings {
     modelId: models[0]?.id ?? "",
     thinking: "off",
     providerTag: null,
+    zdr: false,
     temperature: null,
     topP: null,
     maxTokens: null,

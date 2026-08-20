@@ -389,13 +389,42 @@ export interface GenerationSettings extends GenerationDefaults {
    * changing models resets it (see the inspector's handleModelChange).
    */
   providerTag: string | null
+  /**
+   * Route only through endpoints that retain nothing — OpenRouter's `zdr`
+   * provider preference.
+   *
+   * A floor rather than a switch: the app-wide policy in AppSettings.requireZdr
+   * ORs into this on the way out of lib/generation/resolve.ts, and OpenRouter
+   * ORs its own account and guardrail settings on top of that. Turning it on
+   * anywhere turns it on; nothing here can turn it off, which is what makes a
+   * data policy a policy instead of a suggestion.
+   */
+  zdr: boolean
 }
 
 /** The model half of a bundle — what a profile always states for itself. */
 export type GenerationIdentity = Pick<
   GenerationSettings,
-  "modelId" | "thinking" | "providerTag"
+  "modelId" | "thinking" | "providerTag" | "zdr"
 >
+
+/**
+ * The part of an identity a one-line summary prints. Narrower than
+ * GenerationIdentity because the data policy is not a word in that line — it is
+ * a mark beside it, and the surfaces that show it hold it separately.
+ */
+export type GenerationSummaryIdentity = Omit<GenerationIdentity, "zdr">
+
+/**
+ * What a story or a profile is resolved against. One object rather than two
+ * arguments because both halves come out of the single app_settings row, and
+ * every resolver needs the pair: the sliders an unset field falls back to, and
+ * the retention floor that no bundle can fall below.
+ */
+export interface GenerationBaseline {
+  defaults: GenerationDefaults
+  requireZdr: boolean
+}
 
 /**
  * The six sliders as a profile stores them: null is not a value but the absence
@@ -553,6 +582,17 @@ export interface AppSettings {
    * profile that never disagreed with it moves.
    */
   defaultGeneration: GenerationDefaults
+  /**
+   * Zero data retention for the whole app: every story, every profile, every
+   * generation.
+   *
+   * Not a default a profile falls back to but a floor it adds to, which is why
+   * it sits here rather than in defaultGeneration. Turning it on cannot be
+   * undone one profile at a time — a retention policy that a bundle could opt
+   * out of would only be a suggestion — and turning it off gives every profile
+   * back whatever it says for itself.
+   */
+  requireZdr: boolean
 }
 
 /** Uniform server-action result. Actions never throw for expected failures. */
@@ -627,6 +667,13 @@ export interface ModelEndpoint {
   uptime: number | null
   /** Weight quantization, e.g. "fp8". Null when the provider doesn't say. */
   quantization: string | null
+  /**
+   * The provider keeps nothing of a request served here — OpenRouter's own ZDR
+   * list says so, endpoint by endpoint. Two endpoints of the same provider
+   * routinely differ ("xai" retains, "xai/zdr" does not), so this is per-tag
+   * and never inferred from the provider name.
+   */
+  zdr: boolean
 }
 
 /**
@@ -641,6 +688,46 @@ export function endpointForTag(
 ): ModelEndpoint | null {
   if (tag === null) return null
   return endpoints.find((e) => e.tag === tag) ?? null
+}
+
+/**
+ * The endpoint a pin actually lands on, or null for "let OpenRouter route".
+ *
+ * Two ways to get null beyond plain Auto, and callers treat them alike: a tag
+ * that has left the model's endpoint list, and — under a zero-data-retention
+ * policy — a tag that names an endpoint which retains prompts. Both mean the
+ * writer's pin cannot be honoured, and both are the pin's problem rather than
+ * the generation's: OpenRouter refuses the second pair outright, so keeping it
+ * would cost the writer the continuation as well as the provider.
+ */
+export function routableEndpointForTag(
+  endpoints: ModelEndpoint[],
+  tag: string | null,
+  zdr: boolean
+): ModelEndpoint | null {
+  const endpoint = endpointForTag(endpoints, tag)
+  if (!endpoint) return null
+  return !zdr || endpoint.zdr ? endpoint : null
+}
+
+/** Where OpenRouter keeps the account-wide data policy this app can only read through failures. */
+export const OPENROUTER_PRIVACY_URL = "https://openrouter.ai/settings/privacy"
+
+/**
+ * The endpoints a bundle may actually be routed to, and the ones its data
+ * policy rules out. Under `zdr: false` nothing is ruled out and `blocked` is
+ * empty — the picker renders the same two lists either way and simply has
+ * nothing to grey out.
+ */
+export function partitionByZdr(
+  endpoints: ModelEndpoint[],
+  zdr: boolean
+): { allowed: ModelEndpoint[]; blocked: ModelEndpoint[] } {
+  if (!zdr) return { allowed: endpoints, blocked: [] }
+  return {
+    allowed: endpoints.filter((e) => e.zdr),
+    blocked: endpoints.filter((e) => !e.zdr),
+  }
 }
 
 /** Ordered category metadata shared by the lorebook and inspector UIs. */

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import { nextTakeVariant } from "@/lib/db/entry-writes"
 import {
-  getGenerationDefaults,
+  getGenerationBaseline,
   getStory,
   listLorebookEntries,
   listModelProfiles,
@@ -138,7 +138,7 @@ export async function startGeneration(
     // resolved here against the same global defaults getStory would have used.
     // Either way the story's own columns are only ever READ.
     const effective = picked
-      ? resolveProfileSettings(picked.settings, await getGenerationDefaults())
+      ? resolveProfileSettings(picked.settings, await getGenerationBaseline())
       : story.settings
 
     // Only fetched when the request pins a provider, and cached five minutes

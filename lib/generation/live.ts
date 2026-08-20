@@ -27,6 +27,10 @@ import {
   streamCompletion,
 } from "@/lib/generation/openrouter"
 import { reconcileCall, shouldReconcile } from "@/lib/generation/reconcile"
+import {
+  invalidateAccountZdrPolicy,
+  isDataPolicyRefusal,
+} from "@/lib/generation/zdr"
 import type {
   ComposedContext,
   GenerationEvent,
@@ -464,6 +468,14 @@ async function runLoop(run: LiveRun, context: ComposedContext): Promise<void> {
         // error toast on every device. Same signal check as the mid-stream
         // catch below.
         if (run.upstream.signal.aborted) return
+        // A request this app made no data-policy demand of, refused on
+        // data-policy grounds, can only have been refused by the ACCOUNT — and
+        // whatever the cached answer about that account says, it just turned
+        // out to be wrong. Dropping it makes the next reader re-probe; the
+        // probe, not this failure, gets to say what replaced it.
+        if (!run.settings.zdr && isDataPolicyRefusal(err)) {
+          invalidateAccountZdrPolicy()
+        }
         status = "error"
         errorMessage = mapOpenRouterError(err).message
         return
