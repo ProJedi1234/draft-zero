@@ -17,6 +17,26 @@ bun run db:seed              # optional: destructive reseed with fixtures
 bun run dev
 ```
 
+With [`just`](https://just.systems) installed (`apt install just`) that whole
+block is `just setup`, and `just` on its own lists every shortcut. The
+`justfile` only records which `bun run` and `docker compose` steps go together —
+package.json stays the source of truth for what each step is, so nothing here
+requires it.
+
+| Recipe | Runs |
+|---|---|
+| `just setup` | the block above, on a fresh clone |
+| `just dev` | `db:migrate`, then the dev server |
+| `just serve` | `build`, `db:migrate`, `start` |
+| `just check` | typecheck, lint, format, tests — the pre-PR gate |
+| `just up` / `lan` | the full Docker stack on `:3000` / the LAN on `:3001` |
+| `just db-url` | which database the tooling will actually open |
+
+`db:seed` and `docker compose down -v` are wrapped as `just seed` and `just
+nuke`, which name the target database and wait for a `y` first. That guard
+exists because `.env.local` is easy to point at the shared `devpg` on 5432,
+where a reseed destroys real work — see the database table below.
+
 To run the app in Docker too — same stack, plus `next dev` on port 3000:
 
 ```bash
