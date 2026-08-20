@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { GenerationDefaultsCard } from "@/components/settings/generation-defaults-card"
 import { ModelProfilesCard } from "@/components/settings/model-profiles-card"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { ZdrSwitch } from "@/components/zdr-switch"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -18,7 +19,9 @@ import {
 } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { verifyOpenRouterKey } from "@/lib/actions/settings"
+import { useAccountZdr } from "@/hooks/use-account-zdr"
+import { useServerSyncedValue } from "@/hooks/use-server-synced"
+import { updateAppSettings, verifyOpenRouterKey } from "@/lib/actions/settings"
 import type { AppSettings, ModelProfile, OpenRouterModel } from "@/lib/types"
 
 function SettingsView({
@@ -34,6 +37,36 @@ function SettingsView({
   followerCounts: Record<string, number>
 }) {
   const [verifying, setVerifying] = React.useState(false)
+  const [, startTransition] = React.useTransition()
+  const accountZdr = useAccountZdr()
+  // Follows the settings row while mounted — the policy is app-wide, so another
+  // device turning it on has to land here — but never while this device's own
+  // write is still in flight. See hooks/use-server-synced.ts.
+  const zdr = useServerSyncedValue(settings.requireZdr)
+  const requireZdr = zdr.value
+
+  function handleZdrChange(next: boolean) {
+    const previous = requireZdr
+    zdr.write(next)
+    startTransition(async () => {
+      let ok = false
+      let message = "Couldn't save the policy."
+      try {
+        const result = await updateAppSettings({ requireZdr: next })
+        ok = result.ok
+        if (!result.ok) message = result.error
+      } catch (error) {
+        message =
+          error instanceof Error && error.message ? error.message : message
+      }
+      if (ok) {
+        zdr.settle()
+      } else {
+        zdr.reset(previous)
+        toast.error(message)
+      }
+    })
+  }
   async function handleVerify() {
     setVerifying(true)
     try {
@@ -82,7 +115,7 @@ function SettingsView({
                 deploy.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
               <Button
                 variant="outline"
                 size="sm"
@@ -98,6 +131,13 @@ function SettingsView({
                   "Verify key"
                 )}
               </Button>
+              <ZdrSwitch
+                id="require-zdr"
+                checked={requireZdr}
+                onCheckedChange={handleZdrChange}
+                lock={accountZdr === "enforced" ? "account" : null}
+                hint="Every story and profile, whatever they say for themselves. Costs you the providers that retain prompts, and the models only they serve."
+              />
             </CardContent>
           </Card>
 
@@ -107,6 +147,7 @@ function SettingsView({
             profiles={profiles}
             models={models}
             defaults={settings.defaultGeneration}
+            requireZdr={requireZdr}
             defaultProfileId={settings.defaultProfileId}
             followerCounts={followerCounts}
           />

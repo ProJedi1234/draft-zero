@@ -93,9 +93,18 @@ export function useModelSettings({
     hold: menuOpen,
     version: story.updatedAt,
   })
+  // The EFFECTIVE policy: story.settings has the app-wide floor already ORed
+  // in, so a story under it shows on here even though its own column says
+  // false. The switch that reads this is locked in that case, so the two can
+  // never disagree about what a click would do.
+  const zdrSync = useServerSyncedValue(story.settings.zdr, {
+    hold: menuOpen,
+    version: story.updatedAt,
+  })
   const modelId = model.value
   const thinking = thinkingSync.value
   const providerTag = provider.value
+  const zdr = zdrSync.value
   const { endpoints } = useModelEndpoints(modelId)
   // The ceiling in force for the duration of a drag; see windowDragProps below.
   const [heldContextLength, setHeldContextLength] = React.useState<
@@ -300,6 +309,15 @@ export function useModelSettings({
     })
   }
 
+  function handleZdrChange(next: boolean) {
+    const previous = zdr
+    zdrSync.write(next)
+    saveSettings({ zdr: next }, (ok) => {
+      if (ok) zdrSync.settle()
+      else zdrSync.reset(previous)
+    })
+  }
+
   function handleProfileChange(next: string | null) {
     if (next === profileId) return
     const previous = profileId
@@ -343,6 +361,7 @@ export function useModelSettings({
     modelId,
     providerTag,
     thinking,
+    zdr,
     endpoints,
     // profile mode
     profileId,
@@ -367,6 +386,7 @@ export function useModelSettings({
     handleModelChange,
     handleProviderChange,
     handleThinkingChange,
+    handleZdrChange,
     handleProfileChange,
     adoptSavedProfile,
   }

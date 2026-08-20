@@ -1,0 +1,82 @@
+# compose.zdr.yaml — the zero-data-retention branch, up on its own so the
+# provider filtering can be exercised beside whatever else is running here.
+#
+#   docker compose -f compose.zdr.yaml --profile app up -d --build
+#   docker compose -f compose.zdr.yaml down
+#
+# Its own project name, volume and ports. `draft-zero` (5433/3000),
+# `draft-zero-composer` (5435/3003), `draft-zero-images` (5437/3005),
+# `draft-zero-modelswitch` (5438/3006), `draft-zero-lorebook` (5439/3007) and
+# `draft-zero-retryprofile` (5440) already exist on argos; a stack sharing any
+# of them would take one over rather than sit alongside.
+name: draft-zero-zdr
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: draft_zero
+      POSTGRES_PASSWORD: draft_zero
+      POSTGRES_DB: draft_zero
+    ports:
+      - "127.0.0.1:5441:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U draft_zero -d draft_zero"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: ["bun", "run", "db:migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    # The real key, read from the main checkout rather than copied here. This
+    # branch is about which providers may serve a request, and both halves of
+    # that — the ZDR endpoint list and the account-policy probe — only exist
+    # against the live API. The offline mock would show an empty feature.
+    #
+    # OPENROUTER_API_KEY is deliberately ABSENT from `environment:` below:
+    # environment outranks env_file, so even an empty one there would shadow
+    # the real key.
+    env_file:
+      - /home/adityadhar/repos/draft-zero/.env.local
+    environment:
+      # Stated here precisely BECAUSE environment outranks env_file: that file
+      # also carries a DATABASE_URL, and it points at the shared devpg. This
+      # line is what keeps the app on the throwaway database in this network.
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "0.0.0.0:3008:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:

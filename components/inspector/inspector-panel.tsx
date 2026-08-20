@@ -33,6 +33,7 @@ export function InspectorPanel({
   models,
   profiles,
   defaultProfileId,
+  requireZdr,
   tab,
   onTabChange,
   className,
@@ -44,6 +45,8 @@ export function InspectorPanel({
   profiles: ModelProfile[]
   /** The profile new stories start from; starred in the switcher. */
   defaultProfileId: string | null
+  /** The app-wide retention policy; the model section's switch sits on it. */
+  requireZdr: boolean
   /** Owned by the workspace: a writer preference, not a property of the story. */
   tab: InspectorTab
   onTabChange: (tab: InspectorTab) => void
@@ -63,6 +66,7 @@ export function InspectorPanel({
         models={models}
         profiles={profiles}
         defaultProfileId={defaultProfileId}
+        requireZdr={requireZdr}
         tab={tab}
         onTabChange={onTabChange}
       />
@@ -83,6 +87,7 @@ export function InspectorContent({
   models,
   profiles,
   defaultProfileId,
+  requireZdr,
   tab,
   onTabChange,
 }: {
@@ -91,6 +96,7 @@ export function InspectorContent({
   models: OpenRouterModel[]
   profiles: ModelProfile[]
   defaultProfileId: string | null
+  requireZdr: boolean
   tab: InspectorTab
   onTabChange: (tab: InspectorTab) => void
 }) {
@@ -102,6 +108,7 @@ export function InspectorContent({
       models={models}
       profiles={profiles}
       defaultProfileId={defaultProfileId}
+      requireZdr={requireZdr}
       tab={tab}
       onTabChange={onTabChange}
     />
@@ -123,6 +130,7 @@ function InspectorSections({
   models,
   profiles,
   defaultProfileId,
+  requireZdr,
   tab,
   onTabChange,
 }: {
@@ -131,6 +139,7 @@ function InspectorSections({
   models: OpenRouterModel[]
   profiles: ModelProfile[]
   defaultProfileId: string | null
+  requireZdr: boolean
   tab: InspectorTab
   onTabChange: (tab: InspectorTab) => void
 }) {
@@ -211,6 +220,7 @@ function InspectorSections({
                 models={models}
                 profiles={profiles}
                 defaultProfileId={defaultProfileId}
+                requireZdr={requireZdr}
                 settings={settings}
               />
             </div>
@@ -236,6 +246,7 @@ function InspectorSections({
           providerTag: settings.providerTag,
           thinking: settings.thinking,
         }}
+        zdr={settings.zdr}
         onModelClick={() => onTabChange("model")}
       />
     </>

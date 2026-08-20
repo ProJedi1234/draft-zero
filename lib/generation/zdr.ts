@@ -12,7 +12,7 @@ import { chatSend } from "@openrouter/sdk/funcs/chatSend.js"
 import { endpointsListZdrEndpoints } from "@openrouter/sdk/funcs/endpointsListZdrEndpoints.js"
 import { OpenRouterError } from "@openrouter/sdk/models/errors"
 
-import type { OpenRouterModel } from "@/lib/types"
+import type { AccountZdrPolicy, OpenRouterModel } from "@/lib/types"
 
 import { resolveOpenRouterKey } from "./key"
 import { listModels } from "./models"
@@ -85,17 +85,6 @@ export async function zdrModelIds(): Promise<Set<string>> {
   }
   return ids
 }
-
-/**
- * Whether the OpenRouter ACCOUNT forces zero data retention on every request,
- * regardless of what this app asks for.
- *
- * "unknown" is a real answer and the honest one whenever the probe below cannot
- * reach a conclusion: the UI leaves its toggle alone for it rather than
- * guessing, since a wrong "enforced" would lock a writer out of providers they
- * can actually use.
- */
-export type AccountZdrPolicy = "enforced" | "not-enforced" | "unknown"
 
 let accountCache: { at: number; data: AccountZdrPolicy } | null = null
 

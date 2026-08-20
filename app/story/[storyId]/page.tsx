@@ -72,6 +72,7 @@ export default async function StoryPage({ params }: StoryPageProps) {
       costProfile={costProfile}
       profiles={profiles}
       defaultProfileId={settings.defaultProfileId}
+      requireZdr={settings.requireZdr}
     />
   )
 }
