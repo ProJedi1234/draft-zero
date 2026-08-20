@@ -161,11 +161,36 @@ export function Composer({
     event: React.KeyboardEvent<HTMLTextAreaElement>
   ) => {
     if (markdownShortcuts(event)) return
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+
+    if (event.key === "Enter") {
+      // An IME is using Enter to commit a candidate, not to end the move.
+      if (event.nativeEvent.isComposing) return
+
+      if (event.metaKey || event.ctrlKey) {
+        event.preventDefault()
+        if (busy) return
+        if (hasText) handleSend()
+        else onContinue()
+        return
+      }
+
+      // A move is a sentence, so Enter sends it and the newline moves to the
+      // modifiers. Shift+Enter is already the textarea's own newline; Option
+      // is not, and browsers do not agree on whether it inserts one, so it is
+      // inserted here — through execCommand, which is the only way to keep the
+      // native undo stack intact.
+      if (event.altKey) {
+        event.preventDefault()
+        document.execCommand("insertText", false, "\n")
+        return
+      }
+      if (event.shiftKey) return
+
       event.preventDefault()
-      if (busy) return
-      if (hasText) handleSend()
-      else onContinue()
+      // Continue stays on Cmd/Ctrl+Enter: Enter on an empty composer is a
+      // stray keystroke far more often than it is a request to generate.
+      if (busy || !hasText) return
+      handleSend()
       return
     }
 
@@ -227,6 +252,9 @@ export function Composer({
             autoComplete="off"
             autoCorrect="on"
             autoCapitalize="sentences"
+            // Software keyboards label their return key from this, so the
+            // touch case advertises what Enter now does instead of hiding it.
+            enterKeyHint="send"
             spellCheck
             className="max-h-52 min-h-14 resize-none overflow-y-auto border-0 bg-transparent px-3 font-serif text-base leading-7 shadow-none focus-visible:ring-0"
           />
@@ -344,7 +372,7 @@ export function Composer({
               >
                 <FastForward />
               </TooltipTrigger>
-              <TooltipContent>Continue</TooltipContent>
+              <TooltipContent>Continue (⌘↵)</TooltipContent>
             </Tooltip>
 
             {/* The Send slot becomes Stop while a generation is in flight —
@@ -380,7 +408,7 @@ export function Composer({
                 >
                   <ArrowUp />
                 </TooltipTrigger>
-                <TooltipContent>Send</TooltipContent>
+                <TooltipContent>Send (Enter)</TooltipContent>
               </Tooltip>
             )}
           </div>
