@@ -4,13 +4,13 @@ import * as React from "react"
 import { ChevronRight, ChevronsUpDown } from "lucide-react"
 import { toast } from "sonner"
 
-import { ContextDialog } from "@/components/context/context-dialog"
 import { ContextWindowSlider } from "@/components/inspector/context-window-slider"
 import { LoreTab } from "@/components/inspector/lore-tab"
 import { ModelPicker, ProfileCard } from "@/components/inspector/model-picker"
 import { NarratorDialog } from "@/components/inspector/narrator-dialog"
 import { SaveProfileDialog } from "@/components/inspector/save-profile-dialog"
 import { SettingSlider } from "@/components/inspector/setting-slider"
+import { StatusStrip } from "@/components/inspector/status-strip"
 import { levelForModel } from "@/components/thinking-select"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,7 +19,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { Label } from "@/components/ui/label"
-import { Meter } from "@/components/ui/meter"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
@@ -35,11 +34,8 @@ import {
   updateGenerationSettings,
   updateStoryMeta,
 } from "@/lib/actions/stories"
-import { describeContext } from "@/lib/generation/breakdown"
-import { composeContext } from "@/lib/generation/context"
 import {
   clampContextWindow,
-  contextWindowLabel,
   endpointForTag,
   type GenerationSettings,
   type LorebookEntry,
@@ -444,321 +440,241 @@ function InspectorSections({
   }
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
-      {/* Bottom pad clears the home indicator; see app/page.tsx. */}
-      <div className="space-y-6 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <div className="space-y-3">
-          <ProfileCard
-            profiles={profiles}
-            profileId={profileId}
-            defaultProfileId={defaultProfileId}
-            onProfileChange={handleProfileChange}
-            switching={profileSwitching}
-            models={models}
-            endpoints={endpoints}
-            basedOnName={basedOnProfile?.name ?? null}
-            onOpenChange={setProfileMenuOpen}
-          />
+    <>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="space-y-6 px-4 py-4">
+          <div className="space-y-3">
+            <ProfileCard
+              profiles={profiles}
+              profileId={profileId}
+              defaultProfileId={defaultProfileId}
+              onProfileChange={handleProfileChange}
+              switching={profileSwitching}
+              models={models}
+              endpoints={endpoints}
+              basedOnName={basedOnProfile?.name ?? null}
+              onOpenChange={setProfileMenuOpen}
+            />
 
-          {/* Following a profile there is nothing here to tune: the bundle is
+            {/* Following a profile there is nothing here to tune: the bundle is
               global, and a knob in the story would be a silent fork of it. */}
-          {isCustom ? (
-            <div className="space-y-1">
-              <ModelPicker
-                models={models}
-                value={modelId}
-                onValueChange={handleModelChange}
-                endpoints={endpoints}
-                providerTag={providerTag}
-                onProviderTagChange={handleProviderChange}
-                thinking={thinking}
-                onThinkingChange={handleThinkingChange}
-                onOpenChange={setPickerOpen}
-              />
-              <Collapsible>
-                <CollapsibleTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      className="w-full justify-between text-muted-foreground"
+            {isCustom ? (
+              <div className="space-y-1">
+                <ModelPicker
+                  models={models}
+                  value={modelId}
+                  onValueChange={handleModelChange}
+                  endpoints={endpoints}
+                  providerTag={providerTag}
+                  onProviderTagChange={handleProviderChange}
+                  thinking={thinking}
+                  onThinkingChange={handleThinkingChange}
+                  onOpenChange={setPickerOpen}
+                />
+                <Collapsible>
+                  <CollapsibleTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        className="w-full justify-between text-muted-foreground"
+                      />
+                    }
+                  >
+                    Generation settings
+                    <ChevronsUpDown className="size-3" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-6 pt-4">
+                    <SettingSlider
+                      storyId={story.id}
+                      version={story.updatedAt}
+                      field="temperature"
+                      label="Temperature"
+                      serverValue={story.settings.temperature}
+                      min={0}
+                      max={2}
+                      step={0.01}
                     />
-                  }
-                >
-                  Generation settings
-                  <ChevronsUpDown className="size-3" />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-6 pt-4">
-                  <SettingSlider
-                    storyId={story.id}
-                    version={story.updatedAt}
-                    field="temperature"
-                    label="Temperature"
-                    serverValue={story.settings.temperature}
-                    min={0}
-                    max={2}
-                    step={0.01}
-                  />
-                  <SettingSlider
-                    storyId={story.id}
-                    version={story.updatedAt}
-                    field="topP"
-                    label="Top P"
-                    serverValue={story.settings.topP}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                  />
-                  <SettingSlider
-                    storyId={story.id}
-                    version={story.updatedAt}
-                    field="maxTokens"
-                    label="Max tokens"
-                    serverValue={story.settings.maxTokens}
-                    min={128}
-                    max={4096}
-                    step={128}
-                  />
-                  <ContextWindowSlider
-                    value={contextWindow}
-                    contextLength={contextLength}
-                    dragProps={windowDragProps}
-                    onValueChange={setContextWindowLocal}
-                    onValueCommitted={(next) => {
-                      // A release that settled back on the stored stop is not a
-                      // change; anything else is, including a return to a stop
-                      // the model clamp moved us off earlier.
-                      const previous = savedContextWindow
-                      writeContextWindow(next)
-                      if (next === previous) return
-                      saveSettings({ contextWindow: next }, (ok) => {
-                        if (ok) settleContextWindow()
-                        else resetContextWindow(previous)
-                      })
-                    }}
-                  />
-                  <SettingSlider
-                    storyId={story.id}
-                    version={story.updatedAt}
-                    field="frequencyPenalty"
-                    label="Frequency penalty"
-                    serverValue={story.settings.frequencyPenalty}
-                    min={-2}
-                    max={2}
-                    step={0.1}
-                  />
-                  <SettingSlider
-                    storyId={story.id}
-                    version={story.updatedAt}
-                    field="presencePenalty"
-                    label="Presence penalty"
-                    serverValue={story.settings.presencePenalty}
-                    min={-2}
-                    max={2}
-                    step={0.1}
-                  />
-                </CollapsibleContent>
-              </Collapsible>
+                    <SettingSlider
+                      storyId={story.id}
+                      version={story.updatedAt}
+                      field="topP"
+                      label="Top P"
+                      serverValue={story.settings.topP}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                    />
+                    <SettingSlider
+                      storyId={story.id}
+                      version={story.updatedAt}
+                      field="maxTokens"
+                      label="Max tokens"
+                      serverValue={story.settings.maxTokens}
+                      min={128}
+                      max={4096}
+                      step={128}
+                    />
+                    <ContextWindowSlider
+                      value={contextWindow}
+                      contextLength={contextLength}
+                      dragProps={windowDragProps}
+                      onValueChange={setContextWindowLocal}
+                      onValueCommitted={(next) => {
+                        // A release that settled back on the stored stop is not a
+                        // change; anything else is, including a return to a stop
+                        // the model clamp moved us off earlier.
+                        const previous = savedContextWindow
+                        writeContextWindow(next)
+                        if (next === previous) return
+                        saveSettings({ contextWindow: next }, (ok) => {
+                          if (ok) settleContextWindow()
+                          else resetContextWindow(previous)
+                        })
+                      }}
+                    />
+                    <SettingSlider
+                      storyId={story.id}
+                      version={story.updatedAt}
+                      field="frequencyPenalty"
+                      label="Frequency penalty"
+                      serverValue={story.settings.frequencyPenalty}
+                      min={-2}
+                      max={2}
+                      step={0.1}
+                    />
+                    <SettingSlider
+                      storyId={story.id}
+                      version={story.updatedAt}
+                      field="presencePenalty"
+                      label="Presence penalty"
+                      serverValue={story.settings.presencePenalty}
+                      min={-2}
+                      max={2}
+                      step={0.1}
+                    />
+                  </CollapsibleContent>
+                </Collapsible>
 
-              <div className="flex items-center justify-between gap-2 pt-1">
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="text-muted-foreground"
-                  onClick={() => setSaveProfileOpen(true)}
-                >
-                  Save as profile…
-                </Button>
-                {basedOnProfile ? (
+                <div className="flex items-center justify-between gap-2 pt-1">
                   <Button
                     variant="ghost"
                     size="xs"
-                    className="min-w-0 text-muted-foreground"
-                    onClick={() => handleProfileChange(basedOnProfile.id)}
+                    className="text-muted-foreground"
+                    onClick={() => setSaveProfileOpen(true)}
                   >
-                    <span className="truncate">
-                      Back to {basedOnProfile.name}
-                    </span>
+                    Save as profile…
                   </Button>
-                ) : null}
+                  {basedOnProfile ? (
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="min-w-0 text-muted-foreground"
+                      onClick={() => handleProfileChange(basedOnProfile.id)}
+                    >
+                      <span className="truncate">
+                        Back to {basedOnProfile.name}
+                      </span>
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
 
-          <ContextMeter
-            story={story}
-            lorebookEntries={lorebookEntries}
-            contextWindow={contextWindow}
-          />
-        </div>
-
-        <SaveProfileDialog
-          storyId={story.id}
-          open={saveProfileOpen}
-          onOpenChange={setSaveProfileOpen}
-          onSaved={(id) => {
-            // The action already pointed the story at the new profile, so this
-            // only catches the switcher up; the fresh props are on their way in
-            // the same transition.
-            setLastProfileId(null)
-            profile.write(id)
-            profile.settle()
-          }}
-        />
-
-        <Separator />
-
-        <div className="space-y-2">
-          <Label htmlFor={`${uid}-memory`}>Memory</Label>
-          <Textarea
-            id={`${uid}-memory`}
-            ref={memoryRef}
-            defaultValue={story.memory}
-            className="min-h-24"
-            placeholder="Facts the model should always remember…"
-            onChange={(event) => {
-              memoryField.markWritten(event.target.value)
-              memorySave.schedule(event.target.value)
+          <SaveProfileDialog
+            storyId={story.id}
+            open={saveProfileOpen}
+            onOpenChange={setSaveProfileOpen}
+            onSaved={(id) => {
+              // The action already pointed the story at the new profile, so this
+              // only catches the switcher up; the fresh props are on their way in
+              // the same transition.
+              setLastProfileId(null)
+              profile.write(id)
+              profile.settle()
             }}
-            onBlur={() => memorySave.flush()}
           />
-          <p className="text-xs text-muted-foreground">
-            Always included at the top of context.
-          </p>
-        </div>
 
-        <div className="space-y-2">
-          <Label htmlFor={`${uid}-authors-note`}>Author&apos;s note</Label>
-          <Textarea
-            id={`${uid}-authors-note`}
-            ref={authorsNoteRef}
-            defaultValue={story.authorsNote}
-            className="min-h-16"
-            placeholder="Steer tone and style…"
-            onChange={(event) => {
-              authorsNoteField.markWritten(event.target.value)
-              authorsNoteSave.schedule(event.target.value)
-            }}
-            onBlur={() => authorsNoteSave.flush()}
-          />
-          <p className="text-xs text-muted-foreground">
-            Injected near the most recent words.
-          </p>
-        </div>
+          <Separator />
 
-        {/* One line, because the editor is a dialog now: a 48-row monospace
+          <div className="space-y-2">
+            <Label htmlFor={`${uid}-memory`}>Memory</Label>
+            <Textarea
+              id={`${uid}-memory`}
+              ref={memoryRef}
+              defaultValue={story.memory}
+              className="min-h-24"
+              placeholder="Facts the model should always remember…"
+              onChange={(event) => {
+                memoryField.markWritten(event.target.value)
+                memorySave.schedule(event.target.value)
+              }}
+              onBlur={() => memorySave.flush()}
+            />
+            <p className="text-xs text-muted-foreground">
+              Always included at the top of context.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${uid}-authors-note`}>Author&apos;s note</Label>
+            <Textarea
+              id={`${uid}-authors-note`}
+              ref={authorsNoteRef}
+              defaultValue={story.authorsNote}
+              className="min-h-16"
+              placeholder="Steer tone and style…"
+              onChange={(event) => {
+                authorsNoteField.markWritten(event.target.value)
+                authorsNoteSave.schedule(event.target.value)
+              }}
+              onBlur={() => authorsNoteSave.flush()}
+            />
+            <p className="text-xs text-muted-foreground">
+              Injected near the most recent words.
+            </p>
+          </div>
+
+          {/* One line, because the editor is a dialog now: a 48-row monospace
             box never belonged in a 320px column, and the built-in prompt it is
             compared against was unreadable at that width. */}
-        <Button
-          variant="ghost"
-          size="xs"
-          className="w-full justify-between text-muted-foreground"
-          onClick={() => setNarratorOpen(true)}
-        >
-          Narrator
-          <span className="flex items-center gap-1.5">
-            <span className="font-mono text-[0.6875rem]">
-              {story.systemPrompt === null ? "Built-in" : "Custom"}
+          <Button
+            variant="ghost"
+            size="xs"
+            className="w-full justify-between text-muted-foreground"
+            onClick={() => setNarratorOpen(true)}
+          >
+            Narrator
+            <span className="flex items-center gap-1.5">
+              <span className="font-mono text-[0.6875rem]">
+                {story.systemPrompt === null ? "Built-in" : "Custom"}
+              </span>
+              <ChevronRight className="size-3" />
             </span>
-            <ChevronRight className="size-3" />
-          </span>
-        </Button>
+          </Button>
 
-        <NarratorDialog
-          storyId={story.id}
-          systemPrompt={story.systemPrompt}
-          open={narratorOpen}
-          onOpenChange={setNarratorOpen}
-        />
+          <NarratorDialog
+            storyId={story.id}
+            systemPrompt={story.systemPrompt}
+            open={narratorOpen}
+            onOpenChange={setNarratorOpen}
+          />
 
-        <Separator />
+          <Separator />
 
-        <div className="space-y-3">
-          <Label>Lorebook</Label>
-          <LoreTab story={story} lorebookEntries={lorebookEntries} />
+          <div className="space-y-3">
+            <Label>Lorebook</Label>
+            <LoreTab story={story} lorebookEntries={lorebookEntries} />
+          </div>
         </div>
-      </div>
-    </ScrollArea>
-  )
-}
-
-/**
- * 812 -> "812"; 1234 -> "1.2k"; 24000 -> "24k". Lowercase "k" so the numerator
- * matches the ladder label it is printed against ("≈ 4.2k / 8k tokens").
- */
-function formatApproxTokens(tokens: number): string {
-  if (tokens >= 10_000) return `${Math.round(tokens / 1_000)}k`
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`
-  return `${tokens}`
-}
-
-/**
- * How much of the selected context window the next request would occupy.
- * Composed client-side from the same pure function the server uses to build the
- * real prompt, and against the same budget — so the number the writer sees is
- * the number that gets sent. The window is the *live* slider value, not
- * story.settings, so the meter answers before the commit round-trips.
- *
- * It is also the way in to the viewer for a request that has not happened yet.
- * The same breakdown a finished passage shows, composed here instead of read
- * from disk: what the lorebook is contributing, and what the window is about to
- * push out — answerable while the slider is still under the writer's finger,
- * rather than only after a generation has spent the money.
- */
-function ContextMeter({
-  story,
-  lorebookEntries,
-  contextWindow,
-}: {
-  story: Story
-  lorebookEntries: LorebookEntry[]
-  /** Selected, model-clamped input budget in tokens. Always a ladder stop. */
-  contextWindow: number
-}) {
-  const [open, setOpen] = React.useState(false)
-  const context = React.useMemo(
-    () => composeContext({ story, lorebookEntries, contextWindow }),
-    [story, lorebookEntries, contextWindow]
-  )
-  const approxTokens = context.approxTokens
-  // Only while the dialog is open: this runs on every keystroke in the panel
-  // otherwise, to build something nobody is looking at.
-  const breakdown = React.useMemo(
-    () => (open ? describeContext(context, contextWindow) : null),
-    [open, context, contextWindow]
-  )
-
-  const used = formatApproxTokens(approxTokens)
-  const budget = contextWindowLabel(contextWindow)
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        // A button's subtree is presentational, so a progressbar and a readout
-        // nested inside one reach no screen reader. The numbers have to BE the
-        // name, or opening the dialog becomes the only way to hear them.
-        aria-label={`Context used: about ${used} of ${budget} tokens. View the context for the next generation.`}
-        className="block w-full space-y-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-      >
-        <span className="block font-mono text-xs text-muted-foreground tabular-nums">
-          ≈ {used} / {budget} tokens
-        </span>
-        {/* The smallest stops cannot fit the system prompt alone, so the bar can
-            be pinned full (Meter clamps) while the readout above honestly shows
-            the overflow. */}
-        <Meter
-          value={approxTokens / contextWindow}
-          indicatorClassName="transition-[width] duration-200"
-          aria-hidden
-        />
-      </button>
-      <ContextDialog
-        open={open}
-        onOpenChange={setOpen}
-        caption="Context for the next generation"
-        breakdown={breakdown}
+      </ScrollArea>
+      <StatusStrip
+        story={story}
+        lorebookEntries={lorebookEntries}
+        contextWindow={contextWindow}
+        models={models}
+        identity={{ modelId, providerTag, thinking }}
       />
     </>
   )
