@@ -23,6 +23,12 @@ import { cn } from "@/lib/utils"
 import { ContextBar } from "./context-bar"
 import { SECTION_SHADES } from "./section-shades"
 
+/** A whole-number share, floored so it never claims more than is true. */
+function percentOf(part: number, whole: number): string {
+  if (whole <= 0) return "0%"
+  return `${Math.min(100, Math.floor((part / whole) * 100))}%`
+}
+
 /** Exact and grouped: this is the audit line, not the glance. */
 function grouped(count: number): string {
   return count.toLocaleString("en-US")
@@ -79,6 +85,15 @@ export function ContextBreakdownView({
             and cannot be trimmed.
           </p>
         )}
+        {/* What we ASK an upstream cache to keep, not what one kept — the real
+            figure only exists on a call's usage, and printing an estimate
+            beside it as though both were measurements is the mistake the token
+            readout above already avoids. */}
+        <p className="text-xs text-muted-foreground">
+          {percentOf(breakdown.cacheableTokens, breakdown.usedTokens)} of this
+          prompt is a stable prefix — the instructions, memory, always-on lore
+          and the manuscript head — offered to the provider&apos;s cache.
+        </p>
       </div>
 
       <div>

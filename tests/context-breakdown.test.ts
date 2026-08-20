@@ -302,14 +302,21 @@ describe("fit reporting", () => {
   })
 
   test("a share never rounds to a number the sentence contradicts", () => {
-    // One paragraph short of whole must not read "100% fit ... were trimmed".
+    // A manuscript a hair over the window must not read "100% fit ... were
+    // trimmed".
     //
     // systemPrompt is pinned because this case has to land in the narrow band
-    // where exactly one paragraph is trimmed, and the prompt is fixed overhead
+    // where only a little is trimmed, and the prompt is fixed overhead
     // subtracted from the same budget. Left on the default, the row count is
     // really a measurement of how long that prompt happens to be, and rewording
     // it moves the whole manuscript inside the window — which is how this test
     // failed when the default was cut to a third of its size.
+    //
+    // The assertion is on the CONTRADICTION, not on an exact percentage: the
+    // story window advances in whole quanta (see STORY_TRIM_QUANTUM), so how
+    // much of a barely-over manuscript survives is a function of where the
+    // anchor lands, and pinning "99%" would be pinning that arithmetic rather
+    // than the property the sentence has to keep.
     const nearlyWhole = composeContext({
       story: story({
         systemPrompt: "System.",
@@ -326,7 +333,17 @@ describe("fit reporting", () => {
     expect(nearlyWhole.fit.storyCharsKept).toBeLessThan(
       nearlyWhole.fit.storyChars
     )
-    expect(nearlyWholeNote).toContain("99%")
+    expect(nearlyWholeNote).toContain("were trimmed")
+    expect(nearlyWholeNote).not.toContain("100%")
+    // Still recognisably "nearly whole" — a note reading 40% here would mean
+    // the fixture stopped testing the rounding band it was written for. The
+    // bar sits at 0.75 rather than 0.95 because the window's leading edge is
+    // quantized: up to an eighth of the budget is deliberately left unspent
+    // between jumps (see trimQuantum), and that headroom comes out of exactly
+    // this ratio.
+    expect(
+      nearlyWhole.fit.storyCharsKept / nearlyWhole.fit.storyChars
+    ).toBeGreaterThan(0.75)
 
     // …and a sliver of a huge manuscript must not read "0% fit" while prose is
     // demonstrably in the window.

@@ -439,6 +439,8 @@ async function runLoop(run: LiveRun, context: ComposedContext): Promise<void> {
         settings: run.settings,
         key,
         signal: run.upstream.signal,
+        // One story, one upstream provider — see streamCompletion.
+        sessionId: run.storyId,
       })
 
       // Pull the first event BEFORE opening the ledger row: auth/credit/rate

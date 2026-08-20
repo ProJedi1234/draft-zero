@@ -18,7 +18,7 @@ import {
   type ThinkingLevel,
 } from "@/lib/types"
 
-import { renderPrompt } from "./context"
+import { promptSegments, renderPrompt } from "./context"
 import { listModelEndpoints } from "./endpoints"
 import { listModels } from "./models"
 import { resolveSystemPrompt } from "./system-prompt"
@@ -103,20 +103,60 @@ export function providerParam(
 }
 
 /**
+ * The user turn as content parts, with cache breakpoints on the stable ones.
+ *
+ * Concatenating the parts gives renderPrompt(context) byte for byte — that is
+ * asserted in tests/context-caching.test.ts — so splitting the turn up changes
+ * what the PROVIDER is asked to remember and nothing about what the model
+ * reads. The breakpoints go on the head (memory + always-on and
+ * memory-triggered lore) and on the manuscript head, both of which are stable
+ * from one turn to the next; the tail is left unmarked because it is expected
+ * to differ every turn.
+ *
+ * Providers that cache implicitly (OpenAI, Gemini 2.5+, DeepSeek, Grok) ignore
+ * the annotation and simply benefit from the stable prefix. Providers that need
+ * explicit breakpoints (Anthropic, Qwen) read them. A provider that understands
+ * neither sees ordinary text parts.
+ */
+function userContent(
+  context: ComposedContext
+):
+  | string
+  | { type: "text"; text: string; cacheControl?: { type: "ephemeral" } }[] {
+  const segments = promptSegments(context)
+  // A single unmarked segment is just a string — no reason to send the more
+  // elaborate shape when there is nothing to annotate.
+  if (!segments.some((segment) => segment.cache)) return renderPrompt(context)
+  return segments.map((segment) => ({
+    type: "text" as const,
+    text: segment.text,
+    ...(segment.cache ? { cacheControl: { type: "ephemeral" as const } } : {}),
+  }))
+}
+
+/**
  * Streams a continuation as GenerationEvents. Two messages: the narrator
- * instructions as a real system turn, and renderPrompt(context) VERBATIM as the
- * user turn — the same pure function the ContextMeter uses, so the tokens the
- * writer sees are the tokens sent. Throws before the first yield for pre-stream
- * errors (401, 402, 429, ...) so the run loop can end the run with a real
- * message before any ledger row exists.
+ * instructions as a real system turn, and the composed context as the user
+ * turn — split into cache-annotated parts that concatenate back to
+ * renderPrompt(context) exactly, so the tokens the writer sees in the meter are
+ * still the tokens sent. Throws before the first yield for pre-stream errors
+ * (401, 402, 429, ...) so the run loop can end the run with a real message
+ * before any ledger row exists.
  */
 export async function* streamCompletion(opts: {
   context: ComposedContext
   settings: GenerationSettings
   key: string
   signal: AbortSignal
+  /**
+   * The story, used only as OpenRouter's `session_id`: it pins a story's
+   * requests to one upstream provider so the cache written on the last turn is
+   * still there to read on this one. Auto routing is otherwise free to move
+   * between equivalent endpoints, and a cache entry does not follow.
+   */
+  sessionId?: string
 }): AsyncGenerator<GenerationEvent> {
-  const { context, settings, key, signal } = opts
+  const { context, settings, key, signal, sessionId } = opts
   const core = new OpenRouterCore({ apiKey: key, appTitle: "draft-zero" })
   // Both catalogs are cached per process, so these are lookups rather than
   // round-trips on the hot path. The endpoint list is only needed when the story
@@ -146,7 +186,7 @@ export async function* streamCompletion(opts: {
             role: "system",
             content: resolveSystemPrompt(context.systemPrompt),
           },
-          { role: "user", content: renderPrompt(context) },
+          { role: "user", content: userContent(context) },
         ],
         temperature: settings.temperature,
         topP: settings.topP,
@@ -156,6 +196,7 @@ export async function* streamCompletion(opts: {
         seed: context.seed,
         reasoning,
         provider,
+        ...(sessionId ? { sessionId } : {}),
         stream: true,
       },
     },
