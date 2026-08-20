@@ -15,59 +15,10 @@ import type { GenerationSettings } from "@/lib/types"
 import { listModels } from "@/lib/generation/models"
 import { reasoningParam } from "@/lib/generation/openrouter"
 import type { ComposedContext } from "@/lib/generation/types"
-
-/**
- * What the model is asked for.
- *
- * The rules exist because prose and image prompts fail in opposite directions.
- * A passage is mostly interiority, dialogue and named people; an image model
- * can draw none of those and will happily invent a face for a name it has never
- * seen. So: no names, physical description instead, and one visible moment
- * rather than a summary of the scene's meaning.
- *
- * "No style, no medium" is the load-bearing line. Art direction belongs to the
- * image profile, and a model left to its own devices appends "digital art,
- * trending on artstation" to everything — which would then be baked into the
- * prompt the writer edits, in a field that is supposed to hold only the scene.
- */
-const SYSTEM_PROMPT = `You turn a scene from a story into a single image prompt.
-
-Rules:
-- Describe ONE visible moment: subjects, setting, time of day, light, weather, mood.
-- Never use proper nouns. Describe people by appearance, age and dress instead.
-- Only what a camera could see. No thoughts, no dialogue, no backstory, no plot.
-- No art style, no medium, no artist names, no quality words.
-- One or two sentences. Around 40 words, and never more than 70.
-- No preamble, no quotes, no bullet list, no explanation of your choices.
-
-Reply with the prompt and nothing else.`
-
-/**
- * The user turn: the story as it currently stands, trimmed by the caller.
- *
- * Memory and lore ride along because a passage on its own routinely cannot say
- * what it looks like — "she stepped inside" names neither the woman nor the
- * room, and the lorebook is the only thing that does.
- */
-export function renderDerivationPrompt(context: ComposedContext): string {
-  const parts: string[] = []
-  if (context.memory.trim() !== "") {
-    parts.push(`Setting notes:\n${context.memory.trim()}`)
-  }
-  if (context.lore.length > 0) {
-    parts.push(
-      "Relevant details:\n" +
-        context.lore
-          .map((entry) => `- ${entry.name}: ${entry.content}`)
-          .join("\n")
-    )
-  }
-  parts.push(`Recent story:\n${context.storyText.trim()}`)
-  parts.push(
-    "Write the image prompt for the moment the story has just reached."
-  )
-  return parts.join("\n\n")
-}
+import {
+  DERIVATION_SYSTEM_PROMPT,
+  renderDerivationPrompt,
+} from "@/lib/images/derivation-prompt"
 
 export interface DerivationEvent {
   type: "text" | "done"
@@ -124,7 +75,7 @@ export async function* streamDerivation(opts: {
       chatRequest: {
         model: settings.modelId,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: DERIVATION_SYSTEM_PROMPT },
           { role: "user", content: renderDerivationPrompt(context) },
         ],
         // The story's temperature is about prose voice. A description of what
