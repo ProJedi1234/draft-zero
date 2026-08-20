@@ -17,7 +17,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Meter } from "@/components/ui/meter"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -208,18 +207,8 @@ function InspectorSections({
     hold: draggingWindow,
     version: story.updatedAt,
   })
-  const [titleEmpty, setTitleEmpty] = React.useState(false)
   const [, startTransition] = React.useTransition()
 
-  const titleSave = useAutosave((value: string) =>
-    updateStoryMeta(story.id, { title: value })
-  )
-  const descriptionSave = useAutosave((value: string) =>
-    updateStoryMeta(story.id, { description: value })
-  )
-  const genreSave = useAutosave((value: string) =>
-    updateStoryMeta(story.id, { genre: value })
-  )
   const memorySave = useAutosave((value: string) =>
     updateStoryMeta(story.id, { memory: value })
   )
@@ -230,28 +219,10 @@ function InspectorSections({
     updateStoryMeta(story.id, { systemPrompt: value })
   )
 
-  const titleRef = React.useRef<HTMLInputElement>(null)
-  const descriptionRef = React.useRef<HTMLTextAreaElement>(null)
-  const genreRef = React.useRef<HTMLInputElement>(null)
   const memoryRef = React.useRef<HTMLTextAreaElement>(null)
   const authorsNoteRef = React.useRef<HTMLTextAreaElement>(null)
   const systemPromptRef = React.useRef<HTMLTextAreaElement>(null)
 
-  const titleField = useServerSyncedField(
-    titleRef,
-    story.title,
-    titleSave.status
-  )
-  const descriptionField = useServerSyncedField(
-    descriptionRef,
-    story.description,
-    descriptionSave.status
-  )
-  const genreField = useServerSyncedField(
-    genreRef,
-    story.genre,
-    genreSave.status
-  )
   const memoryField = useServerSyncedField(
     memoryRef,
     story.memory,
@@ -646,87 +617,6 @@ function InspectorSections({
         />
 
         <Separator />
-
-        <div className="space-y-2">
-          <Label htmlFor={`${uid}-title`}>Title</Label>
-          <Input
-            id={`${uid}-title`}
-            ref={titleRef}
-            defaultValue={story.title}
-            aria-invalid={titleEmpty || undefined}
-            placeholder="Untitled Story"
-            onChange={(event) => {
-              const next = event.target.value
-              const empty = next.trim() === ""
-              setTitleEmpty(empty)
-              if (empty) {
-                // An empty title is rejected by the action, and the half-deleted
-                // value still sitting in the debounce must not outlive it —
-                // blur (or navigation) would otherwise persist "S".
-                titleSave.cancel()
-                return
-              }
-              // What the row will hold, not what was typed: updateStoryMeta
-              // trims, and an echo that can never match would latch the field
-              // shut against every later rename.
-              titleField.markWritten(next.trim())
-              titleSave.schedule(next)
-            }}
-            onBlur={() => {
-              const el = titleRef.current
-              if (el && el.value.trim() === "") {
-                // Nothing was saved for the empty value: put the stored title
-                // back so the field, the header and the library agree.
-                titleField.restore(story.title)
-                setTitleEmpty(false)
-                return
-              }
-              titleSave.flush()
-            }}
-          />
-          <p className="text-xs text-muted-foreground">
-            {titleEmpty
-              ? "A title is required."
-              : "Shown in the library and the story header."}
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor={`${uid}-description`}>Description</Label>
-          <Textarea
-            id={`${uid}-description`}
-            ref={descriptionRef}
-            defaultValue={story.description}
-            className="min-h-16"
-            placeholder="A sentence or two about this story…"
-            onChange={(event) => {
-              descriptionField.markWritten(event.target.value)
-              descriptionSave.schedule(event.target.value)
-            }}
-            onBlur={() => descriptionSave.flush()}
-          />
-          <p className="text-xs text-muted-foreground">
-            The pitch shown beside the story in the library.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor={`${uid}-genre`}>Genre</Label>
-          <Input
-            id={`${uid}-genre`}
-            ref={genreRef}
-            defaultValue={story.genre}
-            placeholder="Literary fiction"
-            onChange={(event) => {
-              genreField.markWritten(event.target.value)
-              genreSave.schedule(event.target.value)
-            }}
-            onBlur={() => genreSave.flush()}
-          />
-          <p className="text-xs text-muted-foreground">
-            Used for the library badge and search.
-          </p>
-        </div>
 
         <div className="space-y-2">
           <Label htmlFor={`${uid}-memory`}>Memory</Label>

@@ -15,6 +15,7 @@ import { formatWordCount } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useSaveStatus } from "@/hooks/use-autosave"
 import { CostChip } from "@/components/cost/cost-chip"
+import { StoryDetailsDialog } from "@/components/story/story-details-dialog"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import {
@@ -91,11 +92,32 @@ export function StoryHeader({
 }) {
   const inspectorLabel = inspectorOpen ? "Hide inspector" : "Show inspector"
   const span = useGeneratedSpan(story)
+  const [detailsOpen, setDetailsOpen] = React.useState(false)
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
       <SidebarTrigger />
-      <h1 className="truncate text-sm font-medium">{story.title}</h1>
+      {/* The title is the door to the story's library metadata — the fields
+          used to be in the inspector, and clicking the thing you want to edit
+          beats hunting for the field that edits it. The button sits INSIDE the
+          h1: a heading is not phrasing content, so the other nesting is invalid
+          and strips the landmark from the accessibility tree. */}
+      <h1 className="min-w-0 truncate text-sm font-medium">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={() => setDetailsOpen(true)}
+                className="max-w-full truncate rounded-sm text-left outline-none hover:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+              />
+            }
+          >
+            {story.title}
+          </TooltipTrigger>
+          <TooltipContent>Edit story details</TooltipContent>
+        </Tooltip>
+      </h1>
       <span className="hidden text-xs text-muted-foreground sm:inline">
         {formatWordCount(story.wordCount)}
       </span>
@@ -149,6 +171,14 @@ export function StoryHeader({
         </TooltipTrigger>
         <TooltipContent>{inspectorLabel}</TooltipContent>
       </Tooltip>
+      <StoryDetailsDialog
+        storyId={story.id}
+        title={story.title}
+        description={story.description}
+        genre={story.genre}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+      />
     </header>
   )
 }

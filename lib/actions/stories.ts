@@ -63,26 +63,6 @@ export async function createStory(input?: {
   return { ok: true, data: { id } }
 }
 
-export async function renameStory(
-  id: string,
-  title: string
-): Promise<ActionResult> {
-  const trimmed = title.trim()
-  if (trimmed === "") return { ok: false, error: "Title can't be empty." }
-
-  const db = await getDb()
-  const updated = await db
-    .update(stories)
-    .set({ title: trimmed, updatedAt: new Date().toISOString() })
-    .where(eq(stories.id, id))
-    .returning({ id: stories.id })
-
-  if (updated.length === 0) return { ok: false, error: "Story not found." }
-
-  commitChange(id)
-  return { ok: true, data: null }
-}
-
 /** Patch any of the story text-metadata fields. Only supplied keys are written. */
 export async function updateStoryMeta(
   id: string,

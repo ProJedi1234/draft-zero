@@ -48,8 +48,7 @@ import type { SaveStatus } from "@/hooks/use-autosave"
 
 /**
  * A DB-backed text field that is uncontrolled after mount but still reconciles
- * when the value changes *somewhere else* — another device, the sidebar's
- * Rename dialog editing the same column as the Title field, or the mobile sheet
+ * when the value changes *somewhere else* — another device, or the mobile sheet
  * mounting a second copy of every field while the desktop panel stays mounted
  * behind it.
  *
