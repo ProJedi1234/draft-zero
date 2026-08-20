@@ -15,7 +15,7 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm"
 import type { DrizzleDb, DrizzleTx } from "@/lib/db/client"
 import { getDb } from "@/lib/db/client"
 import { recordOp } from "@/lib/db/journal"
-import { toStoryEntry } from "@/lib/db/mappers"
+import { slotProfilesMixed, toStoryEntry } from "@/lib/db/mappers"
 import type { StoryEntryRow } from "@/lib/db/schema"
 import { generationCalls, stories, storyEntries } from "@/lib/db/schema"
 import type {
@@ -213,7 +213,10 @@ export async function appendEntryCore(
 
   return {
     ok: true,
-    data: { entry: toStoryEntry(row, { index: 0, count: 1 }) },
+    data: {
+      // A slot of one cannot disagree with itself about what wrote it.
+      entry: toStoryEntry(row, { index: 0, count: 1, profilesMixed: false }),
+    },
   }
 }
 
@@ -254,6 +257,9 @@ async function appendRetryTakeCore(
           variantIndex: storyEntries.variantIndex,
           isActive: storyEntries.isActive,
           deletedAt: storyEntries.deletedAt,
+          // Only so the returned entry can say whether this slot's takes now
+          // disagree about which profile wrote them; see slotProfilesMixed.
+          genProfileName: storyEntries.genProfileName,
         })
         .from(storyEntries)
         .where(
@@ -277,7 +283,8 @@ async function appendRetryTakeCore(
         (highest, take) => Math.max(highest, take.variantIndex),
         0
       )
-      const liveCount = takes.filter((take) => take.deletedAt === null).length
+      const liveTakes = takes.filter((take) => take.deletedAt === null)
+      const liveCount = liveTakes.length
 
       const row: StoryEntryRow = {
         id,
@@ -323,6 +330,7 @@ async function appendRetryTakeCore(
           entry: toStoryEntry(row, {
             index: liveCount,
             count: liveCount + 1,
+            profilesMixed: slotProfilesMixed([...liveTakes, row]),
           }),
         },
       }

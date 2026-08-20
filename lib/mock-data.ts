@@ -35,6 +35,7 @@ function proseEntry(
     | "variantGroupId"
     | "variantIndex"
     | "variantCount"
+    | "variantProfilesMixed"
     | "generation"
     | "costUsd"
     | "reasoningTokens"
@@ -48,6 +49,7 @@ function proseEntry(
     variantGroupId: entry.id,
     variantIndex: 0,
     variantCount: 1,
+    variantProfilesMixed: false,
     generation: null,
     costUsd: null,
     reasoningTokens: null,
