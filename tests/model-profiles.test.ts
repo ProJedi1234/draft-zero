@@ -31,6 +31,7 @@ const CUSTOM: GenerationSettings = {
   topP: 0.8,
   maxTokens: 512,
   contextWindow: 4096,
+  loreBudget: 25,
   frequencyPenalty: 0.4,
   presencePenalty: -0.2,
 }
@@ -41,6 +42,7 @@ const DEFAULTS: GenerationDefaults = {
   topP: 0.5,
   maxTokens: 256,
   contextWindow: 2048,
+  loreBudget: 25,
   frequencyPenalty: -1,
   presencePenalty: -1,
 }
@@ -53,6 +55,7 @@ const PROFILE_SETTINGS: GenerationSettings = {
   topP: 0.95,
   maxTokens: 2048,
   contextWindow: 8192,
+  loreBudget: 25,
   frequencyPenalty: 0,
   presencePenalty: 0,
 }
@@ -86,6 +89,7 @@ describe("resolveProfileSettings", () => {
       topP: null,
       maxTokens: null,
       contextWindow: null,
+      loreBudget: null,
       frequencyPenalty: null,
       presencePenalty: null,
     }

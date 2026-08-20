@@ -13,7 +13,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import type { ModelSettings } from "@/hooks/use-model-settings"
-import type { ModelProfile, OpenRouterModel, Story } from "@/lib/types"
+import {
+  LORE_BUDGET_MAX,
+  LORE_BUDGET_MIN,
+  LORE_BUDGET_STEP,
+  type ModelProfile,
+  type OpenRouterModel,
+  type Story,
+} from "@/lib/types"
 
 /**
  * What runs the story: the profile it follows, or — in Custom mode — the model,
@@ -129,6 +136,17 @@ export function ModelSection({
                     else settings.resetContextWindow(previous)
                   })
                 }}
+              />
+              <SettingSlider
+                storyId={story.id}
+                version={story.updatedAt}
+                field="loreBudget"
+                label="Lore budget"
+                serverValue={story.settings.loreBudget}
+                min={LORE_BUDGET_MIN}
+                max={LORE_BUDGET_MAX}
+                step={LORE_BUDGET_STEP}
+                formatReadout={(value) => `${value}%`}
               />
               <SettingSlider
                 storyId={story.id}

@@ -32,6 +32,7 @@ export function resolveProfileSettings(
     topP: settings.topP ?? defaults.topP,
     maxTokens: settings.maxTokens ?? defaults.maxTokens,
     contextWindow: settings.contextWindow ?? defaults.contextWindow,
+    loreBudget: settings.loreBudget ?? defaults.loreBudget,
     frequencyPenalty: settings.frequencyPenalty ?? defaults.frequencyPenalty,
     presencePenalty: settings.presencePenalty ?? defaults.presencePenalty,
   }
@@ -82,6 +83,7 @@ export function customColumnsFromSettings(settings: GenerationSettings): {
   topP: number
   maxTokens: number
   contextWindow: number
+  loreBudget: number
   frequencyPenalty: number
   presencePenalty: number
 } {
@@ -94,6 +96,7 @@ export function customColumnsFromSettings(settings: GenerationSettings): {
     topP: settings.topP,
     maxTokens: settings.maxTokens,
     contextWindow: settings.contextWindow,
+    loreBudget: settings.loreBudget,
     frequencyPenalty: settings.frequencyPenalty,
     presencePenalty: settings.presencePenalty,
   }

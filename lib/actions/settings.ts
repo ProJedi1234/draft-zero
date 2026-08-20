@@ -10,6 +10,7 @@ import { getAppSettings } from "@/lib/db/queries"
 import { appSettings } from "@/lib/db/schema"
 import { resolveOpenRouterKey } from "@/lib/generation/key"
 import {
+  clampLoreBudget,
   isContextWindow,
   REASONING_EFFORTS,
   type ActionResult,
@@ -74,6 +75,9 @@ export async function updateGenerationDefaults(
       return { ok: false, error: "Unsupported context window." }
     }
     values.defaultContextWindow = patch.contextWindow
+  }
+  if (patch.loreBudget !== undefined) {
+    values.defaultLoreBudget = clampLoreBudget(patch.loreBudget)
   }
   if (patch.frequencyPenalty !== undefined)
     values.defaultFrequencyPenalty = patch.frequencyPenalty

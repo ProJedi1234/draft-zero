@@ -268,6 +268,27 @@ export function isContextWindow(value: number): value is ContextWindow {
 }
 
 /**
+ * Bounds for the lore budget share, as a percentage of the free context.
+ *
+ * The ceiling is 50 rather than 100 deliberately: prose is what the model
+ * continues from, and a lorebook allowed to claim the whole window could starve
+ * the manuscript out of its own prompt. A writer who wants more than half the
+ * context spent on lore wants a bigger context, not a bigger share.
+ */
+export const LORE_BUDGET_MIN = 0
+export const LORE_BUDGET_MAX = 50
+export const LORE_BUDGET_STEP = 5
+/** The share lore claimed back when it was a hard-coded constant. */
+export const DEFAULT_LORE_BUDGET = 25
+
+/** Clamps to the slider's own range and step — the server-side write guard. */
+export function clampLoreBudget(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_LORE_BUDGET
+  const stepped = Math.round(value / LORE_BUDGET_STEP) * LORE_BUDGET_STEP
+  return Math.min(LORE_BUDGET_MAX, Math.max(LORE_BUDGET_MIN, stepped))
+}
+
+/**
  * Largest ladder stop the model can actually accept.
  *
  * `contextLength` of 0 means "model unknown to the catalog" — we cannot prove
@@ -309,6 +330,17 @@ export interface GenerationDefaults {
    * versa. Always one of CONTEXT_WINDOWS.
    */
   contextWindow: number
+  /**
+   * Percentage (0–50) of the free context budget the lorebook may claim before
+   * story prose takes the rest. Whatever lore does not spend flows back to
+   * prose, so this is a ceiling rather than a reservation.
+   *
+   * A setting rather than the constant it used to be because the right answer
+   * is per-story: a dense worldbuilding lorebook wants far more of the window
+   * than a character piece whose lore is three entries long, and the writer is
+   * the only one who knows which they are writing.
+   */
+  loreBudget: number
   /** Range -2–2. */
   frequencyPenalty: number
   /** Range -2–2. */
@@ -321,6 +353,7 @@ export const GENERATION_DEFAULT_KEYS = [
   "topP",
   "maxTokens",
   "contextWindow",
+  "loreBudget",
   "frequencyPenalty",
   "presencePenalty",
 ] as const satisfies readonly (keyof GenerationDefaults)[]

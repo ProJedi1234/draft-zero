@@ -35,6 +35,9 @@ import {
 import {
   clampContextWindow,
   endpointForTag,
+  LORE_BUDGET_MAX,
+  LORE_BUDGET_MIN,
+  LORE_BUDGET_STEP,
   type GenerationDefaults,
   type GenerationOverrides,
   type ModelProfile,
@@ -131,6 +134,7 @@ function blankSettings(models: OpenRouterModel[]): ProfileSettings {
     topP: null,
     maxTokens: null,
     contextWindow: null,
+    loreBudget: null,
     frequencyPenalty: null,
     presencePenalty: null,
   }
@@ -389,6 +393,15 @@ function ProfileEditorForm({
                 }
                 onValueChange={(next) => patch({ contextWindow: next })}
                 onValueCommitted={(next) => patch({ contextWindow: next })}
+              />
+              <SliderField
+                label="Lore budget"
+                {...inherit("loreBudget")}
+                min={LORE_BUDGET_MIN}
+                max={LORE_BUDGET_MAX}
+                step={LORE_BUDGET_STEP}
+                formatReadout={(value) => `${value}%`}
+                onValueChange={(loreBudget) => patch({ loreBudget })}
               />
               <SliderField
                 label="Frequency penalty"

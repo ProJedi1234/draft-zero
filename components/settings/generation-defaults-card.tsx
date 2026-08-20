@@ -15,9 +15,18 @@ import {
 import { useDragHold } from "@/hooks/use-drag-hold"
 import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { updateGenerationDefaults } from "@/lib/actions/settings"
-import { CONTEXT_WINDOWS, type GenerationDefaults } from "@/lib/types"
+import {
+  CONTEXT_WINDOWS,
+  LORE_BUDGET_MAX,
+  LORE_BUDGET_MIN,
+  LORE_BUDGET_STEP,
+  type GenerationDefaults,
+} from "@/lib/types"
 
 const FALLBACK_ERROR = "Couldn't save the defaults."
+
+/** Percentages read as percentages; a bare "25" beside a slider is ambiguous. */
+const formatPercent = (value: number) => `${value}%`
 
 /**
  * The sampling every profile falls back to, field by field.
@@ -67,6 +76,16 @@ export function GenerationDefaultsCard({
           step={128}
         />
         <DefaultContextWindow serverValue={defaults.contextWindow} />
+        <DefaultSlider
+          field="loreBudget"
+          label="Lore budget"
+          serverValue={defaults.loreBudget}
+          min={LORE_BUDGET_MIN}
+          max={LORE_BUDGET_MAX}
+          step={LORE_BUDGET_STEP}
+          formatReadout={formatPercent}
+          hint="Share of the free context the lorebook may claim. Whatever it doesn't spend goes to story prose."
+        />
         <DefaultSlider
           field="frequencyPenalty"
           label="Frequency penalty"
@@ -136,6 +155,8 @@ function DefaultSlider({
   min,
   max,
   step,
+  formatReadout,
+  hint,
 }: {
   field: keyof GenerationDefaults
   label: string
@@ -143,6 +164,8 @@ function DefaultSlider({
   min: number
   max: number
   step: number
+  formatReadout?: (value: number) => string
+  hint?: string
 }) {
   const { value, setLocal, commit, dragProps } = useDefaultField(
     field,
@@ -157,6 +180,8 @@ function DefaultSlider({
       step={step}
       onValueChange={setLocal}
       onValueCommitted={commit}
+      formatReadout={formatReadout}
+      hint={hint}
       dragProps={dragProps}
     />
   )

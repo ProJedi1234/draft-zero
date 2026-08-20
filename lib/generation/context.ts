@@ -19,13 +19,6 @@ import type {
  * below therefore budgets in characters and only converts once, at the top.
  */
 const CHARS_PER_TOKEN = 4
-/**
- * Share of the free budget lore may claim before prose gets the rest. 0.25
- * reproduces the old fixed split (8k lore against 24k prose) at the default
- * window, so existing stories compose roughly as they always did. Anything lore
- * does not spend flows back to prose, which is what matters at the small stops.
- */
-const LORE_BUDGET_SHARE = 0.25
 /** Paragraphs are separated by a blank line everywhere in the app. */
 const PARAGRAPH_SEPARATOR = "\n\n"
 /** Stands in for the story text when there is none, so the turn is never empty. */
@@ -110,8 +103,8 @@ function trimLore(
  * Allocation, in priority order: the system prompt, memory and author's note
  * are fixed overhead — they are short, the writer chose them deliberately, and
  * dropping them changes the model's job rather than its recall. Whatever is
- * left after that goes to lore (greedy, priority order, capped at its share)
- * and then to story prose, which absorbs both the prose share and lore's
+ * left after that goes to lore (greedy, priority order, capped at the story's
+ * loreBudget share) and then to story prose, which absorbs both the prose share and lore's
  * leftovers.
  *
  * The overhead is *measured*, not hand-counted: we render a probe context with
@@ -130,9 +123,12 @@ export function composeContext(input: {
    * committed; this function stays pure and never looks a model up itself.
    */
   contextWindow?: number
+  /** Lore share override, same reason as contextWindow: a live slider. */
+  loreBudget?: number
 }): ComposedContext {
   const { story, lorebookEntries, variant = 0 } = input
   const contextWindow = input.contextWindow ?? story.settings.contextWindow
+  const loreBudget = input.loreBudget ?? story.settings.loreBudget
 
   const matches = matchActiveLorebookEntries(
     lorebookEntries,
@@ -168,7 +164,7 @@ export function composeContext(input: {
 
   const { kept, used } = trimLore(
     activeLore,
-    Math.floor(remaining * LORE_BUDGET_SHARE)
+    Math.floor((remaining * loreBudget) / 100)
   )
   context.lore = kept
   // Markers are applied before budgeting, so `fit` counts the same chars the

@@ -1,7 +1,7 @@
 // lib/mock-data.ts — Hardcoded fixture data for the static-scaffolding milestone.
 // Nothing here persists; nothing here calls a network.
 
-import { DEFAULT_CONTEXT_WINDOW } from "./types"
+import { DEFAULT_CONTEXT_WINDOW, DEFAULT_LORE_BUDGET } from "./types"
 import type {
   GenerationSettings,
   LorebookCategory,
@@ -342,6 +342,9 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   providerTag: null,
   temperature: 0.9,
   topP: 0.95,
+  // The share the lorebook may claim of the free context — what the old
+  // hard-coded constant was, so a new story composes as stories always have.
+  loreBudget: DEFAULT_LORE_BUDGET,
   // A hard ceiling on the runaway case, not a target. The system prompt asks
   // for a single paragraph; this is what stops a model that ignores it from
   // filling most of a page before the writer can reach Stop. Sized for a
@@ -726,6 +729,7 @@ export const MOCK_STORIES: Story[] = [
       providerTag: null,
       temperature: 0.9,
       topP: 0.95,
+      loreBudget: DEFAULT_LORE_BUDGET,
       maxTokens: 1024,
       contextWindow: 16384,
       frequencyPenalty: 0.15,
@@ -790,6 +794,7 @@ export const MOCK_STORIES: Story[] = [
       providerTag: null,
       temperature: 1.1,
       topP: 0.9,
+      loreBudget: DEFAULT_LORE_BUDGET,
       maxTokens: 800,
       contextWindow: 8192,
       frequencyPenalty: 0.3,
@@ -848,6 +853,7 @@ export const MOCK_STORIES: Story[] = [
       providerTag: null,
       temperature: 0.8,
       topP: 0.98,
+      loreBudget: DEFAULT_LORE_BUDGET,
       maxTokens: 1200,
       contextWindow: 12288,
       frequencyPenalty: 0.1,
@@ -938,6 +944,7 @@ export const MOCK_STORIES: Story[] = [
       providerTag: null,
       temperature: 0.9,
       topP: 0.95,
+      loreBudget: DEFAULT_LORE_BUDGET,
       maxTokens: 1024,
       contextWindow: 8192,
       frequencyPenalty: 0.15,
