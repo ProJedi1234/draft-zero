@@ -1,0 +1,1 @@
+ALTER TABLE "story_entries" ADD COLUMN "gen_profile_name" text;

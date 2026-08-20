@@ -62,6 +62,13 @@ export interface LiveRun {
   readonly turnId: string | null
   readonly variantGroupId: string | undefined
   readonly settings: GenerationSettings
+  /**
+   * The profile the settings above came from, or null for a story's own Custom
+   * columns. Carried separately because `settings` is the resolved bundle and
+   * says nothing about where it came from — and the take this run persists is
+   * the only place that provenance is ever written down.
+   */
+  readonly profileName: string | null
   /** The ledger row, once one is opened. Stays null on the offline mock. */
   callId: string | null
   /** The snapshot: everything streamed so far, compressed. */
@@ -241,6 +248,7 @@ export interface LaunchOpts {
   variantGroupId?: string
   context: ComposedContext
   settings: GenerationSettings
+  profileName: string | null
 }
 
 /**
@@ -263,6 +271,7 @@ export function launchRun(opts: LaunchOpts): { runId: string } | null {
     turnId: opts.turnId,
     variantGroupId: opts.variantGroupId,
     settings: opts.settings,
+    profileName: opts.profileName,
     callId: null,
     text: "",
     reasoningChars: 0,
@@ -555,6 +564,7 @@ async function finishRun(
       modelId: run.settings.modelId,
       thinking: run.settings.thinking,
       temperature: run.settings.temperature,
+      profileName: run.profileName,
       promptTokens: run.usage?.promptTokens ?? null,
       completionTokens: run.usage?.completionTokens ?? null,
     }

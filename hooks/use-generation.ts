@@ -145,6 +145,8 @@ interface StartOptions {
   removing?: string[]
   /** Which move this is, recorded on the spend ledger row. */
   requestKind?: GenerationRequestKind
+  /** Run this one passage under a named profile; see startGeneration. */
+  profileId?: string
   /** Composer text to hand back if the dispatch fails before the server owns it. */
   restoreOnFailure?: string
 }
@@ -179,7 +181,13 @@ export interface GenerationController {
   /** Returns true when the text was accepted (composer clears on true). */
   send: (text: string, kind: ActionKind) => boolean
   continueStory: () => void
-  retryLast: () => void
+  /**
+   * Regenerates the last passage. `profileId` runs this take under that profile
+   * instead of the story's settings, for this take only — omit it for the plain
+   * retry. Never wire this straight to an onClick: the event would arrive as
+   * the id.
+   */
+  retryLast: (profileId?: string) => void
   undo: () => void
   redo: () => void
   stop: () => void
@@ -745,6 +753,7 @@ export function useGeneration(
             variantGroupId: options.variantGroupId,
             removingEntryIds: options.removing,
             requestKind: options.requestKind ?? DEFAULT_REQUEST_KIND,
+            profileId: options.profileId,
           })
 
           if (!res.ok) {
@@ -837,17 +846,21 @@ export function useGeneration(
   // Only the LAST passage can be retried, in place: the new take joins the slot
   // the old one occupies. No retry-from-here any more — rewriting the middle
   // would branch the manuscript.
-  const retryLast = React.useCallback(() => {
-    const last = entries[entries.length - 1]
-    if (!last || last.source !== "generated") return
-    start({
-      requestKind: "retry",
-      variantGroupId: last.variantGroupId,
-      // The old take goes inactive, dropping out of `story.entries` as a
-      // delete did, so `stillRemoving` retires this id on its own.
-      removing: [last.id],
-    })
-  }, [entries, start])
+  const retryLast = React.useCallback(
+    (profileId?: string) => {
+      const last = entries[entries.length - 1]
+      if (!last || last.source !== "generated") return
+      start({
+        requestKind: "retry",
+        variantGroupId: last.variantGroupId,
+        // The old take goes inactive, dropping out of `story.entries` as a
+        // delete did, so `stillRemoving` retires this id on its own.
+        removing: [last.id],
+        profileId,
+      })
+    },
+    [entries, start]
+  )
 
   // History moves, not entry moves: what they reverse might be an edit or a
   // take switch, so there is nothing sensible to hide locally and the

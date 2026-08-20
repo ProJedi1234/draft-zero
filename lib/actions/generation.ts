@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache"
 
 import { nextTakeVariant } from "@/lib/db/entry-writes"
-import { getStory, listLorebookEntries } from "@/lib/db/queries"
+import {
+  getGenerationDefaults,
+  getStory,
+  listLorebookEntries,
+  listModelProfiles,
+} from "@/lib/db/queries"
 import { composeContext } from "@/lib/generation/context"
 import { listModelEndpoints } from "@/lib/generation/endpoints"
 import {
@@ -13,6 +18,7 @@ import {
   stopRun,
 } from "@/lib/generation/live"
 import { listModels } from "@/lib/generation/models"
+import { resolveProfileSettings } from "@/lib/generation/resolve"
 import { touchStory } from "@/lib/sync/bus"
 import {
   clampContextWindow,
@@ -60,6 +66,14 @@ export async function startGeneration(
     /** Ids the run supersedes (retry's old take) — echoed on the RunFrame for late attachers. */
     removingEntryIds?: string[]
     requestKind?: GenerationRequestKind
+    /**
+     * Generate this one passage under a named profile instead of the story's
+     * own settings. Nothing is written back to the story row: a writer trying
+     * another model on a paragraph is asking a question about the paragraph,
+     * not changing what the story follows — the inspector stays the only place
+     * that changes. Retry is the only move that offers it today.
+     */
+    profileId?: string
   }
 ): Promise<ActionResult<{ runId: string; userEntryId: string | null }>> {
   // The claim, not a courtesy check: reserveRun answers "busy" and takes the
@@ -95,26 +109,46 @@ export async function startGeneration(
       touchStory(storyId)
     }
 
-    const [story, lorebookEntries, models] = await Promise.all([
+    const [story, lorebookEntries, models, profiles] = await Promise.all([
       getStory(storyId),
       listLorebookEntries(storyId),
       // Cached for an hour in-process, so this is nearly free — see models.ts.
       listModels(),
+      listModelProfiles(),
     ])
-    // Only fetched when the story pins a provider, and cached five minutes per
-    // model when it does — see endpoints.ts.
-    const endpoints =
-      story?.settings.providerTag == null
-        ? []
-        : await listModelEndpoints(story.settings.modelId)
 
     if (!story) return { ok: false, error: "Story not found." }
 
+    // The profile this ONE request runs under: the one the caller picked, or
+    // the one the story follows. A picked id that names nothing is refused
+    // rather than quietly falling back to the story's settings — the writer
+    // asked for a specific model, and generating under a different one is a
+    // worse answer than not generating at all.
+    const picked =
+      opts.profileId === undefined
+        ? null
+        : (profiles.find((profile) => profile.id === opts.profileId) ?? null)
+    if (opts.profileId !== undefined && !picked) {
+      return { ok: false, error: "That profile is no longer available." }
+    }
+
     // `story.settings` is already EFFECTIVE — getStory resolved it through the
-    // followed profile (see resolveGenerationSettings), so everything from the
-    // endpoint fetch above down to the run's settings is about the profile's
-    // model when the story follows one, and about the story's own columns only
-    // when it is Custom. The clamp below then applies to whichever it was.
+    // followed profile (see resolveGenerationSettings) — so it is the right
+    // base for every request except one made under a picked profile, which is
+    // resolved here against the same global defaults getStory would have used.
+    // Either way the story's own columns are only ever READ.
+    const effective = picked
+      ? resolveProfileSettings(picked.settings, await getGenerationDefaults())
+      : story.settings
+
+    // Only fetched when the request pins a provider, and cached five minutes
+    // per model when it does — see endpoints.ts. Against the EFFECTIVE model:
+    // a picked profile routinely names a different one than the story does.
+    const endpoints =
+      effective.providerTag == null
+        ? []
+        : await listModelEndpoints(effective.modelId)
+
     //
     // The stored window can exceed what the selected model accepts: the catalog
     // is live, so a row written against a bigger model (or against MOCK_MODELS,
@@ -127,14 +161,23 @@ export async function startGeneration(
     // A pinned endpoint's window wins over the model's: a third-party host often
     // serves a shorter one, and it is the host that will reject the request.
     const settings: GenerationSettings = {
-      ...story.settings,
+      ...effective,
       contextWindow: clampContextWindow(
-        story.settings.contextWindow,
-        endpointForTag(endpoints, story.settings.providerTag)?.contextLength ??
-          models.find((m) => m.id === story.settings.modelId)?.contextLength ??
+        effective.contextWindow,
+        endpointForTag(endpoints, effective.providerTag)?.contextLength ??
+          models.find((m) => m.id === effective.modelId)?.contextLength ??
           0
       ),
     }
+
+    // What the take will say wrote it. The story's own profile answers for an
+    // ordinary generation, so a manuscript records which profile each passage
+    // came from even when nobody ever picks one; null is a Custom story, whose
+    // settings have no name to give.
+    const profileName =
+      picked?.name ??
+      profiles.find((profile) => profile.id === story.profileId)?.name ??
+      null
 
     // A Retry is an ALTERNATIVE to a passage, not a continuation of it, so the
     // slot being retried is dropped before the context is composed. Leave it in
@@ -188,6 +231,7 @@ export async function startGeneration(
       variantGroupId: opts.variantGroupId,
       context,
       settings,
+      profileName,
     })
     // Unreachable while the reservation above holds the slot — kept as a
     // defensive answer rather than a non-null assertion, because a null here

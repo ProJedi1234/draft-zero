@@ -82,6 +82,14 @@ export interface EntryGeneration {
   modelId: string
   thinking: ThinkingLevel
   temperature: number
+  /**
+   * The profile this take was generated under, or null when it was generated
+   * under a story's own Custom columns — and on takes written before a retry
+   * could name a profile at all. A name rather than an id, frozen like the
+   * settings beside it: the profile it names may since have been renamed,
+   * retuned or deleted, and this take is still the truth about what wrote it.
+   */
+  profileName: string | null
   /** Exact counts from the provider's final usage event, or null when it sent none. */
   promptTokens: number | null
   completionTokens: number | null

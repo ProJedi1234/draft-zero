@@ -169,6 +169,12 @@ function StoryEditor({
     attachRef,
   })
 
+  // Wrapped rather than passed straight through: both callers hang this off a
+  // button's onClick, and retryLast's first parameter is a profile id.
+  const handleRetry = React.useCallback(() => {
+    generation.retryLast()
+  }, [generation])
+
   useDraftPersistence(story.id, draft, setDraft)
 
   useHistoryShortcuts(generation)
@@ -218,7 +224,7 @@ function StoryEditor({
         optimisticUserText={generation.optimisticUserText}
         optimisticUserPending={generation.optimisticUserPending}
         removingEntryIds={generation.removingEntryIds}
-        onRetry={generation.retryLast}
+        onRetry={handleRetry}
         onSuggestion={handleSuggestion}
       />
       <Composer
@@ -237,7 +243,7 @@ function StoryEditor({
         redoLabel={generation.redoLabel}
         onSend={generation.send}
         onContinue={generation.continueStory}
-        onRetry={generation.retryLast}
+        onRetry={handleRetry}
         onUndo={generation.undo}
         onRedo={generation.redo}
         onStop={generation.stop}
