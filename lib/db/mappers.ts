@@ -5,8 +5,8 @@
 // read time and are never stored.
 
 import {
+  buildScanSources,
   matchActiveLorebookEntries,
-  recentStoryText,
 } from "@/lib/generation/lorebook"
 import { resolveGenerationSettings } from "@/lib/generation/resolve"
 import type {
@@ -259,7 +259,11 @@ export function toStory(
   const lorebookEntries = lorebookRows.map(toLorebookEntry)
   const matches = matchActiveLorebookEntries(
     lorebookEntries,
-    recentStoryText(entries)
+    buildScanSources({
+      entries,
+      memory: row.memory,
+      authorsNote: row.authorsNote,
+    })
   )
 
   return {

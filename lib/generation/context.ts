@@ -3,7 +3,7 @@
 // Pure and deterministic: same inputs → same ComposedContext, same prompt.
 
 import type { LorebookEntry, Story, StoryEntry } from "@/lib/types"
-import { matchActiveLorebookEntries, recentStoryText } from "./lorebook"
+import { buildScanSources, matchActiveLorebookEntries } from "./lorebook"
 import { resolveSystemPrompt } from "./system-prompt"
 import type {
   ActiveLoreEntry,
@@ -136,17 +136,18 @@ export function composeContext(input: {
 
   const matches = matchActiveLorebookEntries(
     lorebookEntries,
-    recentStoryText(story.entries)
+    buildScanSources(story)
   )
-  const activeLore: ActiveLoreEntry[] = matches.map(
-    ({ entry, matchedKey }) => ({
-      id: entry.id,
-      name: entry.name,
-      content: entry.content,
-      priority: entry.priority,
-      matchedKey,
-    })
-  )
+  const activeLore: ActiveLoreEntry[] = matches.map((match) => ({
+    id: match.entry.id,
+    name: match.entry.name,
+    content: match.entry.content,
+    priority: match.entry.priority,
+    matchedKey: match.matchedKey,
+    depth: match.depth,
+    triggeredBy: match.triggeredBy,
+    stable: match.stable,
+  }))
 
   const context: ComposedContext = {
     systemPrompt: resolveSystemPrompt(story.systemPrompt),
