@@ -23,6 +23,9 @@ export interface SettingSliderProps {
   label: string
   /** The stored value. Followed while mounted, except mid-drag or mid-save. */
   serverValue: number
+  /** The story's `updatedAt`, so a payload older than this slider's own write
+   *  cannot move the thumb; see hooks/use-server-synced.ts. */
+  version: string
   min: number
   max: number
   step: number
@@ -44,6 +47,7 @@ export function SettingSlider({
   field,
   label,
   serverValue,
+  version,
   min,
   max,
   step,
@@ -51,7 +55,7 @@ export function SettingSlider({
 }: SettingSliderProps) {
   const { dragging, dragProps } = useDragHold()
   const { value, server, setLocal, write, settle, reset } =
-    useServerSyncedValue(serverValue, { hold: dragging })
+    useServerSyncedValue(serverValue, { hold: dragging, version })
   const [, startTransition] = React.useTransition()
 
   function commit(next: number) {
