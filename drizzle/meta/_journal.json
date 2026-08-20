@@ -92,6 +92,13 @@
       "when": 1786888371162,
       "tag": "0012_outgoing_mister_sinister",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787250688821,
+      "tag": "0013_parched_outlaw_kid",
+      "breakpoints": true
     }
   ]
 }

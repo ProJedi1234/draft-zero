@@ -138,6 +138,7 @@ export function toGenerationSettings(row: StoryRow): GenerationSettings {
     topP: row.topP,
     maxTokens: row.maxTokens,
     contextWindow: row.contextWindow,
+    loreBudget: row.loreBudget,
     frequencyPenalty: row.frequencyPenalty,
     presencePenalty: row.presencePenalty,
   }
@@ -157,6 +158,7 @@ export function toProfileSettings(row: ModelProfileRow): ProfileSettings {
     topP: row.topP,
     maxTokens: row.maxTokens,
     contextWindow: row.contextWindow,
+    loreBudget: row.loreBudget,
     frequencyPenalty: row.frequencyPenalty,
     presencePenalty: row.presencePenalty,
   }
@@ -308,6 +310,7 @@ export function toGenerationDefaults(row: AppSettingsRow): GenerationDefaults {
     topP: row.defaultTopP,
     maxTokens: row.defaultMaxTokens,
     contextWindow: row.defaultContextWindow,
+    loreBudget: row.defaultLoreBudget,
     frequencyPenalty: row.defaultFrequencyPenalty,
     presencePenalty: row.defaultPresencePenalty,
   }

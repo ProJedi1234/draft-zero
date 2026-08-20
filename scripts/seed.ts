@@ -47,6 +47,7 @@ async function seed() {
       topP: story.settings.topP,
       maxTokens: story.settings.maxTokens,
       contextWindow: story.settings.contextWindow,
+      loreBudget: story.settings.loreBudget,
       frequencyPenalty: story.settings.frequencyPenalty,
       presencePenalty: story.settings.presencePenalty,
       createdAt: story.createdAt,

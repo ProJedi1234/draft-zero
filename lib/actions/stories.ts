@@ -8,7 +8,7 @@ import { getAppSettings } from "@/lib/db/queries"
 import { lorebookEntries, stories, storyEntries } from "@/lib/db/schema"
 import { discardStoryRun } from "@/lib/generation/live"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
-import { isContextWindow } from "@/lib/types"
+import { clampLoreBudget, isContextWindow } from "@/lib/types"
 import type { ActionResult, GenerationSettings } from "@/lib/types"
 
 /**
@@ -252,6 +252,12 @@ export async function updateGenerationSettings(
       return { ok: false, error: "Unsupported context window." }
     }
     values.contextWindow = patch.contextWindow
+  }
+  // Clamped rather than rejected: unlike the context window this is a plain
+  // range with a step, so an out-of-range number has an obvious right answer
+  // and refusing the write would only strand the slider.
+  if (patch.loreBudget !== undefined) {
+    values.loreBudget = clampLoreBudget(patch.loreBudget)
   }
   if (patch.frequencyPenalty !== undefined)
     values.frequencyPenalty = patch.frequencyPenalty

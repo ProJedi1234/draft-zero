@@ -17,6 +17,7 @@ import {
   resolveProfileSettings,
 } from "@/lib/generation/resolve"
 import {
+  clampLoreBudget,
   isContextWindow,
   REASONING_EFFORTS,
   type ActionResult,
@@ -133,6 +134,11 @@ export async function updateProfile(
   if (settings.maxTokens !== undefined) values.maxTokens = settings.maxTokens
   if (settings.contextWindow !== undefined)
     values.contextWindow = settings.contextWindow
+  // Null is "inherit the global default", so only a real number is clamped.
+  if (settings.loreBudget !== undefined) {
+    values.loreBudget =
+      settings.loreBudget === null ? null : clampLoreBudget(settings.loreBudget)
+  }
   if (settings.frequencyPenalty !== undefined)
     values.frequencyPenalty = settings.frequencyPenalty
   if (settings.presencePenalty !== undefined)

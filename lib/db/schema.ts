@@ -64,6 +64,11 @@ export const stories = pgTable("stories", {
   // schema (not just in application code) so the generated ALTER TABLE
   // backfills every story that predates the column with the same 8192.
   contextWindow: integer("context_window").notNull().default(8192),
+  // Percent of the free context the lorebook may claim. Defaulted in the schema
+  // for the same reason context_window is: the generated ALTER TABLE backfills
+  // every existing story with the share that used to be hard-coded, so nothing
+  // composes differently the moment the column appears.
+  loreBudget: integer("lore_budget").notNull().default(25),
   frequencyPenalty: doublePrecision("frequency_penalty").notNull(),
   presencePenalty: doublePrecision("presence_penalty").notNull(),
   // Seq of the newest APPLIED op; 0 means none. Everything above it is the redo
@@ -354,6 +359,7 @@ export const modelProfiles = pgTable("model_profiles", {
   topP: doublePrecision("top_p"),
   maxTokens: integer("max_tokens"),
   contextWindow: integer("context_window"),
+  loreBudget: integer("lore_budget"),
   frequencyPenalty: doublePrecision("frequency_penalty"),
   presencePenalty: doublePrecision("presence_penalty"),
 })
@@ -383,6 +389,7 @@ export const appSettings = pgTable("app_settings", {
   defaultContextWindow: integer("default_context_window")
     .notNull()
     .default(8192),
+  defaultLoreBudget: integer("default_lore_budget").notNull().default(25),
   defaultFrequencyPenalty: doublePrecision("default_frequency_penalty")
     .notNull()
     .default(0.15),

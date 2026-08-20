@@ -31,6 +31,7 @@ const SETTINGS: GenerationSettings = {
   topP: 0.95,
   maxTokens: 1024,
   contextWindow: 8192,
+  loreBudget: 25,
   frequencyPenalty: 0,
   presencePenalty: 0,
 }

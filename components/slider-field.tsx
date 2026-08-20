@@ -85,6 +85,7 @@ export function SliderField({
   onValueChange,
   onValueCommitted,
   hint,
+  formatReadout,
   dragProps,
   inherited,
   onRevert,
@@ -99,6 +100,8 @@ export function SliderField({
   /** Once on release, with the settled value. */
   onValueCommitted?: (next: number) => void
   hint?: string
+  /** Overrides the default numeric readout — e.g. to add a unit. */
+  formatReadout?: (value: number) => string
   /** Pointer handlers from `useDragHold`, for callers that follow the server. */
   dragProps?: { onPointerDown: () => void }
 } & InheritProps) {
@@ -108,7 +111,13 @@ export function SliderField({
     <div className={cn("space-y-2", inherited && "opacity-50")}>
       <SliderFieldHeader
         label={label}
-        readout={step < 1 ? value.toFixed(2) : value.toLocaleString("en-US")}
+        readout={
+          formatReadout
+            ? formatReadout(value)
+            : step < 1
+              ? value.toFixed(2)
+              : value.toLocaleString("en-US")
+        }
         inherited={inherited}
         onRevert={onRevert}
       />

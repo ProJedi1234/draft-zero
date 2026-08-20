@@ -30,6 +30,7 @@ export interface SettingSliderProps {
   max: number
   step: number
   hint?: string
+  formatReadout?: (value: number) => string
 }
 
 const FALLBACK_ERROR = "Couldn't save your changes."
@@ -52,6 +53,7 @@ export function SettingSlider({
   max,
   step,
   hint,
+  formatReadout,
 }: SettingSliderProps) {
   const { dragging, dragProps } = useDragHold()
   const { value, server, setLocal, write, settle, reset } =
@@ -100,6 +102,7 @@ export function SettingSlider({
       onValueChange={setLocal}
       onValueCommitted={commit}
       hint={hint}
+      formatReadout={formatReadout}
       dragProps={dragProps}
     />
   )
