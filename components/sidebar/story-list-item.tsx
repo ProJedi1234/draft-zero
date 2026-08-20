@@ -22,9 +22,9 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { DeleteStoryDialog } from "@/components/sidebar/delete-story-dialog"
-import { RenameStoryDialog } from "@/components/sidebar/rename-story-dialog"
+import { StoryDetailsDialog } from "@/components/story/story-details-dialog"
 
-type PendingDialog = "rename" | "delete" | null
+type PendingDialog = "details" | "delete" | null
 
 export function StoryListItem({ story }: { story: StorySummary }) {
   const pathname = usePathname()
@@ -35,13 +35,13 @@ export function StoryListItem({ story }: { story: StorySummary }) {
   // Dialogs open only once the menu has finished closing, so the menu's
   // focus restoration never fights the dialog's focus trap.
   const [queuedDialog, setQueuedDialog] = React.useState<PendingDialog>(null)
-  const [renameOpen, setRenameOpen] = React.useState(false)
+  const [detailsOpen, setDetailsOpen] = React.useState(false)
   const [deleteOpen, setDeleteOpen] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
 
   function handleMenuClosed(open: boolean) {
     if (open || queuedDialog === null) return
-    if (queuedDialog === "rename") setRenameOpen(true)
+    if (queuedDialog === "details") setDetailsOpen(true)
     if (queuedDialog === "delete") setDeleteOpen(true)
     setQueuedDialog(null)
   }
@@ -90,10 +90,10 @@ export function StoryListItem({ story }: { story: StorySummary }) {
         <DropdownMenuContent side="right" align="start">
           <DropdownMenuItem
             disabled={isPending}
-            onClick={() => setQueuedDialog("rename")}
+            onClick={() => setQueuedDialog("details")}
           >
             <PencilLine />
-            Rename
+            Edit details
           </DropdownMenuItem>
           <DropdownMenuItem disabled={isPending} onClick={handleDuplicate}>
             <Copy />
@@ -110,11 +110,13 @@ export function StoryListItem({ story }: { story: StorySummary }) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <RenameStoryDialog
+      <StoryDetailsDialog
         storyId={story.id}
-        currentTitle={story.title}
-        open={renameOpen}
-        onOpenChange={setRenameOpen}
+        title={story.title}
+        description={story.description}
+        genre={story.genre}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
       />
       <DeleteStoryDialog
         storyId={story.id}
