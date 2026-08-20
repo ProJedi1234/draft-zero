@@ -27,6 +27,7 @@ const EMPTY_STORY_MARKER =
 /** Nothing offered, nothing kept — the shape composeContext starts from. */
 const EMPTY_FIT: ContextFit = {
   loreMatched: 0,
+  loreStableMatched: 0,
   storyChars: 0,
   storyCharsKept: 0,
 }
@@ -162,10 +163,17 @@ export function composeContext(input: {
   const fixedChars = context.systemPrompt.length + renderPrompt(context).length
   const remaining = Math.max(0, charBudget - fixedChars)
 
-  const { kept, used } = trimLore(
-    activeLore,
-    Math.floor((remaining * loreBudget) / 100)
-  )
+  // One pool, offered stable-first. Both zones draw from it in priority order
+  // within themselves, so a low-priority stable entry can still displace a
+  // high-priority volatile one — the intended trade: the writer's standing
+  // lore outranks whatever the last four passages happened to say.
+  const stableLore = activeLore.filter((item) => item.stable)
+  const volatileLore = activeLore.filter((item) => !item.stable)
+  const lorePool = Math.floor((remaining * loreBudget) / 100)
+  const stableFit = trimLore(stableLore, lorePool)
+  const volatileFit = trimLore(volatileLore, lorePool - stableFit.used)
+  const kept = [...stableFit.kept, ...volatileFit.kept]
+  const used = stableFit.used + volatileFit.used
   context.lore = kept
   // Markers are applied before budgeting, so `fit` counts the same chars the
   // budget spends and the two cannot disagree about what a turn costs.
@@ -197,6 +205,7 @@ export function composeContext(input: {
   // what the writer is owed is what SURVIVED, measured against what was offered.
   context.fit = {
     loreMatched: activeLore.length,
+    loreStableMatched: stableLore.length,
     storyChars: fullStoryText.trim().length,
     // Trimmed at both ends for the same reason renderPrompt trims: the leading
     // separator a mid-paragraph cut leaves behind is not prose that fit.
@@ -219,6 +228,10 @@ function measure(ctx: ComposedContext): number {
  * context viewer slices the prompt by these blocks rather than by searching the
  * finished string for bracket labels, so a block shape that changes here
  * changes the breakdown with it and nothing has to be kept in sync.
+ *
+ * The order — memory, stable lore, story head, volatile lore, author's note,
+ * final paragraph — puts everything a turn cannot change in front of
+ * everything it can.
  */
 export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
   const blocks: PromptBlock[] = []
@@ -229,12 +242,21 @@ export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
   }
 
   for (const entry of ctx.lore) {
+    if (!entry.stable) continue
     blocks.push({
       section: "lore",
       loreId: entry.id,
       text: `[Lore: ${entry.name}]\n${entry.content.trim()}`,
     })
   }
+
+  const volatileBlocks: PromptBlock[] = ctx.lore
+    .filter((entry) => !entry.stable)
+    .map((entry) => ({
+      section: "lore",
+      loreId: entry.id,
+      text: `[Lore: ${entry.name}]\n${entry.content.trim()}`,
+    }))
 
   const authorsNote = ctx.authorsNote.trim()
   const authorsNoteBlock: PromptBlock | null =
@@ -250,6 +272,7 @@ export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
     // where the screenplays came from. Say plainly that the story is empty and
     // what to do about it. The author's note still applies to the opening.
     blocks.push({ section: "story", text: `[Story]\n${EMPTY_STORY_MARKER}` })
+    blocks.push(...volatileBlocks)
     if (authorsNoteBlock) blocks.push(authorsNoteBlock)
   } else {
     const boundary = storyText.lastIndexOf(PARAGRAPH_SEPARATOR)
@@ -263,6 +286,11 @@ export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
       section: "story",
       text: head === "" ? "[Story]" : `[Story]\n${head}`,
     })
+    // Volatile lore rides between the manuscript and its final paragraph, in
+    // the same slot the author's note already occupies and for the same
+    // reason: it was triggered by the recent prose, and this is where recency
+    // weighting is strongest.
+    blocks.push(...volatileBlocks)
     if (authorsNoteBlock) blocks.push(authorsNoteBlock)
     blocks.push({ section: "story", text: finalParagraph })
   }
