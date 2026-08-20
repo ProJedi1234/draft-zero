@@ -21,6 +21,43 @@ import type {
 const CHARS_PER_TOKEN = 4
 /** Paragraphs are separated by a blank line everywhere in the app. */
 const PARAGRAPH_SEPARATOR = "\n\n"
+/**
+ * How far the story window's leading edge moves at a time, as a fraction of the
+ * prose budget, and the absolute bounds on that.
+ *
+ * Trimming to the exact budget would move that edge on EVERY turn once the
+ * window is full: one passage in at the tail, one paragraph out at the head, a
+ * different prefix each time. Nothing upstream could then cache any of it,
+ * because a cache is a prefix match and the prefix changed. Advancing in quanta
+ * instead means the head is byte-identical from one turn to the next until
+ * enough new prose has accumulated to justify one jump.
+ *
+ * The cost is real and bounded: up to one quantum of the window sits unused
+ * between jumps. That is why the quantum is a FRACTION of the budget rather
+ * than a fixed number of characters — a constant generous enough to be worth
+ * having at a 128k window would eat a quarter of an 8k one. An eighth caps the
+ * waste at 12.5% wherever the writer puts the slider, and still buys a head
+ * that only moves every several turns.
+ *
+ * The ceiling keeps the jumps from becoming enormous (and the waste absolute
+ * rather than proportional) on a very large window; the floor keeps the
+ * quantum from shrinking to nothing at the bottom of the ladder, where it would
+ * degenerate back into exact trimming.
+ */
+const STORY_TRIM_QUANTUM_DIVISOR = 8
+const STORY_TRIM_QUANTUM_MIN = 512
+const STORY_TRIM_QUANTUM_MAX = 8000
+
+/** The quantum for a given prose budget. See the constants above. */
+function trimQuantum(budget: number): number {
+  return Math.min(
+    STORY_TRIM_QUANTUM_MAX,
+    Math.max(
+      STORY_TRIM_QUANTUM_MIN,
+      Math.floor(budget / STORY_TRIM_QUANTUM_DIVISOR)
+    )
+  )
+}
 /** Stands in for the story text when there is none, so the turn is never empty. */
 const EMPTY_STORY_MARKER =
   "(This story has no text yet. Write its opening paragraph.)"
@@ -34,15 +71,40 @@ const EMPTY_FIT: ContextFit = {
 
 /**
  * The final `budget` chars of `text`, cut forward to the next paragraph
- * boundary so the window never starts mid-paragraph. A window with no boundary
- * at all (one very long paragraph) is kept as-is rather than dropped. Trimming
- * from the tail is the whole point: the most recent prose is what the model
- * needs to continue, so it is the last thing we give up.
+ * boundary so the window never starts mid-paragraph.
+ *
+ * The cut point is QUANTIZED: rather than keeping exactly `budget` characters,
+ * we keep the largest whole number of quanta that fits, so the leading edge
+ * only moves when the story has grown by a whole quantum. See
+ * STORY_TRIM_QUANTUM. A window with no paragraph boundary at all (one very long
+ * paragraph) is kept as-is rather than dropped. Trimming from the tail is the
+ * whole point: the most recent prose is what the model needs to continue, so it
+ * is the last thing we give up.
  */
 function trimStoryText(text: string, budget: number): string {
   if (budget <= 0) return ""
   if (text.length <= budget) return text
-  const window = text.slice(-budget)
+
+  // The window's START is what gets quantized, as an absolute offset from the
+  // beginning of the manuscript — NOT the length that is kept.
+  //
+  // The distinction is the whole feature. Keeping a quantized *length* still
+  // means slicing that many characters off the end, and the end moves every
+  // turn, so the head slides forward by one passage each time and no two turns
+  // share a prefix. Rounding the earliest allowed start UP to a multiple of the
+  // quantum pins the window to a fixed character offset instead: the prose
+  // before it is append-only, so that offset names the same byte on every turn
+  // and only jumps once the story has grown a whole quantum past it.
+  const quantum = trimQuantum(budget)
+  const earliestStart = text.length - budget
+  const start =
+    budget >= quantum
+      ? Math.ceil(earliestStart / quantum) * quantum
+      : // A budget smaller than one quantum has nothing to round to: rounding
+        // up would land past the end of the story and empty the window.
+        earliestStart
+
+  const window = text.slice(start)
   const boundary = window.indexOf(PARAGRAPH_SEPARATOR)
   if (boundary === -1) return window
   return window.slice(boundary + PARAGRAPH_SEPARATOR.length)
@@ -105,8 +167,15 @@ function trimLore(
  * are fixed overhead — they are short, the writer chose them deliberately, and
  * dropping them changes the model's job rather than its recall. Whatever is
  * left after that goes to lore (greedy, priority order, capped at the story's
- * loreBudget share) and then to story prose, which absorbs both the prose share and lore's
- * leftovers.
+ * loreBudget share) and then to story prose, which absorbs both the prose share
+ * and lore's leftovers.
+ *
+ * Lore is budgeted as ONE pool and then split into two zones by where it is
+ * sent, not by what it may spend: stable entries (always-on, or triggered by
+ * memory and the author's note) go in the cacheable head above the story,
+ * volatile ones (triggered by the story window) go beside the recent prose that
+ * summoned them. Stable is offered first because its activation is the writer's
+ * standing decision rather than an accident of where the prose happens to be.
  *
  * The overhead is *measured*, not hand-counted: we render a probe context with
  * no lore and no prose and take its length. That way every bracket label and
@@ -165,22 +234,22 @@ export function composeContext(input: {
 
   // One pool, offered stable-first. Both zones draw from it in priority order
   // within themselves, so a low-priority stable entry can still displace a
-  // high-priority volatile one — the intended trade: the writer's standing
-  // lore outranks whatever the last four passages happened to say.
+  // high-priority volatile one — which is the intended trade: the writer's
+  // standing lore outranks whatever the last four passages happened to say.
   const stableLore = activeLore.filter((item) => item.stable)
   const volatileLore = activeLore.filter((item) => !item.stable)
   const lorePool = Math.floor((remaining * loreBudget) / 100)
   const stableFit = trimLore(stableLore, lorePool)
   const volatileFit = trimLore(volatileLore, lorePool - stableFit.used)
-  const kept = [...stableFit.kept, ...volatileFit.kept]
-  const used = stableFit.used + volatileFit.used
-  context.lore = kept
+  context.lore = [...stableFit.kept, ...volatileFit.kept]
+  const loreUsed = stableFit.used + volatileFit.used
+
   // Markers are applied before budgeting, so `fit` counts the same chars the
   // budget spends and the two cannot disagree about what a turn costs.
   const fullStoryText = story.entries
     .map(markPlayerTurn)
     .join(PARAGRAPH_SEPARATOR)
-  context.storyText = trimStoryText(fullStoryText, remaining - used)
+  context.storyText = trimStoryText(fullStoryText, remaining - loreUsed)
 
   // Reconcile. The probe renders the *empty* story shape (two blocks) while a
   // real story renders three, so the estimate is off by a couple of separator
@@ -191,6 +260,9 @@ export function composeContext(input: {
   // for the default system prompt, but a long memory plus a long author's note
   // can still eat a small stop — nothing is left to drop and approxTokens
   // legitimately overshoots. Hence "whenever achievable".
+  //
+  // Quantized trimming above leaves headroom for this in the ordinary case, so
+  // the loop is normally a no-op rather than a per-turn nibble at the anchor.
   context.approxTokens = measure(context)
   while (context.approxTokens > contextWindow) {
     const boundary = context.storyText.indexOf(PARAGRAPH_SEPARATOR)
@@ -230,8 +302,9 @@ function measure(ctx: ComposedContext): number {
  * changes the breakdown with it and nothing has to be kept in sync.
  *
  * The order — memory, stable lore, story head, volatile lore, author's note,
- * final paragraph — puts everything a turn cannot change in front of
- * everything it can.
+ * final paragraph — is chosen so that everything a turn cannot change sits in
+ * front of everything it can. See composeContext for the zones, and
+ * promptSegments for what an upstream cache is asked to keep.
  */
 export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
   const blocks: PromptBlock[] = []
@@ -250,13 +323,12 @@ export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
     })
   }
 
-  const volatileBlocks: PromptBlock[] = ctx.lore
-    .filter((entry) => !entry.stable)
-    .map((entry) => ({
-      section: "lore",
-      loreId: entry.id,
-      text: `[Lore: ${entry.name}]\n${entry.content.trim()}`,
-    }))
+  const volatileLore = ctx.lore.filter((entry) => !entry.stable)
+  const volatileBlocks: PromptBlock[] = volatileLore.map((entry) => ({
+    section: "lore",
+    loreId: entry.id,
+    text: `[Lore: ${entry.name}]\n${entry.content.trim()}`,
+  }))
 
   const authorsNote = ctx.authorsNote.trim()
   const authorsNoteBlock: PromptBlock | null =
@@ -287,15 +359,69 @@ export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
       text: head === "" ? "[Story]" : `[Story]\n${head}`,
     })
     // Volatile lore rides between the manuscript and its final paragraph, in
-    // the same slot the author's note already occupies and for the same
-    // reason: it was triggered by the recent prose, and this is where recency
-    // weighting is strongest.
+    // the same slot the author's note already occupies and for the same reason:
+    // it was triggered by the recent prose, and this is where recency weighting
+    // is strongest.
     blocks.push(...volatileBlocks)
     if (authorsNoteBlock) blocks.push(authorsNoteBlock)
     blocks.push({ section: "story", text: finalParagraph })
   }
 
   return blocks
+}
+
+/**
+ * One piece of the user turn as it goes on the wire, and whether an upstream
+ * cache should be asked to keep it.
+ *
+ * Concatenating every segment's text — in order, with no separator — gives
+ * renderPrompt(ctx) exactly. That identity is what lets the request be split
+ * into content parts without changing a byte of what the model reads, and it is
+ * asserted in the tests rather than assumed.
+ *
+ * Two cacheable segments, which is the shape the caching actually wants: the
+ * head (memory + stable lore) changes only when the writer edits it, and the
+ * manuscript head changes only when the trim anchor jumps a whole quantum. The
+ * tail — volatile lore, the author's note, the newest paragraph — is expected
+ * to differ every turn and is deliberately left unmarked.
+ */
+export interface PromptSegment {
+  text: string
+  /** Whether to ask the provider to cache everything up to the end of this segment. */
+  cache: boolean
+}
+
+export function promptSegments(ctx: ComposedContext): PromptSegment[] {
+  const blocks = promptBlocks(ctx)
+  // The first story block is the manuscript head; everything before it is the
+  // stable head, everything after it is the volatile tail.
+  const storyStart = blocks.findIndex((block) => block.section === "story")
+  const head = storyStart === -1 ? blocks : blocks.slice(0, storyStart)
+  const manuscript = storyStart === -1 ? [] : [blocks[storyStart]!]
+  const tail = storyStart === -1 ? [] : blocks.slice(storyStart + 1)
+
+  const segments: PromptSegment[] = []
+  const join = (parts: PromptBlock[]) =>
+    parts.map((block) => block.text).join(PARAGRAPH_SEPARATOR)
+
+  if (head.length > 0) {
+    // The separator that follows this segment belongs to it, so the pieces
+    // concatenate back to the prompt with nothing between them.
+    segments.push({
+      text: join(head) + (manuscript.length > 0 ? PARAGRAPH_SEPARATOR : ""),
+      cache: true,
+    })
+  }
+  if (manuscript.length > 0) {
+    segments.push({
+      text: join(manuscript) + (tail.length > 0 ? PARAGRAPH_SEPARATOR : ""),
+      cache: true,
+    })
+  }
+  if (tail.length > 0) {
+    segments.push({ text: join(tail), cache: false })
+  }
+  return segments
 }
 
 /** The exact prompt string a real provider would send. */

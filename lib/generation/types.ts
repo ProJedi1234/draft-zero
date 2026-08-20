@@ -18,8 +18,8 @@ export interface ActiveLoreEntry {
   triggeredBy: LoreTrigger | null
   /**
    * True when this entry's activation does not depend on the story window, so
-   * it is sent in the head of the prompt rather than beside the recent prose.
-   * See composeContext.
+   * it is sent in the cacheable head of the prompt rather than beside the
+   * recent prose. See composeContext.
    */
   stable: boolean
 }
@@ -52,7 +52,7 @@ export interface PromptBlock {
 export interface ContextFit {
   /** Lore entries the scan triggered, before the budget had its say. */
   loreMatched: number
-  /** How many of those were stable — the head's share of them. */
+  /** How many of those were stable — the cacheable head's share of them. */
   loreStableMatched: number
   /** Characters of manuscript prose the story offered… */
   storyChars: number

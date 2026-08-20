@@ -12,7 +12,7 @@
 // prompt — so the bar cannot show a story about a prompt that was not the one
 // on the wire.
 
-import { estimateTokens, promptBlocks } from "./context"
+import { estimateTokens, promptBlocks, promptSegments } from "./context"
 import type { LoreTrigger } from "./lorebook"
 import type { ComposedContext, ContextSectionId } from "./types"
 
@@ -47,6 +47,8 @@ export interface ContextItem {
   triggeredBy: LoreTrigger | null
   /** Rounds of cascade from a scan source; 0 is a direct match or always-on. */
   depth: number
+  /** True when it rides in the prompt's cacheable head rather than beside the prose. */
+  stable: boolean
   /** The block as sent, label and all. */
   text: string
 }
@@ -109,6 +111,17 @@ export interface ContextBreakdown {
    * trims "whenever achievable", and this is when it wasn't.
    */
   overflowing: boolean
+  /**
+   * Tokens in the part of the prompt that is offered to an upstream cache: the
+   * system turn, memory, stable lore and the manuscript head.
+   *
+   * This is what WE asked to be kept, not what any provider actually kept —
+   * that is only knowable from a real call's usage, and is reported separately
+   * as cachedPromptTokens. Shown because the two questions are different and a
+   * writer debugging cost wants the first one answered before the second: a
+   * cacheable share this size is the ceiling on what caching can ever save.
+   */
+  cacheableTokens: number
 }
 
 /**
@@ -144,6 +157,7 @@ export function describeContext(
       matchedKey: entry.matchedKey,
       triggeredBy: entry.triggeredBy,
       depth: entry.depth,
+      stable: entry.stable,
       text: block.text,
     })
   })
@@ -173,6 +187,15 @@ export function describeContext(
     })
   }
 
+  // The system turn rides in front of every segment and is as stable as the
+  // head it precedes, so it counts toward the cacheable prefix.
+  const cacheablePrefix =
+    ctx.systemPrompt +
+    promptSegments(ctx)
+      .filter((segment) => segment.cache)
+      .map((segment) => segment.text)
+      .join("")
+
   return {
     sections,
     spans,
@@ -180,6 +203,7 @@ export function describeContext(
     windowTokens,
     freeTokens: Math.max(0, windowTokens - ctx.approxTokens),
     overflowing: ctx.approxTokens > windowTokens,
+    cacheableTokens: estimateTokens(cacheablePrefix),
   }
 }
 
