@@ -17,24 +17,37 @@ import {
 } from "@/lib/types"
 
 /**
- * "Claude Sonnet 5 · Auto · think med".
+ * The same three parts, unjoined — for the inspector's status strip, which
+ * gives the model its own line and truncates it independently of the two short
+ * facts beside it. Splitting the joined string instead would make " · " load
+ * bearing inside a model name.
  *
  * A model the catalog doesn't know (retired, or a catalog fetch that failed)
  * degrades to its id, which is still the truth about the bundle.
  */
+export function settingsSummaryParts(
+  settings: GenerationIdentity,
+  models: OpenRouterModel[]
+): { model: string; provider: string; thinking: string } {
+  const { modelId, providerTag, thinking } = settings
+  const model = models.find((m) => m.id === modelId)
+  return {
+    model: model?.name ?? modelId,
+    provider: providerTag ?? "Auto",
+    thinking:
+      thinking === "off"
+        ? "off"
+        : `think ${THINKING_LEVEL_LABELS[thinking].toLowerCase()}`,
+  }
+}
+
+/** "Claude Sonnet 5 · Auto · think med". */
 export function settingsSummary(
   settings: GenerationIdentity,
   models: OpenRouterModel[]
 ): string {
-  const { modelId, providerTag, thinking } = settings
-  const model = models.find((m) => m.id === modelId)
-  return [
-    model?.name ?? modelId,
-    providerTag ?? "Auto",
-    thinking === "off"
-      ? "off"
-      : `think ${THINKING_LEVEL_LABELS[thinking].toLowerCase()}`,
-  ].join(" · ")
+  const { model, provider, thinking } = settingsSummaryParts(settings, models)
+  return [model, provider, thinking].join(" · ")
 }
 
 /**
