@@ -17,10 +17,9 @@ export interface ActiveLoreEntry {
   /** What put it in context — a scan source or another entry — or null for always-on. */
   triggeredBy: LoreTrigger | null
   /**
-   * True when this entry's activation does not depend on the story window.
-   * Nothing reads it yet; the prompt layout starts splitting on it in a later
-   * change, and recording it here is what lets the matcher stay the single
-   * place that decides it.
+   * True when this entry's activation does not depend on the story window, so
+   * it is sent in the head of the prompt rather than beside the recent prose.
+   * See composeContext.
    */
   stable: boolean
 }
@@ -51,8 +50,10 @@ export interface PromptBlock {
  * was sent and one that can tell a writer their lorebook is being dropped.
  */
 export interface ContextFit {
-  /** Lore entries the recent text triggered, before the budget had its say. */
+  /** Lore entries the scan triggered, before the budget had its say. */
   loreMatched: number
+  /** How many of those were stable — the head's share of them. */
+  loreStableMatched: number
   /** Characters of manuscript prose the story offered… */
   storyChars: number
   /** …and how many of them the budget had room for. */
