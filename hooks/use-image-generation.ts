@@ -220,6 +220,15 @@ export function useImagePromptDerivation(storyId: string) {
           text += decoder.decode(value, { stream: true })
           onText(text)
         }
+        // Flush. A multibyte character split across the final network chunk
+        // stays inside the decoder until it is called with no argument, and em
+        // dashes and curly quotes are exactly what a literary model emits, so
+        // the dropped character is not a hypothetical one.
+        const tail = decoder.decode()
+        if (tail !== "") {
+          text += tail
+          onText(text)
+        }
       } catch (err) {
         // An abort is the writer changing their mind, not a failure.
         if ((err as Error)?.name !== "AbortError") {
