@@ -7,11 +7,13 @@
 #
 # Its own project name, volume and ports: `draft-zero` (5433/3000),
 # `draft-zero-composer` (5435/3003), `draft-zero-images` (5437/3005),
-# `draft-zero-modelswitch` (5438/3006) and `draft-zero-lorebook` (5439/3007)
-# already exist on argos, and a stack sharing any of them would take one over
-# rather than sit alongside.
+# `draft-zero-modelswitch` (5438/3006), `draft-zero-lorebook` (5439/3007) and
+# `draft-zero-zdr` (5441/3008) already exist on argos, and a stack sharing any
+# of them would take one over rather than sit alongside. `docker ps` is the
+# register; it is worth re-reading rather than trusting this list, which is
+# only true on the day it was written.
 #
-# 3008 binds to 0.0.0.0 so the demo is reachable from a phone or an iPad.
+# 3010 binds to 0.0.0.0 so the demo is reachable from a phone or an iPad.
 name: draft-zero-retryprofile
 
 services:
@@ -84,7 +86,7 @@ services:
       OPENROUTER_API_KEY: ""
       WATCHPACK_POLLING: "true"
     ports:
-      - "0.0.0.0:3008:3000"
+      - "0.0.0.0:3010:3000"
     volumes:
       - .:/app
       - /app/node_modules
