@@ -1,52 +1,21 @@
 "use client"
 
 import * as React from "react"
-import { ChevronRight, ChevronsUpDown } from "lucide-react"
-import { toast } from "sonner"
 
-import { ContextWindowSlider } from "@/components/inspector/context-window-slider"
-import { LoreTab } from "@/components/inspector/lore-tab"
-import { ModelPicker, ProfileCard } from "@/components/inspector/model-picker"
-import { NarratorDialog } from "@/components/inspector/narrator-dialog"
-import { SaveProfileDialog } from "@/components/inspector/save-profile-dialog"
-import { SettingSlider } from "@/components/inspector/setting-slider"
+import { LoreSection } from "@/components/inspector/sections/lore-section"
+import { ModelSection } from "@/components/inspector/sections/model-section"
+import { PromptSection } from "@/components/inspector/sections/prompt-section"
 import { StatusStrip } from "@/components/inspector/status-strip"
-import { levelForModel } from "@/components/thinking-select"
-import { Button } from "@/components/ui/button"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Textarea } from "@/components/ui/textarea"
-import { useAutosave } from "@/hooks/use-autosave"
-import { useDragHold } from "@/hooks/use-drag-hold"
-import { useModelEndpoints } from "@/hooks/use-model-endpoints"
-import {
-  useServerSyncedField,
-  useServerSyncedValue,
-} from "@/hooks/use-server-synced"
-import { setStoryProfile } from "@/lib/actions/profiles"
-import {
-  updateGenerationSettings,
-  updateStoryMeta,
-} from "@/lib/actions/stories"
-import {
-  clampContextWindow,
-  endpointForTag,
-  type GenerationSettings,
-  type LorebookEntry,
-  type ModelProfile,
-  type OpenRouterModel,
-  type Story,
-  type ThinkingLevel,
+import { useModelSettings } from "@/hooks/use-model-settings"
+import type {
+  LorebookEntry,
+  ModelProfile,
+  OpenRouterModel,
+  Story,
 } from "@/lib/types"
 import { cn } from "@/lib/utils"
-
-const FALLBACK_ERROR = "Couldn't save your changes."
 
 export function InspectorPanel({
   story,
@@ -116,6 +85,15 @@ export function InspectorContent({
   )
 }
 
+/**
+ * The panel's three sections over a pinned status strip.
+ *
+ * The model state is held here rather than inside <ModelSection> because the
+ * strip reads it too — it prints the live model identity and the context window,
+ * and both have to be the controls' values rather than the story's. See
+ * hooks/use-model-settings.ts. The prompt and lore sections need nothing from
+ * out here and own their state themselves.
+ */
 function InspectorSections({
   story,
   lorebookEntries,
@@ -129,552 +107,39 @@ function InspectorSections({
   profiles: ModelProfile[]
   defaultProfileId: string | null
 }) {
-  // Unique per mounted instance: the desktop panel and the mobile sheet can be
-  // in the DOM at once, and duplicate ids would cross-wire the labels.
-  const uid = React.useId()
-  // These depend on each other, so any open menu holds all of them: adopting a
-  // foreign model while the writer is reading one of them would retarget the
-  // endpoint list under the cursor, or unmount the thinking menu outright — and
-  // a profile arriving mid-menu would swap the whole section out from under it.
-  const [pickerOpen, setPickerOpen] = React.useState(false)
-  const [profileMenuOpen, setProfileMenuOpen] = React.useState(false)
-  const menuOpen = pickerOpen || profileMenuOpen
-  // Which mode the story is in. Following a profile, the settings below are the
-  // profile's and nothing here may write them; Custom, they are the story's own.
-  const profile = useServerSyncedValue(story.profileId, {
-    hold: menuOpen,
-    version: story.updatedAt,
-  })
-  const profileId = profile.value
-  // The switch is not over when the action resolves — it is over when the tree
-  // comes back carrying it, because everything below this card is still the old
-  // profile's until then. The context meter in particular reads the story's
-  // resolved settings, so it answers with the previous window for the length of
-  // the round trip, and there is nothing on screen to say so. This comparison
-  // IS that gap: the card is showing one profile and the props still say
-  // another. It clears the instant the numbers underneath become true.
-  const profileSwitching = profileId !== story.profileId
-  const followedProfile =
-    profiles.find((candidate) => candidate.id === profileId) ?? null
-  const isCustom = followedProfile === null
-  // The profile this session left for Custom — enough for a "based on" line and
-  // a one-tap way back, and deliberately not persisted: which profile a custom
-  // story once came from is not a fact the story owes anyone across devices.
-  const [lastProfileId, setLastProfileId] = React.useState<string | null>(null)
-  const basedOnProfile =
-    profiles.find((candidate) => candidate.id === lastProfileId) ?? null
-  const [saveProfileOpen, setSaveProfileOpen] = React.useState(false)
-  const [narratorOpen, setNarratorOpen] = React.useState(false)
-  // The four settings that move together. Each follows the server while mounted
-  // — a model switched on the phone lands here — but never while this device's
-  // own write is still travelling; see hooks/use-server-synced.ts.
-  const model = useServerSyncedValue(story.settings.modelId, {
-    hold: menuOpen,
-    version: story.updatedAt,
-  })
-  const thinkingSync = useServerSyncedValue(story.settings.thinking, {
-    hold: menuOpen,
-    version: story.updatedAt,
-  })
-  const provider = useServerSyncedValue(story.settings.providerTag, {
-    hold: menuOpen,
-    version: story.updatedAt,
-  })
-  const modelId = model.value
-  const thinking = thinkingSync.value
-  const providerTag = provider.value
-  const { endpoints } = useModelEndpoints(modelId)
-  // The ceiling in force for the duration of a drag; see windowDragProps below.
-  const [heldContextLength, setHeldContextLength] = React.useState<
-    number | null
-  >(null)
-  const { dragging: draggingWindow, dragProps: startWindowDrag } = useDragHold(
-    () => setHeldContextLength(null)
-  )
-  // Lifted out of the slider because the model owns its ceiling: switching
-  // models has to be able to pull the value down (see handleModelChange).
-  const {
-    value: storedContextWindow,
-    server: savedContextWindow,
-    setLocal: setContextWindowLocal,
-    write: writeContextWindow,
-    settle: settleContextWindow,
-    reset: resetContextWindow,
-  } = useServerSyncedValue(story.settings.contextWindow, {
-    hold: draggingWindow,
-    version: story.updatedAt,
-  })
-  const [, startTransition] = React.useTransition()
-
-  const memorySave = useAutosave((value: string) =>
-    updateStoryMeta(story.id, { memory: value })
-  )
-  const authorsNoteSave = useAutosave((value: string) =>
-    updateStoryMeta(story.id, { authorsNote: value })
-  )
-
-  const memoryRef = React.useRef<HTMLTextAreaElement>(null)
-  const authorsNoteRef = React.useRef<HTMLTextAreaElement>(null)
-
-  const memoryField = useServerSyncedField(
-    memoryRef,
-    story.memory,
-    memorySave.status
-  )
-  const authorsNoteField = useServerSyncedField(
-    authorsNoteRef,
-    story.authorsNote,
-    authorsNoteSave.status
-  )
-
-  /**
-   * Save a settings patch and tell the caller how it ended. Every caller must
-   * do something with `resolve` — a control left waiting for the echo of a save
-   * that failed stops following the server for good; see hooks/use-server-synced.ts.
-   */
-  const saveSettings = React.useCallback(
-    (patch: Partial<GenerationSettings>, resolve?: (ok: boolean) => void) => {
-      startTransition(async () => {
-        let ok = false
-        let message = FALLBACK_ERROR
-        try {
-          const result = await updateGenerationSettings(story.id, patch)
-          ok = result.ok
-          if (!result.ok) message = result.error
-        } catch (error) {
-          // A thrown action — a dropped connection mid-save — never reaches the
-          // `ok` check, and would otherwise fail silently.
-          message =
-            error instanceof Error && error.message ? error.message : message
-        }
-        resolve?.(ok)
-        if (!ok) toast.error(message)
-      })
-    },
-    [story.id, startTransition]
-  )
-
-  // 0 means "neither the model nor the pinned endpoint is known to the catalog",
-  // i.e. no clamp. A pinned endpoint wins: a third-party host commonly serves a
-  // shorter window than the lab does, and that shorter window is the real ceiling.
-  const liveContextLength =
-    endpointForTag(endpoints, providerTag)?.contextLength ??
-    models.find((m) => m.id === modelId)?.contextLength ??
-    0
-
-  // Holding the value mid-drag is not enough on its own: the ceiling it is
-  // clamped against moves too — endpoints resolve, or another device switches
-  // the model — and a ceiling that drops under a finger snaps the thumb to a
-  // stop the writer never chose, which the release then persists.
-  const windowDragProps = {
-    onPointerDown: () => {
-      setHeldContextLength(liveContextLength)
-      startWindowDrag.onPointerDown()
-    },
-  }
-  const contextLength = draggingWindow
-    ? (heldContextLength ?? liveContextLength)
-    : liveContextLength
-
-  // A window stored while another model was selected can be larger than this one
-  // allows. Clamped for display so the meter and the slider agree on a legal
-  // stop immediately; the effect below is what makes the row agree too.
-  const contextWindow = clampContextWindow(storedContextWindow, contextLength)
-
-  // That display clamp is cosmetic until it is written, and every other reader
-  // of the row has to defend itself against the difference — startGeneration
-  // re-clamps for itself rather than trust it (lib/actions/generation.ts). Write
-  // the fix-up from an effect, since saving during a render is not allowed, and
-  // key it on the ceiling rather than on mount: `endpoints` arrive well after
-  // mount, and the endpoint is frequently the binding constraint.
-  const fixedUpRef = React.useRef<number | null>(null)
-  React.useEffect(() => {
-    if (draggingWindow) return
-    // A follower's window belongs to the profile, and the columns this would
-    // write are the story's untouched custom memory — fixing them up here would
-    // overwrite settings the writer expects to come back to, to no effect on
-    // what actually generates. The profile editor clamps its own window.
-    if (!isCustom) return
-    const clamped = clampContextWindow(savedContextWindow, contextLength)
-    if (clamped === savedContextWindow) return
-    // The row only needs fixing once per ceiling. Without the latch StrictMode's
-    // double invocation sends the same write twice, and with it two revalidations
-    // and two fan-outs to every connected device.
-    if (fixedUpRef.current === clamped) return
-    fixedUpRef.current = clamped
-    writeContextWindow(clamped)
-    saveSettings({ contextWindow: clamped }, (ok) => {
-      if (ok) settleContextWindow()
-      else resetContextWindow(savedContextWindow)
-    })
-  }, [
-    contextLength,
-    savedContextWindow,
-    draggingWindow,
-    isCustom,
-    saveSettings,
-    writeContextWindow,
-    settleContextWindow,
-    resetContextWindow,
-  ])
-
-  function handleModelChange(nextModelId: string) {
-    // Re-picking the model already in use is not a change, and running the rest
-    // of this would drop the writer's provider pin for a click that chose
-    // nothing. The combobox reports every selection, including that one.
-    if (nextModelId === modelId) return
-    const previous = {
-      modelId,
-      providerTag,
-      thinking,
-      contextWindow: storedContextWindow,
-    }
-    model.write(nextModelId)
-    // A provider tag names an endpoint of the *old* model; the new one is served
-    // by a different set, so the pin cannot survive the switch. Back to Auto.
-    provider.write(null)
-    const nextModel = models.find((m) => m.id === nextModelId)
-    // Thinking levels are per-model: a level the new model doesn't offer (or
-    // any level at all, on a model that can't think) falls back to off.
-    const nextThinking = levelForModel(nextModel?.reasoning, thinking)
-    thinkingSync.write(nextThinking)
-    // Same story for the context window: a smaller model can't honour the stop
-    // the writer picked under a bigger one. Both dependent settings ride along
-    // in the one patch so the row is never briefly inconsistent. Clamped from
-    // the *stored* window, not the displayed one — the display may be sitting
-    // under an endpoint ceiling that this very patch is about to remove, and
-    // writing that back would quietly forfeit the writer's real preference.
-    const nextContextWindow = clampContextWindow(
-      storedContextWindow,
-      nextModel?.contextLength ?? 0
-    )
-    writeContextWindow(nextContextWindow)
-    saveSettings(
-      {
-        modelId: nextModelId,
-        providerTag: null,
-        thinking: nextThinking,
-        contextWindow: nextContextWindow,
-      },
-      (ok) => {
-        if (ok) {
-          model.settle()
-          provider.settle()
-          thinkingSync.settle()
-          settleContextWindow()
-        } else {
-          model.reset(previous.modelId)
-          provider.reset(previous.providerTag)
-          thinkingSync.reset(previous.thinking)
-          resetContextWindow(previous.contextWindow)
-        }
-      }
-    )
-  }
-
-  function handleProviderChange(nextProviderTag: string | null) {
-    if (nextProviderTag === providerTag) return
-    const previous = { providerTag, contextWindow: storedContextWindow }
-    provider.write(nextProviderTag)
-    // Same clamp as a model change, for the same reason: the endpoint owns the
-    // window, so pinning a smaller one has to pull the slider down with it.
-    const nextContextWindow = clampContextWindow(
-      storedContextWindow,
-      endpointForTag(endpoints, nextProviderTag)?.contextLength ??
-        models.find((m) => m.id === modelId)?.contextLength ??
-        0
-    )
-    writeContextWindow(nextContextWindow)
-    saveSettings(
-      { providerTag: nextProviderTag, contextWindow: nextContextWindow },
-      (ok) => {
-        if (ok) {
-          provider.settle()
-          settleContextWindow()
-        } else {
-          provider.reset(previous.providerTag)
-          resetContextWindow(previous.contextWindow)
-        }
-      }
-    )
-  }
-
-  function handleThinkingChange(next: ThinkingLevel) {
-    const previous = thinking
-    thinkingSync.write(next)
-    saveSettings({ thinking: next }, (ok) => {
-      if (ok) thinkingSync.settle()
-      else thinkingSync.reset(previous)
-    })
-  }
-
-  function handleProfileChange(next: string | null) {
-    if (next === profileId) return
-    const previous = profileId
-    const previousLastProfileId = lastProfileId
-    // Only the pointer moves: the story's settings columns are its custom
-    // memory, so a trip through a profile and back is lossless (§ Semantics).
-    setLastProfileId(next === null ? previous : null)
-    profile.write(next)
-    startTransition(async () => {
-      let ok = false
-      let message = FALLBACK_ERROR
-      try {
-        const result = await setStoryProfile(story.id, next)
-        ok = result.ok
-        if (!result.ok) message = result.error
-      } catch (error) {
-        message =
-          error instanceof Error && error.message ? error.message : message
-      }
-      if (ok) {
-        profile.settle()
-      } else {
-        profile.reset(previous)
-        // The switch never happened, so the "based on" memory is whatever it
-        // was before it — clearing it would strand a Custom story's way back.
-        setLastProfileId(previousLastProfileId)
-        toast.error(message)
-      }
-    })
-  }
+  const settings = useModelSettings({ story, models, profiles })
 
   return (
     <>
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-6 px-4 py-4">
-          <div className="space-y-3">
-            <ProfileCard
-              profiles={profiles}
-              profileId={profileId}
-              defaultProfileId={defaultProfileId}
-              onProfileChange={handleProfileChange}
-              switching={profileSwitching}
-              models={models}
-              endpoints={endpoints}
-              basedOnName={basedOnProfile?.name ?? null}
-              onOpenChange={setProfileMenuOpen}
-            />
-
-            {/* Following a profile there is nothing here to tune: the bundle is
-              global, and a knob in the story would be a silent fork of it. */}
-            {isCustom ? (
-              <div className="space-y-1">
-                <ModelPicker
-                  models={models}
-                  value={modelId}
-                  onValueChange={handleModelChange}
-                  endpoints={endpoints}
-                  providerTag={providerTag}
-                  onProviderTagChange={handleProviderChange}
-                  thinking={thinking}
-                  onThinkingChange={handleThinkingChange}
-                  onOpenChange={setPickerOpen}
-                />
-                <Collapsible>
-                  <CollapsibleTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        className="w-full justify-between text-muted-foreground"
-                      />
-                    }
-                  >
-                    Generation settings
-                    <ChevronsUpDown className="size-3" />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="space-y-6 pt-4">
-                    <SettingSlider
-                      storyId={story.id}
-                      version={story.updatedAt}
-                      field="temperature"
-                      label="Temperature"
-                      serverValue={story.settings.temperature}
-                      min={0}
-                      max={2}
-                      step={0.01}
-                    />
-                    <SettingSlider
-                      storyId={story.id}
-                      version={story.updatedAt}
-                      field="topP"
-                      label="Top P"
-                      serverValue={story.settings.topP}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                    />
-                    <SettingSlider
-                      storyId={story.id}
-                      version={story.updatedAt}
-                      field="maxTokens"
-                      label="Max tokens"
-                      serverValue={story.settings.maxTokens}
-                      min={128}
-                      max={4096}
-                      step={128}
-                    />
-                    <ContextWindowSlider
-                      value={contextWindow}
-                      contextLength={contextLength}
-                      dragProps={windowDragProps}
-                      onValueChange={setContextWindowLocal}
-                      onValueCommitted={(next) => {
-                        // A release that settled back on the stored stop is not a
-                        // change; anything else is, including a return to a stop
-                        // the model clamp moved us off earlier.
-                        const previous = savedContextWindow
-                        writeContextWindow(next)
-                        if (next === previous) return
-                        saveSettings({ contextWindow: next }, (ok) => {
-                          if (ok) settleContextWindow()
-                          else resetContextWindow(previous)
-                        })
-                      }}
-                    />
-                    <SettingSlider
-                      storyId={story.id}
-                      version={story.updatedAt}
-                      field="frequencyPenalty"
-                      label="Frequency penalty"
-                      serverValue={story.settings.frequencyPenalty}
-                      min={-2}
-                      max={2}
-                      step={0.1}
-                    />
-                    <SettingSlider
-                      storyId={story.id}
-                      version={story.updatedAt}
-                      field="presencePenalty"
-                      label="Presence penalty"
-                      serverValue={story.settings.presencePenalty}
-                      min={-2}
-                      max={2}
-                      step={0.1}
-                    />
-                  </CollapsibleContent>
-                </Collapsible>
-
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-muted-foreground"
-                    onClick={() => setSaveProfileOpen(true)}
-                  >
-                    Save as profile…
-                  </Button>
-                  {basedOnProfile ? (
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      className="min-w-0 text-muted-foreground"
-                      onClick={() => handleProfileChange(basedOnProfile.id)}
-                    >
-                      <span className="truncate">
-                        Back to {basedOnProfile.name}
-                      </span>
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <SaveProfileDialog
-            storyId={story.id}
-            open={saveProfileOpen}
-            onOpenChange={setSaveProfileOpen}
-            onSaved={(id) => {
-              // The action already pointed the story at the new profile, so this
-              // only catches the switcher up; the fresh props are on their way in
-              // the same transition.
-              setLastProfileId(null)
-              profile.write(id)
-              profile.settle()
-            }}
+          <ModelSection
+            story={story}
+            models={models}
+            profiles={profiles}
+            defaultProfileId={defaultProfileId}
+            settings={settings}
           />
 
           <Separator />
 
-          <div className="space-y-2">
-            <Label htmlFor={`${uid}-memory`}>Memory</Label>
-            <Textarea
-              id={`${uid}-memory`}
-              ref={memoryRef}
-              defaultValue={story.memory}
-              className="min-h-24"
-              placeholder="Facts the model should always remember…"
-              onChange={(event) => {
-                memoryField.markWritten(event.target.value)
-                memorySave.schedule(event.target.value)
-              }}
-              onBlur={() => memorySave.flush()}
-            />
-            <p className="text-xs text-muted-foreground">
-              Always included at the top of context.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={`${uid}-authors-note`}>Author&apos;s note</Label>
-            <Textarea
-              id={`${uid}-authors-note`}
-              ref={authorsNoteRef}
-              defaultValue={story.authorsNote}
-              className="min-h-16"
-              placeholder="Steer tone and style…"
-              onChange={(event) => {
-                authorsNoteField.markWritten(event.target.value)
-                authorsNoteSave.schedule(event.target.value)
-              }}
-              onBlur={() => authorsNoteSave.flush()}
-            />
-            <p className="text-xs text-muted-foreground">
-              Injected near the most recent words.
-            </p>
-          </div>
-
-          {/* One line, because the editor is a dialog now: a 48-row monospace
-            box never belonged in a 320px column, and the built-in prompt it is
-            compared against was unreadable at that width. */}
-          <Button
-            variant="ghost"
-            size="xs"
-            className="w-full justify-between text-muted-foreground"
-            onClick={() => setNarratorOpen(true)}
-          >
-            Narrator
-            <span className="flex items-center gap-1.5">
-              <span className="font-mono text-[0.6875rem]">
-                {story.systemPrompt === null ? "Built-in" : "Custom"}
-              </span>
-              <ChevronRight className="size-3" />
-            </span>
-          </Button>
-
-          <NarratorDialog
-            storyId={story.id}
-            systemPrompt={story.systemPrompt}
-            open={narratorOpen}
-            onOpenChange={setNarratorOpen}
-          />
+          <PromptSection story={story} />
 
           <Separator />
 
-          <div className="space-y-3">
-            <Label>Lorebook</Label>
-            <LoreTab story={story} lorebookEntries={lorebookEntries} />
-          </div>
+          <LoreSection story={story} lorebookEntries={lorebookEntries} />
         </div>
       </ScrollArea>
       <StatusStrip
         story={story}
         lorebookEntries={lorebookEntries}
-        contextWindow={contextWindow}
+        contextWindow={settings.contextWindow}
         models={models}
-        identity={{ modelId, providerTag, thinking }}
+        identity={{
+          modelId: settings.modelId,
+          providerTag: settings.providerTag,
+          thinking: settings.thinking,
+        }}
       />
     </>
   )
