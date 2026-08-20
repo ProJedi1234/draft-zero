@@ -7,7 +7,7 @@ import { ModelSection } from "@/components/inspector/sections/model-section"
 import { PromptSection } from "@/components/inspector/sections/prompt-section"
 import { StatusStrip } from "@/components/inspector/status-strip"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useModelSettings } from "@/hooks/use-model-settings"
 import type {
   LorebookEntry,
@@ -17,12 +17,24 @@ import type {
 } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
+/**
+ * The three questions the panel answers, in the order a writer asks them:
+ * what the model reads, what runs it, and what got pulled in.
+ *
+ * They are also the rule for where a new control goes. The panel spent nine
+ * days growing by appending because it had no such rule, and the last feature
+ * to arrive left one of its own settings unbuilt for want of a home.
+ */
+export type InspectorTab = "prompt" | "model" | "lore"
+
 export function InspectorPanel({
   story,
   lorebookEntries,
   models,
   profiles,
   defaultProfileId,
+  tab,
+  onTabChange,
   className,
 }: {
   story: Story
@@ -32,6 +44,9 @@ export function InspectorPanel({
   profiles: ModelProfile[]
   /** The profile new stories start from; starred in the switcher. */
   defaultProfileId: string | null
+  /** Owned by the workspace: a writer preference, not a property of the story. */
+  tab: InspectorTab
+  onTabChange: (tab: InspectorTab) => void
   className?: string
 }) {
   return (
@@ -48,6 +63,8 @@ export function InspectorPanel({
         models={models}
         profiles={profiles}
         defaultProfileId={defaultProfileId}
+        tab={tab}
+        onTabChange={onTabChange}
       />
     </aside>
   )
@@ -66,12 +83,16 @@ export function InspectorContent({
   models,
   profiles,
   defaultProfileId,
+  tab,
+  onTabChange,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
   profiles: ModelProfile[]
   defaultProfileId: string | null
+  tab: InspectorTab
+  onTabChange: (tab: InspectorTab) => void
 }) {
   return (
     <InspectorSections
@@ -81,12 +102,14 @@ export function InspectorContent({
       models={models}
       profiles={profiles}
       defaultProfileId={defaultProfileId}
+      tab={tab}
+      onTabChange={onTabChange}
     />
   )
 }
 
 /**
- * The panel's three sections over a pinned status strip.
+ * Three segments over a pinned status strip.
  *
  * The model state is held here rather than inside <ModelSection> because the
  * strip reads it too — it prints the live model identity and the context window,
@@ -100,36 +123,109 @@ function InspectorSections({
   models,
   profiles,
   defaultProfileId,
+  tab,
+  onTabChange,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
   profiles: ModelProfile[]
   defaultProfileId: string | null
+  tab: InspectorTab
+  onTabChange: (tab: InspectorTab) => void
 }) {
   const settings = useModelSettings({ story, models, profiles })
+  // Computed by the read layer with the same matcher the cards use
+  // (lib/db/mappers.ts), so the badge and the list can never disagree.
+  const activeLoreCount = story.activeLorebookEntryIds.length
 
   return (
     <>
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-6 px-4 py-4">
-          <ModelSection
-            story={story}
-            models={models}
-            profiles={profiles}
-            defaultProfileId={defaultProfileId}
-            settings={settings}
-          />
-
-          <Separator />
-
-          <PromptSection story={story} />
-
-          <Separator />
-
-          <LoreSection story={story} lorebookEntries={lorebookEntries} />
+      <Tabs
+        value={tab}
+        onValueChange={(next) => onTabChange(next as InspectorTab)}
+        className="flex min-h-0 flex-1 flex-col gap-0"
+      >
+        <div className="shrink-0 px-3 pt-3">
+          <TabsList className="h-9 w-full">
+            <TabsTrigger value="prompt" className="px-2 text-[0.6875rem]">
+              Prompt
+            </TabsTrigger>
+            <TabsTrigger
+              value="model"
+              className="gap-1.5 px-2 text-[0.6875rem]"
+            >
+              Model
+              {/* Off-profile is the one thing about this tab worth knowing
+                  without opening it: a Custom story's settings are its own and
+                  drift from every profile silently. */}
+              {settings.isCustom ? (
+                <>
+                  {/* aria-label on a bare span reaches almost no screen reader;
+                      the dot is decorative and the words are the real label. */}
+                  <span
+                    aria-hidden
+                    className="size-1.5 rounded-full bg-foreground/50"
+                  />
+                  <span className="sr-only">, custom settings</span>
+                </>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="lore" className="gap-1.5 px-2 text-[0.6875rem]">
+              Lore
+              {activeLoreCount > 0 ? (
+                <>
+                  <span
+                    aria-hidden
+                    className="rounded-full bg-foreground/10 px-1.5 text-[0.625rem] leading-4 tabular-nums"
+                  >
+                    {activeLoreCount}
+                  </span>
+                  <span className="sr-only">
+                    , {activeLoreCount}{" "}
+                    {activeLoreCount === 1 ? "entry" : "entries"} in context
+                  </span>
+                </>
+              ) : null}
+            </TabsTrigger>
+          </TabsList>
         </div>
-      </ScrollArea>
+
+        {/* keepMounted, and a ScrollArea per panel: switching segments must not
+            unmount a field mid-edit — useAutosave would flush on the way out
+            and the uncontrolled textarea would remount from props — and each
+            section keeps its own scroll offset this way. */}
+        <TabsContent value="prompt" keepMounted className="min-h-0 flex-1">
+          <ScrollArea className="h-full">
+            <div className="px-4 py-4">
+              <PromptSection story={story} />
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="model" keepMounted className="min-h-0 flex-1">
+          <ScrollArea className="h-full">
+            <div className="px-4 py-4">
+              <ModelSection
+                story={story}
+                models={models}
+                profiles={profiles}
+                defaultProfileId={defaultProfileId}
+                settings={settings}
+              />
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="lore" keepMounted className="min-h-0 flex-1">
+          <ScrollArea className="h-full">
+            <div className="px-4 py-4">
+              <LoreSection story={story} lorebookEntries={lorebookEntries} />
+            </div>
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
+
       <StatusStrip
         story={story}
         lorebookEntries={lorebookEntries}
@@ -140,6 +236,7 @@ function InspectorSections({
           providerTag: settings.providerTag,
           thinking: settings.thinking,
         }}
+        onModelClick={() => onTabChange("model")}
       />
     </>
   )

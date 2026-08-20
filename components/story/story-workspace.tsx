@@ -19,6 +19,7 @@ import {
 import {
   InspectorContent,
   InspectorPanel,
+  type InspectorTab,
 } from "@/components/inspector/inspector-panel"
 import { Composer } from "@/components/story/composer"
 import { StoryCanvas } from "@/components/story/story-canvas"
@@ -32,6 +33,7 @@ import {
 
 /** Workspace preferences are the writer's, not the story's — they survive reloads. */
 const INSPECTOR_STORAGE_KEY = "draft-zero:inspector-open"
+const INSPECTOR_TAB_STORAGE_KEY = "draft-zero:inspector-tab"
 /** Unsent composer text, per story, for the length of the browser session. */
 const DRAFT_STORAGE_PREFIX = "draft-zero:draft:"
 
@@ -63,6 +65,7 @@ export function StoryWorkspace({
   defaultProfileId: string | null
 }) {
   const [inspectorOpen, setInspectorOpen] = useInspectorOpen()
+  const [inspectorTab, setInspectorTab] = useInspectorTab()
   const [mobileInspectorOpen, setMobileInspectorOpen] = React.useState(false)
   const [actionKind, setActionKind] = React.useState<ActionKind>("do")
 
@@ -112,6 +115,8 @@ export function StoryWorkspace({
           models={models}
           profiles={profiles}
           defaultProfileId={defaultProfileId}
+          tab={inspectorTab}
+          onTabChange={setInspectorTab}
           className={cn("hidden", inspectorOpen && "lg:flex")}
         />
       </div>
@@ -130,6 +135,8 @@ export function StoryWorkspace({
             models={models}
             profiles={profiles}
             defaultProfileId={defaultProfileId}
+            tab={inspectorTab}
+            onTabChange={setInspectorTab}
           />
         </SheetContent>
       </Sheet>
@@ -298,6 +305,32 @@ function useInspectorOpen(): [boolean, (open: boolean) => void] {
   }, [])
 
   return [open, set]
+}
+
+/**
+ * Which inspector section is showing. A preference of the writer like the
+ * panel's visibility, not a property of the story — reaching for memory on one
+ * story and being dropped back on the model tab by opening another would make
+ * the segments feel like they reset themselves.
+ */
+function useInspectorTab(): [InspectorTab, (tab: InspectorTab) => void] {
+  const [tab, setTab] = React.useState<InspectorTab>("prompt")
+
+  // Read after mount, for the same reason as useInspectorOpen: the server has
+  // no localStorage, so seeding state from it would desync hydration.
+  useIsomorphicLayoutEffect(() => {
+    const saved = window.localStorage.getItem(INSPECTOR_TAB_STORAGE_KEY)
+    if (saved === "prompt" || saved === "model" || saved === "lore") {
+      setTab(saved)
+    }
+  }, [])
+
+  const set = React.useCallback((next: InspectorTab) => {
+    setTab(next)
+    window.localStorage.setItem(INSPECTOR_TAB_STORAGE_KEY, next)
+  }, [])
+
+  return [tab, set]
 }
 
 /**
