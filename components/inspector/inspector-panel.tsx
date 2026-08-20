@@ -1,13 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { ChevronsUpDown } from "lucide-react"
+import { ChevronRight, ChevronsUpDown } from "lucide-react"
 import { toast } from "sonner"
 
 import { ContextDialog } from "@/components/context/context-dialog"
 import { ContextWindowSlider } from "@/components/inspector/context-window-slider"
 import { LoreTab } from "@/components/inspector/lore-tab"
 import { ModelPicker, ProfileCard } from "@/components/inspector/model-picker"
+import { NarratorDialog } from "@/components/inspector/narrator-dialog"
 import { SaveProfileDialog } from "@/components/inspector/save-profile-dialog"
 import { SettingSlider } from "@/components/inspector/setting-slider"
 import { levelForModel } from "@/components/thinking-select"
@@ -36,7 +37,6 @@ import {
 } from "@/lib/actions/stories"
 import { describeContext } from "@/lib/generation/breakdown"
 import { composeContext } from "@/lib/generation/context"
-import { DEFAULT_SYSTEM_PROMPT } from "@/lib/generation/system-prompt"
 import {
   clampContextWindow,
   contextWindowLabel,
@@ -168,6 +168,7 @@ function InspectorSections({
   const basedOnProfile =
     profiles.find((candidate) => candidate.id === lastProfileId) ?? null
   const [saveProfileOpen, setSaveProfileOpen] = React.useState(false)
+  const [narratorOpen, setNarratorOpen] = React.useState(false)
   // The four settings that move together. Each follows the server while mounted
   // — a model switched on the phone lands here — but never while this device's
   // own write is still travelling; see hooks/use-server-synced.ts.
@@ -215,13 +216,9 @@ function InspectorSections({
   const authorsNoteSave = useAutosave((value: string) =>
     updateStoryMeta(story.id, { authorsNote: value })
   )
-  const systemPromptSave = useAutosave((value: string) =>
-    updateStoryMeta(story.id, { systemPrompt: value })
-  )
 
   const memoryRef = React.useRef<HTMLTextAreaElement>(null)
   const authorsNoteRef = React.useRef<HTMLTextAreaElement>(null)
-  const systemPromptRef = React.useRef<HTMLTextAreaElement>(null)
 
   const memoryField = useServerSyncedField(
     memoryRef,
@@ -232,13 +229,6 @@ function InspectorSections({
     authorsNoteRef,
     story.authorsNote,
     authorsNoteSave.status
-  )
-  // "" is the honest rendering of a null override: the field shows the built-in
-  // prompt as placeholder text, and clearing it stores NULL again.
-  const systemPromptField = useServerSyncedField(
-    systemPromptRef,
-    story.systemPrompt ?? "",
-    systemPromptSave.status
   )
 
   /**
@@ -656,46 +646,30 @@ function InspectorSections({
           </p>
         </div>
 
-        <Collapsible>
-          <CollapsibleTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="xs"
-                className="w-full justify-between text-muted-foreground"
-              />
-            }
-          >
-            System prompt
-            <ChevronsUpDown className="size-3" />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="space-y-2 pt-3">
-            <Label htmlFor={`${uid}-system-prompt`} className="sr-only">
-              System prompt
-            </Label>
-            <Textarea
-              id={`${uid}-system-prompt`}
-              ref={systemPromptRef}
-              defaultValue={story.systemPrompt ?? ""}
-              className="min-h-48 font-mono text-xs"
-              // The built-in prompt as placeholder: it is what actually runs
-              // when the field is empty, so it belongs in the box, greyed out.
-              placeholder={DEFAULT_SYSTEM_PROMPT}
-              onChange={(event) => {
-                const next = event.target.value
-                // Blank is stored as NULL and comes back as "" (see the field
-                // above); anything else is stored verbatim.
-                systemPromptField.markWritten(next.trim() === "" ? "" : next)
-                systemPromptSave.schedule(next)
-              }}
-              onBlur={() => systemPromptSave.flush()}
-            />
-            <p className="text-xs text-muted-foreground">
-              How the narrator writes. Replaces the built-in prompt shown here;
-              clear it to go back.
-            </p>
-          </CollapsibleContent>
-        </Collapsible>
+        {/* One line, because the editor is a dialog now: a 48-row monospace
+            box never belonged in a 320px column, and the built-in prompt it is
+            compared against was unreadable at that width. */}
+        <Button
+          variant="ghost"
+          size="xs"
+          className="w-full justify-between text-muted-foreground"
+          onClick={() => setNarratorOpen(true)}
+        >
+          Narrator
+          <span className="flex items-center gap-1.5">
+            <span className="font-mono text-[0.6875rem]">
+              {story.systemPrompt === null ? "Built-in" : "Custom"}
+            </span>
+            <ChevronRight className="size-3" />
+          </span>
+        </Button>
+
+        <NarratorDialog
+          storyId={story.id}
+          systemPrompt={story.systemPrompt}
+          open={narratorOpen}
+          onOpenChange={setNarratorOpen}
+        />
 
         <Separator />
 
