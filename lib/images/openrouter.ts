@@ -8,6 +8,7 @@ import "server-only"
 
 import type { ImageAspectRatio } from "@/lib/types"
 
+import { providerOptions } from "./moderation"
 import type {
   ImageGenerationEvent,
   ImageGenerationProvider,
@@ -70,6 +71,8 @@ export class OpenRouterImageProvider implements ImageGenerationProvider {
     const { prompt, modelId, aspectRatio, seed, signal } = request
     if (!modelId) throw new Error("No image model selected.")
 
+    const provider = providerOptions(modelId)
+
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers: {
@@ -90,6 +93,10 @@ export class OpenRouterImageProvider implements ImageGenerationProvider {
         // Sent so a retry is a genuinely different draw rather than a cache
         // hit. Models that do not support it ignore the field.
         seed,
+        // Most of the catalog has no knob at all, so this is spread rather
+        // than set — JSON.stringify would drop an undefined either way, but
+        // the spread says at the call site that absent is the ordinary case.
+        ...(provider ? { provider } : {}),
         stream: false,
       }),
       signal,
