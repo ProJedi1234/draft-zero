@@ -13,6 +13,7 @@
 // on the wire.
 
 import { estimateTokens, promptBlocks } from "./context"
+import type { LoreTrigger } from "./lorebook"
 import type { ComposedContext, ContextSectionId } from "./types"
 
 /** Writer-facing names. "Instructions" rather than "System prompt": the panel
@@ -42,6 +43,10 @@ export interface ContextItem {
   tokens: number
   /** Why it is here: the trigger key that matched, or null for always-active. */
   matchedKey: string | null
+  /** What put it here — a scan source or another entry. Null for always-active. */
+  triggeredBy: LoreTrigger | null
+  /** Rounds of cascade from a scan source; 0 is a direct match or always-on. */
+  depth: number
   /** The block as sent, label and all. */
   text: string
 }
@@ -137,6 +142,8 @@ export function describeContext(
       label: entry.name,
       tokens: estimateTokens(block.text),
       matchedKey: entry.matchedKey,
+      triggeredBy: entry.triggeredBy,
+      depth: entry.depth,
       text: block.text,
     })
   })

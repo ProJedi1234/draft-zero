@@ -517,6 +517,173 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     createdAt: "2026-06-02T09:45:00Z",
     updatedAt: "2026-08-06T21:00:00Z",
   },
+
+  // ---------------------------------------------------------------------------
+  // "Signal from the Hollow Deck" — the lorebook v2 demonstration set.
+  //
+  // Every entry below is placed to exercise one activation path, so the
+  // inspector's Lore segment reads as a map of the feature:
+  //   · Standing Orders  — always on
+  //   · Meridian, Vaharan — triggered by MEMORY (stable)
+  //   · The Compact      — triggered by the AUTHOR'S NOTE (stable)
+  //   · Reactor Core     — triggered by the STORY window (volatile)
+  //   · Ninth Rotation → Hollow Deck → Cassiel Yun — a three-deep CASCADE
+  //   · The Sleepers     — one hop past the cap, so it stays out
+  //   · Port Ellis       — nothing mentions it, so it never activates
+  {
+    id: "lore-mer-orders",
+    storyId: "story-meridian",
+    name: "Standing Orders",
+    category: "concept",
+    keys: [],
+    content:
+      "Standing orders, unchanged since departure: the ship does not decelerate without a unanimous waking vote. No compartment is opened against pressure. No sealed order is read before its stated hour. An officer who breaks one of these is relieved, not punished — the distinction matters to the people who wrote them.",
+    enabled: true,
+    alwaysActive: true,
+    priority: 90,
+    createdAt: "2026-08-18T09:00:00Z",
+    updatedAt: "2026-08-18T09:00:00Z",
+  },
+  {
+    id: "lore-mer-captain",
+    storyId: "story-meridian",
+    name: "Ines Vaharan",
+    category: "character",
+    keys: ["Ines", "Vaharan", "the captain"],
+    content:
+      "Captain Ines Vaharan has held command since the Ninth Rotation. She is sixty-one, unsentimental, and keeps the last sealed order in a drawer she does not lock. Twice she has been asked to open it early. Twice she has declined, and both times gave the same reason: that the hour was stated.",
+    enabled: true,
+    alwaysActive: false,
+    priority: 80,
+    createdAt: "2026-08-18T09:01:00Z",
+    updatedAt: "2026-08-18T09:01:00Z",
+  },
+  {
+    id: "lore-mer-ship",
+    storyId: "story-meridian",
+    name: "Meridian Ascending",
+    category: "location",
+    keys: ["Meridian", "the ship"],
+    content:
+      "A generation ship two hundred and six years out from Sol, carrying nine thousand colonists in cold storage and a waking crew of four hundred. Her hull is a cylinder eleven kilometres long that turns once a minute for weight. Her authority is the Compact, and it ends where the Compact ends.",
+    enabled: true,
+    alwaysActive: false,
+    priority: 75,
+    createdAt: "2026-08-18T09:02:00Z",
+    updatedAt: "2026-08-18T09:02:00Z",
+  },
+  {
+    id: "lore-mer-compact",
+    storyId: "story-meridian",
+    name: "The Compact",
+    category: "faction",
+    keys: ["Compact"],
+    content:
+      "The ship's founding law, written planetside before departure and amendable only by unanimous waking vote. It defines who may be woken, and when, and on whose authority. It is silent on what is owed to a crew that arrives early, because the people who drafted it could not imagine arriving at all.",
+    enabled: true,
+    alwaysActive: false,
+    priority: 70,
+    createdAt: "2026-08-18T09:03:00Z",
+    updatedAt: "2026-08-18T09:03:00Z",
+  },
+  {
+    id: "lore-mer-reactor",
+    storyId: "story-meridian",
+    name: "Reactor Core",
+    category: "item",
+    keys: ["reactor"],
+    content:
+      "The primary reactor has run at eighty-one percent since the Ninth Rotation and no engineer alive has seen it higher. Its containment is held by the Tannhauser Seal, which is checked every watch and has never once been found wanting.",
+    enabled: true,
+    alwaysActive: false,
+    priority: 65,
+    createdAt: "2026-08-18T09:04:00Z",
+    updatedAt: "2026-08-18T09:04:00Z",
+  },
+  {
+    id: "lore-mer-ninth",
+    storyId: "story-meridian",
+    name: "The Ninth Rotation",
+    category: "event",
+    keys: ["Ninth Rotation"],
+    content:
+      "The year the corridors below frame ninety were sealed, evacuated and renamed the Hollow Deck. The minutes of the vote survive in full. The tally does not, and no one who was present has ever been willing to reconstruct it from memory.",
+    enabled: true,
+    alwaysActive: false,
+    priority: 60,
+    createdAt: "2026-08-18T09:05:00Z",
+    updatedAt: "2026-08-18T09:05:00Z",
+  },
+  {
+    id: "lore-mer-hollow",
+    storyId: "story-meridian",
+    name: "Hollow Deck",
+    category: "location",
+    keys: ["Hollow Deck"],
+    content:
+      "Eleven compartments below frame ninety, unpressurised and dark since the Ninth Rotation. The bulkhead lights still cycle on the old schedule. The last name in the access log, signed the night the deck was sealed, is Cassiel Yun.",
+    enabled: true,
+    alwaysActive: false,
+    priority: 55,
+    createdAt: "2026-08-18T09:06:00Z",
+    updatedAt: "2026-08-18T09:06:00Z",
+  },
+  {
+    id: "lore-mer-cassiel",
+    storyId: "story-meridian",
+    name: "Cassiel Yun",
+    category: "character",
+    keys: ["Cassiel", "Yun"],
+    content:
+      "Chief of hull integrity through the Ninth Rotation, listed in the manifest as neither waking nor sleeping. Her authorisation still opens doors it should not. The Sleepers' registry has no entry under her name, and the omission is too tidy to be clerical.",
+    enabled: true,
+    alwaysActive: false,
+    priority: 50,
+    createdAt: "2026-08-18T09:07:00Z",
+    updatedAt: "2026-08-18T09:07:00Z",
+  },
+  {
+    id: "lore-mer-sleepers",
+    storyId: "story-meridian",
+    name: "The Sleepers",
+    category: "faction",
+    keys: ["Sleepers"],
+    content:
+      "Nine thousand colonists in cold storage, ordered by the lottery that selected them. They have no vote under the Compact until they are woken, which is the whole of the argument that has run for two centuries.",
+    enabled: true,
+    alwaysActive: false,
+    priority: 45,
+    createdAt: "2026-08-18T09:08:00Z",
+    updatedAt: "2026-08-18T09:08:00Z",
+  },
+  {
+    id: "lore-mer-seal",
+    storyId: "story-meridian",
+    name: "Tannhauser Seal",
+    category: "item",
+    keys: ["Tannhauser"],
+    content:
+      "A single-use magnetic closure rated for the life of the ship. Once broken it cannot be reset without a shipwright's authority, and there has been no shipwright aboard since the second generation died.",
+    enabled: true,
+    alwaysActive: false,
+    priority: 40,
+    createdAt: "2026-08-18T09:09:00Z",
+    updatedAt: "2026-08-18T09:09:00Z",
+  },
+  {
+    id: "lore-mer-portellis",
+    storyId: "story-meridian",
+    name: "Port Ellis",
+    category: "location",
+    keys: ["Port Ellis", "Ellis Station"],
+    content:
+      "The last waystation before the long dark, and the last place anyone aboard drew a breath of air they had not made themselves. Nothing in this story has mentioned it yet — which is why it is not in context.",
+    enabled: true,
+    alwaysActive: false,
+    priority: 30,
+    createdAt: "2026-08-18T09:10:00Z",
+    updatedAt: "2026-08-18T09:10:00Z",
+  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -726,6 +893,94 @@ export const MOCK_STORIES: Story[] = [
     profileId: null,
     settings: { ...DEFAULT_GENERATION_SETTINGS },
     entries: [],
+  },
+
+  {
+    id: "story-meridian",
+    title: "Signal from the Hollow Deck",
+    description:
+      "Two centuries into the crossing, a sealed deck answers a hail nobody sent.",
+    genre: "Science fiction",
+    createdAt: "2026-08-18T09:00:00Z",
+    updatedAt: "2026-08-18T10:30:00Z",
+    wordCount: 512,
+    // Names Vaharan and the Meridian and nothing else: both entries are then
+    // held in context by the memory rather than by the prose, which is what
+    // puts them in the prompt's cacheable head.
+    memory:
+      "The generation ship Meridian Ascending is two hundred and six years out from Sol. Captain Ines Vaharan holds the last sealed order and has not opened it. Tone: cold, procedural, elegiac. Third person past, close on Vaharan.",
+    systemPrompt: null,
+    // "Compact" appears here and nowhere else, so The Compact is a lore entry
+    // the AUTHOR'S NOTE pulls into context — stable, like the memory's two.
+    authorsNote:
+      "Keep the Compact's language legal and exact. No officer speaks in slogans.",
+    // Recomputed at read time by real trigger matching; the value here is only
+    // what the client-side mock renders before the first read.
+    activeLorebookEntryIds: [
+      "lore-mer-orders",
+      "lore-mer-captain",
+      "lore-mer-ship",
+      "lore-mer-compact",
+      "lore-mer-reactor",
+      "lore-mer-ninth",
+      "lore-mer-hollow",
+      "lore-mer-cassiel",
+      "lore-mer-seal",
+    ],
+    canUndo: false,
+    canRedo: false,
+    undoSummary: null,
+    redoSummary: null,
+    profileId: null,
+    settings: {
+      modelId: "~anthropic/claude-sonnet-latest",
+      thinking: "off",
+      providerTag: null,
+      temperature: 0.9,
+      topP: 0.95,
+      maxTokens: 1024,
+      contextWindow: 8192,
+      frequencyPenalty: 0.15,
+      presencePenalty: 0.1,
+    },
+    entries: [
+      proseEntry({
+        id: "entry-mer-1",
+        source: "generated",
+        createdAt: "2026-08-18T09:20:00Z",
+        text: "The hail came in on a channel that had been dead for a hundred and ninety years, and it came in clean. No carrier drift, no decay, no apology of static at the edges. It simply arrived, the way a knock arrives, and the watch officer who logged it wrote down the time and then sat looking at what he had written.",
+      }),
+      proseEntry({
+        id: "entry-mer-2",
+        source: "generated",
+        createdAt: "2026-08-18T09:32:00Z",
+        text: "Vaharan was awake before they reached her door. She had been awake for most of an hour, for no reason she could name, and afterward she would decide not to mention that part to anyone. She read the log entry twice. Then she asked the question that mattered, which was not what the signal said but where it had been sent from.",
+      }),
+      proseEntry({
+        id: "entry-mer-3",
+        source: "generated",
+        createdAt: "2026-08-18T09:44:00Z",
+        text: "Below frame ninety, the officer said, and did not elaborate, because there was nothing below frame ninety and everyone in the room had grown up knowing it. The corridors there had been sealed before their grandparents drew breath. The lights still ran on the old schedule, cycling dawn and dusk for eleven compartments of vacuum.",
+      }),
+      proseEntry({
+        id: "entry-mer-4",
+        source: "generated",
+        createdAt: "2026-08-18T09:58:00Z",
+        text: "She went to the drawer and looked at the sealed order without touching it. The hour stated on its face was four years away. She closed the drawer. Whatever was speaking from a dead deck could wait the length of time it took her to do this properly, and if it could not, then it was not what it claimed to be.",
+      }),
+      proseEntry({
+        id: "entry-mer-5",
+        source: "generated",
+        createdAt: "2026-08-18T10:11:00Z",
+        text: "The engineering watch reported nothing anomalous, which was itself the anomaly. The reactor held at eighty-one percent, as it had every hour of her command and every hour of the command before hers. She asked for the containment figures anyway and read them line by line, and they were the figures they had always been.",
+      }),
+      proseEntry({
+        id: "entry-mer-6",
+        source: "generated",
+        createdAt: "2026-08-18T10:24:00Z",
+        text: "By the second watch the signal had repeated four times, always the same length, always beginning on the minute. It carried no words that the decoders would admit to. But it had a shape, and the shape was the cadence of someone reading aloud from a document — the pauses falling where a clause would end.",
+      }),
+    ],
   },
 ]
 

@@ -12,8 +12,8 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 import {
+  buildScanSources,
   matchActiveLorebookEntries,
-  recentStoryText,
 } from "@/lib/generation/lorebook"
 import type { LorebookEntry, Story } from "@/lib/types"
 
@@ -33,7 +33,7 @@ export function LoreTab({
 }) {
   const matches = matchActiveLorebookEntries(
     lorebookEntries,
-    recentStoryText(story.entries)
+    buildScanSources(story)
   )
 
   if (matches.length === 0) {

@@ -1,6 +1,7 @@
 // lib/generation/types.ts — Provider-agnostic generation contract.
 // Pure types: isomorphic, no imports beyond the domain contract.
 
+import type { LoreTrigger } from "@/lib/generation/lorebook"
 import type { GenerationRequestKind, GenerationSettings } from "@/lib/types"
 
 /** A lorebook entry selected into context, with why. */
@@ -9,8 +10,19 @@ export interface ActiveLoreEntry {
   name: string
   content: string
   priority: number
-  /** The trigger key that matched recent text, or null when included via alwaysActive. */
+  /** The trigger key that matched, or null when included via alwaysActive. */
   matchedKey: string | null
+  /** Rounds of cascade from a scan source; 0 is a direct match or always-on. */
+  depth: number
+  /** What put it in context — a scan source or another entry — or null for always-on. */
+  triggeredBy: LoreTrigger | null
+  /**
+   * True when this entry's activation does not depend on the story window.
+   * Nothing reads it yet; the prompt layout starts splitting on it in a later
+   * change, and recording it here is what lets the matcher stay the single
+   * place that decides it.
+   */
+  stable: boolean
 }
 
 /**

@@ -15,6 +15,7 @@ import type {
   ContextItem,
   ContextSection,
 } from "@/lib/generation/breakdown"
+import { describeTrigger } from "@/lib/generation/lorebook"
 import type { ContextSectionId } from "@/lib/generation/types"
 import { contextWindowLabel } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -201,7 +202,7 @@ function LoreItemRow({ item }: { item: ContextItem }) {
             never matched would be a fabricated explanation. */}
         {item.matchedKey === null
           ? "always on"
-          : `matched “${item.matchedKey}”`}
+          : `matched “${item.matchedKey}” ${describeTrigger(item.triggeredBy)}`}
       </span>
       <span className="font-mono text-muted-foreground tabular-nums">
         {grouped(item.tokens)}
