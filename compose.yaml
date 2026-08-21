@@ -94,6 +94,9 @@ services:
       # Passed through when set on the host, empty otherwise — an empty key
       # makes generation fall back to the offline mock provider.
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # Optional overrides; unset means the /etc/localtime mount below decides.
+      DRAFT_ZERO_TIME_ZONE: ${DRAFT_ZERO_TIME_ZONE:-}
+      DRAFT_ZERO_LOCALE: ${DRAFT_ZERO_LOCALE:-}
       # Bind-mounted source over a container filesystem defeats inotify, so
       # Next's watcher has to poll to see host edits.
       WATCHPACK_POLLING: "true"
@@ -101,6 +104,10 @@ services:
       - "3000:3000"
     volumes:
       - .:/app
+      # The usage page buckets days in the host's zone; without this the
+      # container is UTC. A mount, not TZ=…, because the zone lives here and is
+      # not normally exported into a shell to forward.
+      - /etc/localtime:/etc/localtime:ro
       # Anonymous volumes that shadow the bind mount: the host's node_modules is
       # built for the host's libc and Next's binaries are platform-specific, so
       # the container keeps its own. .next likewise stays container-local so the

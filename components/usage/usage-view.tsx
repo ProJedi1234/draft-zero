@@ -38,6 +38,8 @@ function UsageView({
   windowDays = 30,
   windowUsd,
   windowUnpricedCalls,
+  locale,
+  zoneLabel,
 }: {
   summary: GlobalCostSummary
   /** Zero-filled on the server, off the same clock the SQL bounds came from. */
@@ -48,6 +50,10 @@ function UsageView({
   /** Exact window total, summed in SQL rather than from the drawn buckets. */
   windowUsd: string
   windowUnpricedCalls: number
+  /** Resolved on the server; a client render must not consult its own clock. */
+  locale: string
+  /** How to name the day boundary: "EDT", "GMT+5:30", or an IANA id. */
+  zoneLabel: string
 }) {
   // The busiest model sets the scale for every share bar, so it is computed
   // once for the list rather than once per row.
@@ -105,13 +111,10 @@ function UsageView({
                   className="pl-4"
                 />
               </div>
-              {/* Every window on this page is bucketed on UTC days, so the
-                  boundary is stated rather than left to be inferred: west of
-                  UTC "today" turns over mid-afternoon, and a figure that
-                  silently disagrees with the writer's own sense of today reads
-                  as a bug in the ledger. */}
+              {/* Named, not inferred: a spend figure that disagrees with the
+                  writer's own sense of today reads as a bug in the ledger. */}
               <p className="font-mono text-[0.6875rem] text-muted-foreground/50">
-                Days start at 00:00 UTC.
+                Days start at 00:00 {zoneLabel}.
                 {summary.unpricedCalls > 0
                   ? ` ${plural(summary.unpricedCalls, "generation")} not recorded.`
                   : ""}
@@ -126,7 +129,7 @@ function UsageView({
             <CardContent className="space-y-3">
               {/* Padded top so the hover readout has somewhere to sit. */}
               <div className="pt-6">
-                <SpendBars bars={bars} />
+                <SpendBars bars={bars} locale={locale} />
               </div>
               <div className="flex items-baseline justify-between">
                 <span className={MICRO_LABEL}>Last {windowDays} days</span>
