@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   ArrowUp,
   FastForward,
+  Loader2,
   MessageSquareQuote,
   Redo2,
   RotateCcw,
@@ -99,14 +100,24 @@ export function Composer({
   const active = KINDS.find((k) => k.value === actionKind) ?? KINDS[0]
   const markdownShortcuts = useMarkdownShortcuts()
 
-  // Not `status !== "idle"`: `settling` is busy but not stoppable — the passage
-  // is already final and waiting on its row, so offering Stop there would
-  // promise something that can no longer happen. The Send button comes back
-  // (disabled, via `busy`) for that sliver instead of a dead Stop.
-  // `thinking` very much is stoppable, and is the state a writer is most likely
-  // to want out of — it is the long one.
-  const generating =
+  // Stoppable is not the same question as what the button shows. A run is
+  // abortable from the instant it is dispatched — `pending` included, which is
+  // what stopDuringStart in useGeneration exists to make good on — so Esc gets
+  // the whole live window. `settling` is the exception at the far end: the
+  // passage is already final and waiting on its row, and offering Stop there
+  // would promise something that can no longer happen.
+  const stoppable =
     status === "pending" || status === "thinking" || status === "streaming"
+
+  // The button, though, holds a spinner across both of the windows where the
+  // writer is waiting on the server rather than on the model: `pending`, before
+  // the run is acknowledged, and `settling`, after the prose is final. Putting
+  // Stop under the finger during `pending` is what made a send feel unsent —
+  // the swap is an icon change under the thumb that just covered it, so the
+  // natural second tap landed on Stop and killed the run they were waiting for.
+  // A spinner is unmistakably "sent, working", and it is inert, so that second
+  // tap costs nothing.
+  const waiting = status === "pending" || status === "settling"
   const hasText = value.trim() !== ""
 
   // A keyboard swap moves nothing and speaks nothing: focus stays in the
@@ -137,7 +148,7 @@ export function Composer({
   // Esc stops a generation from anywhere in the workspace — unless the reader
   // is typing in some other field (the passage editor uses Esc to cancel).
   React.useEffect(() => {
-    if (!generating) return
+    if (!stoppable) return
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
@@ -156,7 +167,7 @@ export function Composer({
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [generating, onStop, textareaRef])
+  }, [stoppable, onStop, textareaRef])
 
   const onTextareaKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>
@@ -368,9 +379,24 @@ export function Composer({
               <TooltipContent>Continue (⌘↵)</TooltipContent>
             </Tooltip>
 
-            {/* The Send slot becomes Stop while a generation is in flight —
-                same size, same variant, no layout shift. */}
-            {generating ? (
+            {/* One slot, three states — Send, then a spinner, then Stop — all
+                the same size and variant, so the sequence never shifts the row.
+                No tooltip on the spinner: it is disabled, so it would never
+                open one, and the canvas already announces the generation. */}
+            {waiting ? (
+              <Button
+                variant="default"
+                size="icon-sm"
+                aria-label="Sending"
+                // Inert, but not dimmed like the other disabled states: this
+                // one is not "you can't", it is "it's working", and the whole
+                // job of the state is to be seen from across the room.
+                disabled
+                className="disabled:opacity-100"
+              >
+                <Loader2 aria-hidden className="animate-spin" />
+              </Button>
+            ) : stoppable ? (
               <Tooltip>
                 <TooltipTrigger
                   render={
