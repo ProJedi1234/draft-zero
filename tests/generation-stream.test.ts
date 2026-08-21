@@ -207,6 +207,7 @@ function launch(
     turnId: "turn-1",
     context,
     settings: settings(),
+    profileName: null,
     ...over,
   })
   if (!launched) throw new Error("launch refused")
@@ -357,6 +358,39 @@ describe("the run registry and loop", () => {
 
     await sub.ended
     expect(persists[0].opts.variantGroupId).toBe("slot-1")
+  })
+
+  test("the take records the profile its run was launched under", async () => {
+    script = async function* () {
+      yield { type: "text", value: "A second opinion." }
+    }
+    const storyId = nextStoryId()
+    const sub = attach(
+      storyId,
+      launch(storyId, { requestKind: "retry", profileName: "Swift" })
+    )
+
+    await sub.ended
+    // The name, not the settings: the settings are already on the row, and a
+    // month from now they cannot be traced back to the profile that chose them.
+    expect(
+      (persists[0].opts.generation as { profileName: string | null })
+        .profileName
+    ).toBe("Swift")
+  })
+
+  test("a take generated under no profile records none, rather than a guess", async () => {
+    script = async function* () {
+      yield { type: "text", value: "Custom settings wrote this." }
+    }
+    const storyId = nextStoryId()
+    const sub = attach(storyId, launch(storyId))
+
+    await sub.ended
+    expect(
+      (persists[0].opts.generation as { profileName: string | null })
+        .profileName
+    ).toBeNull()
   })
 
   test("a late attacher gets the history compressed into its snapshot, never replayed", async () => {
@@ -703,6 +737,7 @@ describe("the run registry and loop", () => {
         turnId: null,
         context,
         settings: settings(),
+        profileName: null,
       })
     ).toBeNull()
     expect(live.isRunActive(storyId)).toBe(true)

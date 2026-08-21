@@ -65,6 +65,10 @@ export function serializeKeys(keys: string[]): string {
  * recorded this" and "we half-recorded this". A row missing any of them is a
  * user passage or a pre-migration row, and inventing a temperature of 0 to fill
  * the gap would be indistinguishable from a real recorded setting.
+ *
+ * The profile name is NOT part of that group: a take generated under a Custom
+ * story has every setting recorded and no profile to name, so requiring it
+ * would throw away the record of half the manuscript.
  */
 function toEntryGeneration(row: StoryEntryRow): EntryGeneration | null {
   if (
@@ -78,6 +82,7 @@ function toEntryGeneration(row: StoryEntryRow): EntryGeneration | null {
     modelId: row.genModelId,
     thinking: row.genThinking,
     temperature: row.genTemperature,
+    profileName: row.genProfileName,
     promptTokens: row.promptTokens,
     completionTokens: row.completionTokens,
   }

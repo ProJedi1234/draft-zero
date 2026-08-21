@@ -172,6 +172,7 @@ describe("run loop provider resolution", () => {
         frequencyPenalty: 0,
         presencePenalty: 0,
       },
+      profileName: null,
     })
     if (!launched) throw new Error("launch refused")
     const run = live.findRun(storyId, launched.runId)

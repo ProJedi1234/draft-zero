@@ -124,6 +124,14 @@ export const storyEntries = pgTable(
     genModelId: text("gen_model_id"),
     genThinking: text("gen_thinking").$type<ThinkingLevel>(),
     genTemperature: doublePrecision("gen_temperature"),
+    /**
+     * The profile this take was generated under, by NAME rather than by id: a
+     * retry may be fired under a profile the story does not follow, and the
+     * record has to survive that profile being renamed or deleted. Null on user
+     * passages, on rows written before this column existed, and on every take a
+     * Custom story generated under its own columns.
+     */
+    genProfileName: text("gen_profile_name"),
     promptTokens: integer("prompt_tokens"),
     completionTokens: integer("completion_tokens"),
     createdAt: text("created_at").notNull(),
