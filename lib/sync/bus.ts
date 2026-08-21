@@ -11,9 +11,23 @@
 // route) forward them to clients, and clients respond with router.refresh() —
 // the refetch is the sync, so the bus never has to serialize story state.
 
+import type { RunEndStatus } from "@/lib/sync/types"
+
 export type BusEvent =
   | { kind: "change"; storyId: string | null }
   | { kind: "run-started"; storyId: string; runId: string }
+  /**
+   * A run finished, and HOW it finished. `change` already fires on the same
+   * persist, but a refetch can only show that the story is no longer running —
+   * it cannot distinguish a landed passage from a provider error, and the
+   * sidebar has to mark those differently. This is the only carrier for that.
+   */
+  | {
+      kind: "run-ended"
+      storyId: string
+      runId: string
+      status: RunEndStatus
+    }
 
 type BusListener = (event: BusEvent) => void
 
