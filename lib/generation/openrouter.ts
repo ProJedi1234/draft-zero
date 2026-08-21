@@ -23,7 +23,7 @@ import { listModelEndpoints } from "./endpoints"
 import { listModels } from "./models"
 import { resolveSystemPrompt } from "./system-prompt"
 import type { ComposedContext, GenerationEvent } from "./types"
-import { isDataPolicyRefusal } from "./zdr"
+import { isDataPolicyRefusal } from "./zdr-account"
 
 /** Maps SDK/stream errors to { status, message } safe to show the writer. */
 export function mapOpenRouterError(err: unknown): {

@@ -13,7 +13,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { useAccountZdr } from "@/hooks/use-account-zdr"
 import type { ModelSettings } from "@/hooks/use-model-settings"
 import {
   LORE_BUDGET_MAX,
@@ -37,6 +36,7 @@ export function ModelSection({
   profiles,
   defaultProfileId,
   requireZdr,
+  accountEnforced,
   settings,
 }: {
   story: Story
@@ -45,16 +45,22 @@ export function ModelSection({
   defaultProfileId: string | null
   /** The app-wide retention policy; a story can add to it, never lower it. */
   requireZdr: boolean
+  /** The OpenRouter account forces it on this model's group, whatever the story says. */
+  accountEnforced: boolean
   settings: ModelSettings
 }) {
   // Bound out so the ternary below narrows it — reaching through `settings`
   // inside the branch would need a non-null assertion to say the same thing.
   const { basedOnProfile } = settings
-  const accountZdr = useAccountZdr()
   // A floor the writer cannot lower from here. The story's own column still
-  // holds its false underneath, so dropping the floor gives it back.
-  const zdrLock: ZdrLock =
-    accountZdr === "enforced" ? "account" : requireZdr ? "app" : null
+  // holds its false underneath, so dropping the floor gives it back. The
+  // account's is per model group — see the panel, which asks about the model
+  // currently selected — so it can come and go as the writer changes models.
+  const zdrLock: ZdrLock = accountEnforced
+    ? "account"
+    : requireZdr
+      ? "app"
+      : null
 
   return (
     <div className="space-y-3">
@@ -66,7 +72,7 @@ export function ModelSection({
         switching={settings.profileSwitching}
         models={models}
         endpoints={settings.endpoints}
-        zdr={settings.zdr}
+        zdr={settings.zdr || accountEnforced}
         basedOnName={basedOnProfile?.name ?? null}
         onOpenChange={settings.setProfileMenuOpen}
       />
@@ -87,6 +93,7 @@ export function ModelSection({
             zdr={settings.zdr}
             onZdrChange={settings.handleZdrChange}
             zdrLock={zdrLock}
+            accountEnforced={accountEnforced}
             onOpenChange={settings.setPickerOpen}
           />
           <Collapsible>

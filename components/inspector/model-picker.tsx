@@ -53,6 +53,7 @@ export function ModelPicker({
   zdr,
   onZdrChange,
   zdrLock = null,
+  accountEnforced = false,
   onOpenChange,
 }: {
   models: OpenRouterModel[]
@@ -64,11 +65,21 @@ export function ModelPicker({
   onProviderTagChange: (providerTag: string | null) => void
   thinking: ThinkingLevel
   onThinkingChange: (thinking: ThinkingLevel) => void
-  /** Effective retention policy for this bundle — the floor is already in it. */
+  /**
+   * This bundle's own effective policy, app-wide floor included. It governs the
+   * MODEL list, because it applies to every model equally.
+   */
   zdr: boolean
   onZdrChange: (zdr: boolean) => void
   /** Why the writer cannot turn it off here, if they cannot. */
   zdrLock?: ZdrLock
+  /**
+   * The OpenRouter account forces retention-free routing on the SELECTED
+   * model's group. It governs the provider list and the price, and deliberately
+   * not the model list: enforcement is per group, so a locked Anthropic says
+   * nothing about which Google models are pickable.
+   */
+  accountEnforced?: boolean
   /**
    * True while any of the three is open. These settings depend on each other —
    * the model decides which thinking levels and which endpoints exist — so a
@@ -104,10 +115,15 @@ export function ModelPicker({
   // the whole inspector from following the server for the life of the mount.
   React.useEffect(() => () => onOpenChange?.(false), [onOpenChange])
 
+  // What this model will actually be routed under: the bundle's policy, or the
+  // account's for this model's group, whichever is set. The account's is not in
+  // `zdr` because it is not the writer's setting and does not travel with the
+  // bundle to another model.
+  const providerZdr = zdr || accountEnforced
   // Routable, not merely pinned: under a retention policy a pin naming an
   // endpoint that retains is dropped on the way out, and pricing the request
   // against it would quote a provider that is not going to serve it.
-  const endpoint = routableEndpointForTag(endpoints, providerTag, zdr)
+  const endpoint = routableEndpointForTag(endpoints, providerTag, providerZdr)
   const pricing = endpoint?.pricing ?? selected?.pricing
   const contextLength = endpoint?.contextLength ?? selected?.contextLength
 
@@ -125,7 +141,7 @@ export function ModelPicker({
         endpoints={endpoints}
         value={providerTag}
         onValueChange={onProviderTagChange}
-        zdr={zdr}
+        zdr={providerZdr}
         onOpenChange={(next) => report("provider", next)}
       />
       <ThinkingSelect

@@ -8,6 +8,7 @@ import { PromptSection } from "@/components/inspector/sections/prompt-section"
 import { StatusStrip } from "@/components/inspector/status-strip"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useAccountZdrForModel } from "@/hooks/use-account-zdr"
 import { useModelSettings } from "@/hooks/use-model-settings"
 import type {
   LorebookEntry,
@@ -144,6 +145,11 @@ function InspectorSections({
   onTabChange: (tab: InspectorTab) => void
 }) {
   const settings = useModelSettings({ story, models, profiles })
+  // Asked once here because two things read it: the model section, whose switch
+  // it locks, and the strip below, whose shield has to show the policy the next
+  // request will actually go out under.
+  const accountZdr = useAccountZdrForModel(settings.modelId)
+  const accountEnforced = accountZdr === "enforced"
   // Computed by the read layer with the same matcher the cards use
   // (lib/db/mappers.ts), so the badge and the list can never disagree.
   const activeLoreCount = story.activeLorebookEntryIds.length
@@ -221,6 +227,7 @@ function InspectorSections({
                 profiles={profiles}
                 defaultProfileId={defaultProfileId}
                 requireZdr={requireZdr}
+                accountEnforced={accountEnforced}
                 settings={settings}
               />
             </div>
@@ -246,7 +253,7 @@ function InspectorSections({
           providerTag: settings.providerTag,
           thinking: settings.thinking,
         }}
-        zdr={settings.zdr}
+        zdr={settings.zdr || accountEnforced}
         onModelClick={() => onTabChange("model")}
       />
     </>

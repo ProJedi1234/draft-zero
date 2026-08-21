@@ -19,10 +19,31 @@ import {
 } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { useAccountZdr } from "@/hooks/use-account-zdr"
+import { useAccountZdrPolicies } from "@/hooks/use-account-zdr"
 import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { updateAppSettings, verifyOpenRouterKey } from "@/lib/actions/settings"
-import type { AppSettings, ModelProfile, OpenRouterModel } from "@/lib/types"
+import {
+  ZDR_GROUPS,
+  ZDR_GROUP_LABELS,
+  type AccountZdrPolicies,
+  type AppSettings,
+  type ModelProfile,
+  type OpenRouterModel,
+} from "@/lib/types"
+
+/**
+ * "Anthropic and OpenAI", "Anthropic, OpenAI and other providers" — the groups
+ * the account already enforces, in the order OpenRouter's own settings list
+ * them. Empty when it enforces none, which is when the caller says nothing.
+ */
+function enforcedGroupList(policies: AccountZdrPolicies): string {
+  const names = ZDR_GROUPS.filter(
+    (group) => policies[group] === "enforced"
+  ).map((group) => ZDR_GROUP_LABELS[group])
+  if (names.length === 0) return ""
+  if (names.length === 1) return names[0]
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
+}
 
 function SettingsView({
   settings,
@@ -38,7 +59,15 @@ function SettingsView({
 }) {
   const [verifying, setVerifying] = React.useState(false)
   const [, startTransition] = React.useTransition()
-  const accountZdr = useAccountZdr()
+  const accountPolicies = useAccountZdrPolicies()
+  // Locked only when the account leaves no model group out. Anything short of
+  // that is a note rather than a lock: this switch is about every model, and
+  // three groups being forced is not a reason to stop the writer choosing for
+  // the other two.
+  const accountEnforcesAll = ZDR_GROUPS.every(
+    (group) => accountPolicies[group] === "enforced"
+  )
+  const enforcedGroups = enforcedGroupList(accountPolicies)
   // Follows the settings row while mounted — the policy is app-wide, so another
   // device turning it on has to land here — but never while this device's own
   // write is still in flight. See hooks/use-server-synced.ts.
@@ -135,8 +164,13 @@ function SettingsView({
                 id="require-zdr"
                 checked={requireZdr}
                 onCheckedChange={handleZdrChange}
-                lock={accountZdr === "enforced" ? "account" : null}
+                lock={accountEnforcesAll ? "account" : null}
                 hint="Every story and profile, whatever they say for themselves. Costs you the providers that retain prompts, and the models only they serve."
+                accountNote={
+                  enforcedGroups
+                    ? `Your OpenRouter account already enforces this for ${enforcedGroups}.`
+                    : undefined
+                }
               />
             </CardContent>
           </Card>
@@ -148,6 +182,7 @@ function SettingsView({
             models={models}
             defaults={settings.defaultGeneration}
             requireZdr={requireZdr}
+            accountPolicies={accountPolicies}
             defaultProfileId={settings.defaultProfileId}
             followerCounts={followerCounts}
           />

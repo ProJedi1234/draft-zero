@@ -36,6 +36,8 @@ import {
 import { setDefaultProfile } from "@/lib/actions/profiles"
 import { settingsSummaryWithPrice } from "@/lib/settings-summary"
 import {
+  zdrGroupForModel,
+  type AccountZdrPolicies,
   type GenerationDefaults,
   type ModelProfile,
   type OpenRouterModel,
@@ -54,6 +56,7 @@ export function ModelProfilesCard({
   models,
   defaults,
   requireZdr,
+  accountPolicies,
   defaultProfileId,
   followerCounts,
 }: {
@@ -61,6 +64,8 @@ export function ModelProfilesCard({
   models: OpenRouterModel[]
   /** The app-wide retention policy, which the editor's switch sits on top of. */
   requireZdr: boolean
+  /** What the OpenRouter account enforces, per model group. */
+  accountPolicies: AccountZdrPolicies
   /** The shared slider values a profile's unset fields fall back to. */
   defaults: GenerationDefaults
   defaultProfileId: string | null
@@ -126,9 +131,16 @@ export function ModelProfilesCard({
                 profile={profile}
                 summary={settingsSummaryWithPrice(profile.settings, models)}
                 // Effective, not stored: a profile that says nothing about
-                // retention is still under the app-wide policy, and a row that
-                // showed no mark would be describing a bundle nobody generates.
-                zdr={profile.settings.zdr || requireZdr}
+                // retention is still under the app-wide policy — and under its
+                // own model group's account setting, which is why the marks in
+                // a list can differ between two profiles that both say false.
+                zdr={
+                  profile.settings.zdr ||
+                  requireZdr ||
+                  accountPolicies[
+                    zdrGroupForModel(profile.settings.modelId)
+                  ] === "enforced"
+                }
                 isDefault={profile.id === defaultProfileId}
                 onEdit={() => openEditor({ mode: "edit", profile })}
                 onDuplicate={() => openEditor({ mode: "duplicate", profile })}
