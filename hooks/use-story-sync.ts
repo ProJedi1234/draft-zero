@@ -105,6 +105,14 @@ export function useStorySync(): void {
             const target = runHandoff.current
             if (target !== null && event.storyId === target.storyId)
               target.onRunStarted(event.runId)
+            // ...and the library needs it too, whichever story is open. The
+            // sidebar's status marks come from the registry, which is read
+            // during the root layout's render — so without a refetch here the
+            // list of runs in flight is whatever it was when the page last
+            // rendered, and a story that started generating never says so. No
+            // `change` covers this: a run start persists nothing, and
+            // touchStory does not fire until the run ENDS.
+            scheduleRefresh()
             continue
           }
           if (event.type === "run-ended") {
