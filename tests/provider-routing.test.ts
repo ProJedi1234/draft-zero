@@ -11,7 +11,12 @@ import { beforeEach, describe, expect, mock, test } from "bun:test"
 
 import { formatThroughput, formatUptime } from "@/lib/format"
 import type { GenerationEvent } from "@/lib/generation/types"
-import { endpointForTag, type ModelEndpoint } from "@/lib/types"
+import {
+  endpointForTag,
+  partitionByZdr,
+  routableEndpointForTag,
+  type ModelEndpoint,
+} from "@/lib/types"
 
 // See generation-calls.test.ts for why "server-only" must be neutralised.
 mock.module("server-only", () => ({}))
@@ -65,7 +70,11 @@ mock.module("@/lib/db/client", () => ({
 
 const live = await import("@/lib/generation/live")
 
-function endpoint(tag: string, throughput: number | null = 100): ModelEndpoint {
+function endpoint(
+  tag: string,
+  throughput: number | null = 100,
+  zdr = false
+): ModelEndpoint {
   return {
     tag,
     providerName: tag.split("/")[0],
@@ -74,10 +83,14 @@ function endpoint(tag: string, throughput: number | null = 100): ModelEndpoint {
     throughput,
     uptime: 0.99,
     quantization: null,
+    zdr,
   }
 }
 
 const ENDPOINTS = [endpoint("groq"), endpoint("deepinfra/turbo")]
+
+/** The mixed case the ZDR rules exist for: same model, one provider retains. */
+const MIXED = [endpoint("xai/zdr", 100, true), endpoint("xai", 120)]
 
 describe("endpointForTag", () => {
   test("finds the pinned endpoint, variant suffix included", () => {
@@ -103,6 +116,45 @@ describe("endpointForTag", () => {
 
   test("no endpoints means nothing is pinned", () => {
     expect(endpointForTag([], "groq")).toBeNull()
+  })
+})
+
+describe("routableEndpointForTag", () => {
+  test("without a data policy, a pin is just a pin", () => {
+    expect(routableEndpointForTag(MIXED, "xai", false)?.tag).toBe("xai")
+  })
+
+  test("a retaining endpoint is not routable under zero data retention", () => {
+    // Not an error and not a failed generation: the pin is dropped and
+    // OpenRouter routes among what is left, exactly as a stale tag does.
+    expect(routableEndpointForTag(MIXED, "xai", true)).toBeNull()
+  })
+
+  test("a ZDR endpoint survives the same policy", () => {
+    expect(routableEndpointForTag(MIXED, "xai/zdr", true)?.tag).toBe("xai/zdr")
+  })
+
+  test("Auto is Auto either way", () => {
+    expect(routableEndpointForTag(MIXED, null, true)).toBeNull()
+  })
+})
+
+describe("partitionByZdr", () => {
+  test("off, every endpoint is offered and none is greyed out", () => {
+    const { allowed, blocked } = partitionByZdr(MIXED, false)
+    expect(allowed).toEqual(MIXED)
+    expect(blocked).toEqual([])
+  })
+
+  test("on, the retaining endpoints move to the blocked list", () => {
+    const { allowed, blocked } = partitionByZdr(MIXED, true)
+    expect(allowed.map((e) => e.tag)).toEqual(["xai/zdr"])
+    expect(blocked.map((e) => e.tag)).toEqual(["xai"])
+  })
+
+  test("a model with nothing routable leaves the allowed list empty", () => {
+    // The picker's cue that the model itself is the problem, not the provider.
+    expect(partitionByZdr(ENDPOINTS, true).allowed).toEqual([])
   })
 })
 
@@ -164,6 +216,7 @@ describe("run loop provider resolution", () => {
         modelId: "~test/model",
         thinking: "off",
         providerTag: null,
+        zdr: false,
         temperature: 1,
         topP: 1,
         maxTokens: 6,

@@ -10,7 +10,7 @@ import { EventStream } from "@openrouter/sdk/lib/event-streams.js"
 import { OpenRouterError } from "@openrouter/sdk/models/errors"
 
 import {
-  endpointForTag,
+  routableEndpointForTag,
   type GenerationSettings,
   type ModelEndpoint,
   type OpenRouterModel,
@@ -23,6 +23,7 @@ import { listModelEndpoints } from "./endpoints"
 import { listModels } from "./models"
 import { resolveSystemPrompt } from "./system-prompt"
 import type { ComposedContext, GenerationEvent } from "./types"
+import { isDataPolicyRefusal } from "./zdr"
 
 /** Maps SDK/stream errors to { status, message } safe to show the writer. */
 export function mapOpenRouterError(err: unknown): {
@@ -41,6 +42,18 @@ export function mapOpenRouterError(err: unknown): {
           status: 402,
           message: "OpenRouter credits exhausted. Top up your account.",
         }
+      case 404:
+        // The one 404 a writer can act on: no endpoint of this model satisfies
+        // the data policy in force, which is either theirs or their OpenRouter
+        // account's. Any other 404 falls through to the generic message.
+        if (isDataPolicyRefusal(err)) {
+          return {
+            status: 404,
+            message:
+              "No provider for this model keeps nothing. Pick another model, or turn off zero data retention.",
+          }
+        }
+        break
       case 429:
         return {
           status: 429,
@@ -53,11 +66,10 @@ export function mapOpenRouterError(err: unknown): {
           message:
             "The model provider is unavailable. Try again or switch models.",
         }
-      default:
-        return {
-          status: err.statusCode,
-          message: "OpenRouter request failed. Try again.",
-        }
+    }
+    return {
+      status: err.statusCode,
+      message: "OpenRouter request failed. Try again.",
     }
   }
   return { status: 500, message: "Generation failed. Try again." }
@@ -92,14 +104,26 @@ export function reasoningParam(
  * no longer in the model's endpoint list is dropped back to Auto rather than
  * sent — endpoints come and go, and a stale row should cost a writer a different
  * provider, not a failed generation.
+ *
+ * A pin that names an endpoint which retains prompts is dropped the same way
+ * when `zdr` is on, for the same reason: the two settings can only disagree
+ * because one of them changed after the other was set, and the writer's data
+ * policy is the one that has to win. OpenRouter would refuse the pair outright
+ * (404, "No endpoints found matching your data policy"), so honouring the pin
+ * would not even get the writer the provider they asked for.
  */
 export function providerParam(
   endpoints: ModelEndpoint[],
-  providerTag: string | null
-): { only: string[]; allowFallbacks: boolean } | undefined {
-  const endpoint = endpointForTag(endpoints, providerTag)
-  if (!endpoint) return undefined
-  return { only: [endpoint.tag], allowFallbacks: false }
+  providerTag: string | null,
+  zdr: boolean
+): { only?: string[]; allowFallbacks?: boolean; zdr?: true } | undefined {
+  const endpoint = routableEndpointForTag(endpoints, providerTag, zdr)
+  if (!endpoint) return zdr ? { zdr: true } : undefined
+  return {
+    only: [endpoint.tag],
+    allowFallbacks: false,
+    ...(zdr ? { zdr: true as const } : {}),
+  }
 }
 
 /**
@@ -171,7 +195,7 @@ export async function* streamCompletion(opts: {
     models.find((m) => m.id === settings.modelId),
     settings.thinking
   )
-  const provider = providerParam(endpoints, settings.providerTag)
+  const provider = providerParam(endpoints, settings.providerTag, settings.zdr)
 
   const res = await chatSend(
     core,

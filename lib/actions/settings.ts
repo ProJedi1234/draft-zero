@@ -36,6 +36,9 @@ export async function updateAppSettings(
     }
     values.defaultThinking = thinking
   }
+  if (patch.requireZdr !== undefined) {
+    values.requireZdr = patch.requireZdr
+  }
 
   // Ensures the single settings row exists before patching it.
   await getAppSettings()

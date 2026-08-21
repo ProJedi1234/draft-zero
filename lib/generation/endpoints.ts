@@ -14,6 +14,7 @@ import type { ModelEndpoint } from "@/lib/types"
 
 import { resolveOpenRouterKey } from "./key"
 import { listModels } from "./models"
+import { zdrTagsForModel } from "./zdr"
 
 const TTL_MS = 5 * 60 * 1000
 const cache = new Map<string, { at: number; data: ModelEndpoint[] }>()
@@ -25,7 +26,10 @@ function per1M(perToken: string | undefined): string {
   return `$${(n * 1_000_000).toFixed(2)}`
 }
 
-function toDomainEndpoint(e: PublicEndpoint): ModelEndpoint {
+function toDomainEndpoint(
+  e: PublicEndpoint,
+  zdrTags: Set<string>
+): ModelEndpoint {
   return {
     tag: e.tag,
     providerName: e.providerName,
@@ -41,6 +45,10 @@ function toDomainEndpoint(e: PublicEndpoint): ModelEndpoint {
     // that is the same information as no answer, so it is not printed.
     quantization:
       e.quantization && e.quantization !== "unknown" ? e.quantization : null,
+    // Membership of OpenRouter's ZDR list, not anything the endpoint says about
+    // itself: the endpoints API carries no retention field, and two tags of the
+    // same provider ("xai" and "xai/zdr") answer this differently.
+    zdr: zdrTags.has(e.tag),
   }
 }
 
@@ -98,13 +106,19 @@ export async function listModelEndpoints(
   // against the live API. When the alias later moves to a new model, a tag that
   // the new target does not serve falls back to Auto through endpointForTag,
   // which is the intended cost of pinning a moving model.
-  const [author, ...rest] = (await resolveAlias(modelId)).split("/")
+  const resolvedId = await resolveAlias(modelId)
+  const [author, ...rest] = resolvedId.split("/")
   const slug = rest.join("/")
   if (!key || !author || !slug) return fallbackEndpoints(modelId)
 
   try {
     const core = new OpenRouterCore({ apiKey: key, appTitle: "draft-zero" })
-    const res = await endpointsList(core, { author, slug })
+    // Both cached, and the ZDR list is one fetch for the whole catalog, so the
+    // second half of this pair is free after the first model of the session.
+    const [res, zdrTags] = await Promise.all([
+      endpointsList(core, { author, slug }),
+      zdrTagsForModel(resolvedId),
+    ])
     if (!res.ok) return fallbackEndpoints(modelId)
     const data = res.value.data.endpoints
       // OpenRouter reports 0 for a healthy endpoint and a negative status for one
@@ -112,7 +126,7 @@ export async function listModelEndpoints(
       // writer a menu entry that fails on send, so they are dropped here — Auto
       // still routes through whatever OpenRouter is willing to use.
       .filter((e) => (e.status ?? 0) >= 0)
-      .map(toDomainEndpoint)
+      .map((e) => toDomainEndpoint(e, zdrTags))
       .sort(byThroughputDesc)
     // An answered request with no endpoints is an answer, not a failure. Router
     // models — the "~anthropic/claude-sonnet-latest" aliases that redirect to

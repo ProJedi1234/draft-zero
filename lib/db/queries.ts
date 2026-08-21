@@ -6,7 +6,7 @@ import { and, asc, count, desc, eq, isNotNull, isNull, ne } from "drizzle-orm"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type {
   AppSettings,
-  GenerationDefaults,
+  GenerationBaseline,
   LorebookEntry,
   ModelProfile,
   SettledCallStatus,
@@ -75,7 +75,7 @@ export async function getStory(id: string): Promise<Story | null> {
 
   if (!storyRow) return null
 
-  const [profileRow, entryRows, lorebookRows, history, costRows, defaults] =
+  const [profileRow, entryRows, lorebookRows, history, costRows, baseline] =
     await Promise.all([
       // Effective settings are resolved here, not stored: a followed story reads
       // its profile every time, so an edit in Settings reaches every follower
@@ -126,7 +126,7 @@ export async function getStory(id: string): Promise<Story | null> {
       // Fetched for every story, followed or not: which of the two it is
       // depends on profile_id, and branching here would cost a round trip the
       // Promise.all is already paying for in parallel.
-      getGenerationDefaults(),
+      getGenerationBaseline(),
     ])
 
   const costs = new Map<string, EntryCost>()
@@ -145,18 +145,19 @@ export async function getStory(id: string): Promise<Story | null> {
     entryRows,
     lorebookRows,
     history,
-    defaults,
+    baseline,
     costs
   )
 }
 
 /**
- * The shared slider defaults, read without the lazy seeding getAppSettings
- * does. A read path must not write, and the app's own constants are the right
- * answer in the one moment the settings row does not exist yet — they are what
- * the row is about to be created holding.
+ * What every story and profile resolves against — the shared slider defaults
+ * and the app-wide retention floor — read without the lazy seeding
+ * getAppSettings does. A read path must not write, and the app's own constants
+ * are the right answer in the one moment the settings row does not exist yet:
+ * they are what the row is about to be created holding.
  */
-export async function getGenerationDefaults(): Promise<GenerationDefaults> {
+export async function getGenerationBaseline(): Promise<GenerationBaseline> {
   const db = await getDb()
   const row = await db
     .select()
@@ -164,7 +165,9 @@ export async function getGenerationDefaults(): Promise<GenerationDefaults> {
     .where(eq(appSettings.id, 1))
     .limit(1)
     .then((rows) => rows[0])
-  return row ? toGenerationDefaults(row) : DEFAULT_GENERATION_SETTINGS
+  return row
+    ? { defaults: toGenerationDefaults(row), requireZdr: row.requireZdr }
+    : { defaults: DEFAULT_GENERATION_SETTINGS, requireZdr: false }
 }
 
 /** One story's lorebook entries, ordered name ASC. */
@@ -259,6 +262,7 @@ export async function getAppSettings(): Promise<AppSettings> {
       defaultModelId: DEFAULT_GENERATION_SETTINGS.modelId,
       defaultThinking: DEFAULT_GENERATION_SETTINGS.thinking,
       defaultProfileId: null,
+      requireZdr: false,
       defaultTemperature: DEFAULT_GENERATION_SETTINGS.temperature,
       defaultTopP: DEFAULT_GENERATION_SETTINGS.topP,
       defaultMaxTokens: DEFAULT_GENERATION_SETTINGS.maxTokens,

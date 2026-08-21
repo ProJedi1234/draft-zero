@@ -9,7 +9,7 @@ import { composeContext } from "@/lib/generation/context"
 import { settingsSummaryParts } from "@/lib/settings-summary"
 import {
   contextWindowLabel,
-  type GenerationIdentity,
+  type GenerationSummaryIdentity,
   type LorebookEntry,
   type OpenRouterModel,
   type Story,
@@ -45,7 +45,7 @@ export function StatusStrip({
    * strip reading the story would spend that time contradicting the combobox
    * two inches above it.
    */
-  identity: GenerationIdentity
+  identity: GenerationSummaryIdentity
   /** Jump to the segment that owns these settings. */
   onModelClick: () => void
 }) {

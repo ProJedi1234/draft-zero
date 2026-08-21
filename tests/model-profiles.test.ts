@@ -17,7 +17,7 @@ import {
   resolveProfileSettings,
 } from "@/lib/generation/resolve"
 import type {
-  GenerationDefaults,
+  GenerationBaseline,
   GenerationSettings,
   ModelProfile,
   ProfileSettings,
@@ -27,6 +27,7 @@ const CUSTOM: GenerationSettings = {
   modelId: "openai/gpt-5",
   thinking: "high",
   providerTag: "groq",
+  zdr: false,
   temperature: 1.2,
   topP: 0.8,
   maxTokens: 512,
@@ -36,21 +37,28 @@ const CUSTOM: GenerationSettings = {
   presencePenalty: -0.2,
 }
 
-/** The global sliders every profile falls back to, field by field. */
-const DEFAULTS: GenerationDefaults = {
-  temperature: 0.5,
-  topP: 0.5,
-  maxTokens: 256,
-  contextWindow: 2048,
-  loreBudget: 25,
-  frequencyPenalty: -1,
-  presencePenalty: -1,
+/** The global sliders every profile falls back to, plus the retention floor. */
+const BASELINE: GenerationBaseline = {
+  defaults: {
+    temperature: 0.5,
+    topP: 0.5,
+    maxTokens: 256,
+    contextWindow: 2048,
+    loreBudget: 25,
+    frequencyPenalty: -1,
+    presencePenalty: -1,
+  },
+  requireZdr: false,
 }
+
+/** The same baseline with the app-wide data policy switched on. */
+const ZDR_BASELINE: GenerationBaseline = { ...BASELINE, requireZdr: true }
 
 const PROFILE_SETTINGS: GenerationSettings = {
   modelId: "~anthropic/claude-sonnet-latest",
   thinking: "off",
   providerTag: null,
+  zdr: false,
   temperature: 0.9,
   topP: 0.95,
   maxTokens: 2048,
@@ -75,7 +83,7 @@ const PROFILE: ModelProfile = {
 
 describe("resolveProfileSettings", () => {
   test("an overriding profile keeps every value of its own", () => {
-    expect(resolveProfileSettings(PROFILE_OVERRIDES, DEFAULTS)).toEqual(
+    expect(resolveProfileSettings(PROFILE_OVERRIDES, BASELINE)).toEqual(
       PROFILE_SETTINGS
     )
   })
@@ -85,6 +93,7 @@ describe("resolveProfileSettings", () => {
       modelId: "openai/gpt-5",
       thinking: "high",
       providerTag: "groq",
+      zdr: false,
       temperature: null,
       topP: null,
       maxTokens: null,
@@ -93,20 +102,34 @@ describe("resolveProfileSettings", () => {
       frequencyPenalty: null,
       presencePenalty: null,
     }
-    expect(resolveProfileSettings(inheriting, DEFAULTS)).toEqual({
+    expect(resolveProfileSettings(inheriting, BASELINE)).toEqual({
       modelId: "openai/gpt-5",
       thinking: "high",
       providerTag: "groq",
-      ...DEFAULTS,
+      zdr: false,
+      ...BASELINE.defaults,
     })
+  })
+
+  // A policy, not a default: the app-wide switch reaches a profile that says
+  // nothing about retention, and a profile cannot say anything that escapes it.
+  test("the app-wide policy is a floor under every profile", () => {
+    expect(resolveProfileSettings(PROFILE_OVERRIDES, ZDR_BASELINE).zdr).toBe(
+      true
+    )
+  })
+
+  test("a profile can ask for retention-free routing on its own", () => {
+    const private_ = { ...PROFILE_OVERRIDES, zdr: true }
+    expect(resolveProfileSettings(private_, BASELINE).zdr).toBe(true)
   })
 
   // The point of the feature: overriding one slider must not freeze the other
   // five at the values they happened to have when it was overridden.
   test("inheritance is per field, not all-or-nothing", () => {
     const mixed: ProfileSettings = { ...PROFILE_OVERRIDES, temperature: null }
-    const resolved = resolveProfileSettings(mixed, DEFAULTS)
-    expect(resolved.temperature).toBe(DEFAULTS.temperature)
+    const resolved = resolveProfileSettings(mixed, BASELINE)
+    expect(resolved.temperature).toBe(BASELINE.defaults.temperature)
     expect(resolved.topP).toBe(PROFILE_SETTINGS.topP)
   })
 
@@ -118,7 +141,7 @@ describe("resolveProfileSettings", () => {
       temperature: 0,
       frequencyPenalty: 0,
     }
-    const resolved = resolveProfileSettings(zeroed, DEFAULTS)
+    const resolved = resolveProfileSettings(zeroed, BASELINE)
     expect(resolved.temperature).toBe(0)
     expect(resolved.frequencyPenalty).toBe(0)
   })
@@ -126,26 +149,26 @@ describe("resolveProfileSettings", () => {
 
 describe("resolveGenerationSettings", () => {
   test("a followed story generates under the profile", () => {
-    expect(resolveGenerationSettings(CUSTOM, PROFILE, DEFAULTS)).toEqual(
+    expect(resolveGenerationSettings(CUSTOM, PROFILE, BASELINE)).toEqual(
       PROFILE_SETTINGS
     )
   })
 
   test("a Custom story generates under its own columns", () => {
-    expect(resolveGenerationSettings(CUSTOM, null, DEFAULTS)).toEqual(CUSTOM)
+    expect(resolveGenerationSettings(CUSTOM, null, BASELINE)).toEqual(CUSTOM)
   })
 
   // Custom stories predate inheritance and are untouched by it: their columns
   // are concrete, so the global defaults must never reach them.
   test("a Custom story ignores the global defaults entirely", () => {
-    const resolved = resolveGenerationSettings(CUSTOM, null, DEFAULTS)
+    const resolved = resolveGenerationSettings(CUSTOM, null, BASELINE)
     expect(resolved.temperature).toBe(CUSTOM.temperature)
     expect(resolved.maxTokens).toBe(CUSTOM.maxTokens)
   })
 
   test("the story's columns survive the profile untouched", () => {
     const columns = { ...CUSTOM }
-    resolveGenerationSettings(columns, PROFILE, DEFAULTS)
+    resolveGenerationSettings(columns, PROFILE, BASELINE)
     expect(columns).toEqual(CUSTOM)
   })
 
@@ -153,9 +176,20 @@ describe("resolveGenerationSettings", () => {
   // Custom on the columns the story kept — never an empty or partial settings
   // object, which would reach OpenRouter as a request with no model.
   test("a missing profile falls back to Custom, not to nothing", () => {
-    expect(resolveGenerationSettings(CUSTOM, null, DEFAULTS).modelId).toBe(
+    expect(resolveGenerationSettings(CUSTOM, null, BASELINE).modelId).toBe(
       CUSTOM.modelId
     )
+  })
+
+  // The one thing a Custom story does take from the baseline. Its columns are
+  // concrete, but a retention policy belongs to the app, and a story cannot be
+  // under it and outside it at the same time.
+  test("a Custom story is under the app-wide retention policy too", () => {
+    expect(resolveGenerationSettings(CUSTOM, null, ZDR_BASELINE).zdr).toBe(true)
+  })
+
+  test("with the policy off it is the same object, untouched", () => {
+    expect(resolveGenerationSettings(CUSTOM, null, BASELINE)).toBe(CUSTOM)
   })
 })
 
@@ -187,7 +221,7 @@ describe("deleteProfile's flip to Custom", () => {
     }
 
     expect(profileId).toBeNull()
-    expect(resolveGenerationSettings(flipped, null, DEFAULTS)).toEqual(
+    expect(resolveGenerationSettings(flipped, null, BASELINE)).toEqual(
       PROFILE_SETTINGS
     )
   })
@@ -201,9 +235,9 @@ describe("deleteProfile's flip to Custom", () => {
       temperature: null,
     }
     const patch = customColumnsFromSettings(
-      resolveProfileSettings(inheriting, DEFAULTS)
+      resolveProfileSettings(inheriting, BASELINE)
     )
-    expect(patch.temperature).toBe(DEFAULTS.temperature)
+    expect(patch.temperature).toBe(BASELINE.defaults.temperature)
   })
 
   test("a story following another profile is not in the update's path", () => {

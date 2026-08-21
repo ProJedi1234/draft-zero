@@ -78,6 +78,7 @@ function story(overrides: Partial<Story> = {}): Story {
       modelId: "~test/model",
       thinking: "off",
       providerTag: null,
+      zdr: false,
       temperature: 1,
       topP: 1,
       maxTokens: 512,

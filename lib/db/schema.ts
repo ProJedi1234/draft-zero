@@ -55,6 +55,12 @@ export const stories = pgTable("stories", {
   // predates this column has made no choice. Deliberately not a foreign key or
   // enum — the set of endpoints is a live remote catalog, not our data.
   providerTag: text("provider_tag"),
+  // Route this story only through endpoints that retain nothing. Defaulted
+  // false in the schema so the generated ALTER TABLE backfills every existing
+  // story with the behaviour it has had all along; the app-wide policy in
+  // app_settings.require_zdr ORs on top at read time, so a false here is "this
+  // story asks for nothing extra", not "this story opts out".
+  zdr: boolean("zdr").notNull().default(false),
   // doublePrecision, not real: Postgres `real` is 4-byte and would silently
   // round the slider values that SQLite stored at 8-byte precision.
   temperature: doublePrecision("temperature").notNull(),
@@ -363,6 +369,10 @@ export const modelProfiles = pgTable("model_profiles", {
   modelId: text("model_id").notNull(),
   thinking: text("thinking").notNull().default("off").$type<ThinkingLevel>(),
   providerTag: text("provider_tag"),
+  // NOT NULL where the sliders below are nullable, and deliberately: a policy
+  // has no "no opinion" state. False is a profile that adds nothing to the
+  // app-wide floor, not one that escapes it.
+  zdr: boolean("zdr").notNull().default(false),
   temperature: doublePrecision("temperature"),
   topP: doublePrecision("top_p"),
   maxTokens: integer("max_tokens"),
@@ -386,6 +396,10 @@ export const appSettings = pgTable("app_settings", {
   // The profile new stories start from. NULL only before the lazy seed in
   // getAppSettings has run. Not a foreign key, matching stories.profile_id.
   defaultProfileId: text("default_profile_id"),
+  // The app-wide zero-data-retention floor. ORed into every story and profile
+  // at read time rather than written into them, so switching it off restores
+  // what each of them says for itself instead of leaving a fan-out behind.
+  requireZdr: boolean("require_zdr").notNull().default(false),
   // The shared generation defaults every profile inherits per field. NOT NULL
   // with the app's own defaults on the column, so the single settings row is
   // never half-populated and a profile always has something to fall back to.

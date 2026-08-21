@@ -9,7 +9,7 @@ import {
   toModelProfile,
   toProfileSettings,
 } from "@/lib/db/mappers"
-import { getAppSettings, getGenerationDefaults } from "@/lib/db/queries"
+import { getAppSettings, getGenerationBaseline } from "@/lib/db/queries"
 import { appSettings, modelProfiles, stories } from "@/lib/db/schema"
 import {
   customColumnsFromSettings,
@@ -126,6 +126,7 @@ export async function updateProfile(
   // null is Auto, a real value, so only `undefined` means "not patched".
   if (settings.providerTag !== undefined)
     values.providerTag = settings.providerTag
+  if (settings.zdr !== undefined) values.zdr = settings.zdr
   // Same rule one field wider on the sliders: null is "inherit the default",
   // a state the writer chose, so it is written; only `undefined` is skipped.
   if (settings.temperature !== undefined)
@@ -203,7 +204,7 @@ export async function deleteProfile(id: string): Promise<ActionResult> {
   // were generating under, and an inherited slider has to become the number the
   // default currently holds — after the profile is gone there is nothing left
   // to inherit through.
-  const defaults = await getGenerationDefaults()
+  const baseline = await getGenerationBaseline()
 
   const db = await getDb()
   const deleted = await db.transaction(async (tx) => {
@@ -221,7 +222,7 @@ export async function deleteProfile(id: string): Promise<ActionResult> {
       .update(stories)
       .set({
         ...customColumnsFromSettings(
-          resolveProfileSettings(toProfileSettings(profile), defaults)
+          resolveProfileSettings(toProfileSettings(profile), baseline)
         ),
         updatedAt: new Date().toISOString(),
       })
@@ -314,7 +315,7 @@ export async function saveStoryAsProfile(
     resolveGenerationSettings(
       toGenerationSettings(story),
       followed ? toModelProfile(followed) : null,
-      await getGenerationDefaults()
+      await getGenerationBaseline()
     )
   )
   if (!created.ok) return created

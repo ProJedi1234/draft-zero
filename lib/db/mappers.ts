@@ -12,6 +12,7 @@ import { resolveGenerationSettings } from "@/lib/generation/resolve"
 import type {
   AppSettings,
   EntryGeneration,
+  GenerationBaseline,
   GenerationDefaults,
   GenerationSettings,
   HistoryState,
@@ -156,6 +157,7 @@ export function toGenerationSettings(row: StoryRow): GenerationSettings {
     modelId: row.modelId,
     thinking: row.thinking,
     providerTag: row.providerTag,
+    zdr: row.zdr,
     temperature: row.temperature,
     topP: row.topP,
     maxTokens: row.maxTokens,
@@ -176,6 +178,7 @@ export function toProfileSettings(row: ModelProfileRow): ProfileSettings {
     modelId: row.modelId,
     thinking: row.thinking,
     providerTag: row.providerTag,
+    zdr: row.zdr,
     temperature: row.temperature,
     topP: row.topP,
     maxTokens: row.maxTokens,
@@ -257,8 +260,11 @@ export function toStory(
   entryRows: StoryEntryRow[],
   lorebookRows: LorebookEntryRow[],
   history: HistoryState,
-  /** The global slider defaults a followed profile's null fields fall back to. */
-  defaults: GenerationDefaults,
+  /**
+   * What the settings resolve against: the global slider defaults a followed
+   * profile's null fields fall back to, and the app-wide retention floor.
+   */
+  baseline: GenerationBaseline,
   costs: ReadonlyMap<string, EntryCost> = new Map()
 ): Story {
   // Slot membership, in variant_index order — the caller's ORDER BY already
@@ -307,7 +313,7 @@ export function toStory(
     settings: resolveGenerationSettings(
       toGenerationSettings(row),
       profileRow ? toModelProfile(profileRow) : null,
-      defaults
+      baseline
     ),
     memory: row.memory,
     authorsNote: row.authorsNote,
@@ -326,6 +332,7 @@ export function toAppSettings(row: AppSettingsRow): AppSettings {
     defaultThinking: row.defaultThinking,
     defaultProfileId: row.defaultProfileId,
     defaultGeneration: toGenerationDefaults(row),
+    requireZdr: row.requireZdr,
   }
 }
 
