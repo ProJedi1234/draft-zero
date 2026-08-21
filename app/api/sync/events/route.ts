@@ -15,9 +15,23 @@ import { SYNC_PING_INTERVAL_MS, type SyncWireEvent } from "@/lib/sync/types"
 export const runtime = "nodejs"
 
 function toWire(event: BusEvent): SyncWireEvent {
-  return event.kind === "change"
-    ? { type: "change", storyId: event.storyId }
-    : { type: "run-started", storyId: event.storyId, runId: event.runId }
+  switch (event.kind) {
+    case "change":
+      return { type: "change", storyId: event.storyId }
+    case "run-started":
+      return {
+        type: "run-started",
+        storyId: event.storyId,
+        runId: event.runId,
+      }
+    case "run-ended":
+      return {
+        type: "run-ended",
+        storyId: event.storyId,
+        runId: event.runId,
+        status: event.status,
+      }
+  }
 }
 
 export async function GET(): Promise<Response> {

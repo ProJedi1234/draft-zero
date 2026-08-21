@@ -801,6 +801,102 @@ describe("the run registry and loop", () => {
     }
   })
 
+  test("the bus hears run-ended with the status a refetch cannot carry", async () => {
+    script = async function* () {
+      yield { type: "text", value: "Landed." }
+    }
+    const storyId = nextStoryId()
+    const ended: Array<Record<string, unknown>> = []
+    const unsubscribe = subscribeBus((event) => {
+      if (event.kind === "run-ended") ended.push({ ...event })
+    })
+    try {
+      const runId = launch(storyId)
+      await attach(storyId, runId).ended
+      // The accompanying `change` says only "the tree moved". The library has
+      // to tell a landed passage from a provider error, and this is the only
+      // event that says which.
+      expect(ended).toEqual([
+        { kind: "run-ended", storyId, runId, status: "ok" },
+      ])
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  test("a failed run ends the bus event as an error, not silence", async () => {
+    script = async function* () {
+      yield { type: "text", value: "Half a sentence" }
+      throw new Error("provider fell over")
+    }
+    const storyId = nextStoryId()
+    const ended: Array<Record<string, unknown>> = []
+    const unsubscribe = subscribeBus((event) => {
+      if (event.kind === "run-ended") ended.push({ ...event })
+    })
+    try {
+      await attach(storyId, launch(storyId)).ended
+      expect(ended).toHaveLength(1)
+      expect(ended[0]!.status).toBe("error")
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  test("listActiveRuns reports runs in flight and forgets them the moment they settle", async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    script = async function* () {
+      yield { type: "text", value: "Mid-flight." }
+      await gate
+    }
+    const storyId = nextStoryId()
+    const runId = launch(storyId)
+    const sub = attach(storyId, runId)
+
+    const inFlight = live.listActiveRuns().find((r) => r.storyId === storyId)
+    expect(inFlight).toEqual({
+      storyId,
+      runId,
+      startedAt: expect.any(String),
+    })
+    // The server's clock, not the client's — a device that connects late must
+    // count from here rather than from when it happened to look.
+    expect(Number.isNaN(Date.parse(inFlight!.startedAt))).toBe(false)
+
+    release()
+    await sub.ended
+    // A finished run lingers so a late subscriber still gets its end frame,
+    // but it is NOT active: a lingering run would leave the row marked
+    // "writing" for a full minute after the passage landed.
+    expect(live.listActiveRuns().map((r) => r.storyId)).not.toContain(storyId)
+  })
+
+  test("a discarded run publishes no ending — its story is being deleted", async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    script = async function* () {
+      yield { type: "text", value: "Doomed." }
+      await gate
+    }
+    const storyId = nextStoryId()
+    const ended: Array<Record<string, unknown>> = []
+    const unsubscribe = subscribeBus((event) => {
+      if (event.kind === "run-ended") ended.push({ ...event })
+    })
+    try {
+      const sub = attach(storyId, launch(storyId))
+      live.discardStoryRun(storyId)
+      release()
+      await sub.ended
+      // Marking a row that is on its way out is worse than not marking it:
+      // the mark would outlive the story in the sidebar for one refetch.
+      expect(ended).toEqual([])
+    } finally {
+      unsubscribe()
+    }
+  })
+
   test("a refused persist ends the run as an error — streamed prose was lost, and silence would hide it", async () => {
     script = async function* () {
       yield { type: "text", value: "Orphaned take." }

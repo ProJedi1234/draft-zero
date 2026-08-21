@@ -74,6 +74,34 @@ export type SyncWireEvent =
   | { type: "change"; storyId: string | null }
   /** A run began — devices on that story should attach to the subscribe channel. */
   | { type: "run-started"; storyId: string; runId: string }
+  /**
+   * A run finished, anywhere. Unlike `run-started` this is for devices that are
+   * NOT on that story: it is what lets the library mark a passage that landed
+   * while the writer was reading something else. It carries the status because
+   * the accompanying `change` cannot — a refetch shows only that the run is
+   * gone, and a story that errored looks exactly like one that succeeded.
+   */
+  | {
+      type: "run-ended"
+      storyId: string
+      runId: string
+      status: RunEndStatus
+    }
+
+/**
+ * A run in flight right now, as the library sees it. Not a database row —
+ * the registry in lib/generation/live.ts is the only place this exists, and it
+ * dies with the process, which is correct: a run cannot outlive the server
+ * that is streaming it.
+ */
+export interface ActiveRun {
+  storyId: string
+  runId: string
+  /** Server wall-clock, ISO-8601. The client counts up from this rather than
+   *  from when it happened to look — a phone that just woke must not restart
+   *  the clock on a run that has been going for twenty minutes. */
+  startedAt: string
+}
 
 /** Keepalive cadence for both channels; silence past ~2 intervals means the socket is dead. */
 export const SYNC_PING_INTERVAL_MS = 20_000

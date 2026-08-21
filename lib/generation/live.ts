@@ -37,7 +37,12 @@ import type {
   GenerationUsage,
 } from "@/lib/generation/types"
 import { publishBus, touchStory } from "@/lib/sync/bus"
-import type { RunEndFrame, RunFrame, RunWireEvent } from "@/lib/sync/types"
+import type {
+  ActiveRun,
+  RunEndFrame,
+  RunFrame,
+  RunWireEvent,
+} from "@/lib/sync/types"
 import {
   zdrGroupForModel,
   type EntryGeneration,
@@ -55,6 +60,12 @@ export interface LiveRun {
   readonly runId: string
   readonly storyId: string
   readonly requestKind: GenerationRequestKind
+  /**
+   * When the server started this run. The library counts elapsed time from
+   * here, so every device agrees on how long a run has been going regardless
+   * of when it connected.
+   */
+  readonly startedAt: string
   /** The writer's persisted turn row, or null for Continue/Retry. */
   readonly userEntryId: string | null
   /** Ids this run supersedes (a Retry's outgoing take) — echoed to late attachers. */
@@ -173,6 +184,23 @@ export function isRunActive(storyId: string): boolean {
 }
 
 /**
+ * Every run in flight, for the library's status marks.
+ *
+ * Reservations are deliberately excluded even though `isRunActive` counts
+ * them: a reservation has no runId and no start time yet, and it lasts for the
+ * length of a POST. Showing a mark for one would flicker a row for a few
+ * hundred milliseconds and then have to explain itself; the run-started that
+ * follows is close enough behind to be the honest first news.
+ */
+export function listActiveRuns(): ActiveRun[] {
+  return [...live.active.values()].map((run) => ({
+    storyId: run.storyId,
+    runId: run.runId,
+    startedAt: run.startedAt,
+  }))
+}
+
+/**
  * Claims the story's one run slot BEFORE anything is written. startGeneration
  * awaits several times between its busy check and launchRun — the turn persist,
  * the model catalog, context composition — and two devices pressing Send in
@@ -271,6 +299,7 @@ export function launchRun(opts: LaunchOpts): { runId: string } | null {
     runId: crypto.randomUUID(),
     storyId: opts.storyId,
     requestKind: opts.requestKind,
+    startedAt: new Date().toISOString(),
     userEntryId: opts.userEntryId,
     removingEntryIds: opts.removingEntryIds,
     turnId: opts.turnId,
@@ -629,6 +658,17 @@ async function finishRun(
   // Before the end frame on purpose: by the time the origin device settles,
   // every passive device has already been told the tree moved.
   touchStory(run.storyId)
+  // ...and told HOW it ended, which the refetch cannot say. Devices reading a
+  // different story mark this one from here; a discarded run is skipped
+  // because its story is being deleted and there is no row left to mark.
+  if (!run.discarded) {
+    publishBus({
+      kind: "run-ended",
+      storyId: run.storyId,
+      runId: run.runId,
+      status: end.status,
+    })
+  }
   for (const listener of run.listeners) {
     try {
       listener(end)
