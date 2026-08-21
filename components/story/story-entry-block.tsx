@@ -1,7 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { Loader2, Pencil, RefreshCw, Trash2, Undo2 } from "lucide-react"
+import {
+  Loader2,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  Undo2,
+  type LucideIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { deleteEntry, rewindToEntry } from "@/lib/actions/entries"
@@ -27,6 +34,7 @@ import { EntryContextButton } from "@/components/context/entry-context-button"
 import { EntryCostChip } from "@/components/cost/entry-cost-chip"
 import { PassageEditor } from "@/components/story/passage-editor"
 import { Prose } from "@/components/story/prose"
+import { RetryButton } from "@/components/story/retry-profile-menu"
 import { VariantSwitcher } from "@/components/story/variant-switcher"
 
 /**
@@ -91,58 +99,13 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
     })
   }
 
-  const actions = [
-    {
-      key: "edit",
-      icon: Pencil,
-      // A player turn opens an editor seeded with the writer's first-person
-      // input, not the passage, so the label has to say which one it is —
-      // the same branch the editor's own label makes.
-      label:
-        entry.actionKind === null || entry.inputText === null
-          ? "Edit passage"
-          : `Edit your ${entry.actionKind === "say" ? "Say" : "Do"}`,
-      onClick: () => setEditing(true),
-    },
-    // Only the last generated passage can be retried, because the story never
-    // branches: regenerating anything earlier would have to decide what happens
-    // to the prose written after it, and every answer to that is a branch. A
-    // retry now keeps the old take beside the new one in the same slot, so the
-    // label is a plain "Retry" — nothing is thrown away and nothing "from here"
-    // is removed.
-    ...(isLast && entry.source === "generated"
-      ? [
-          {
-            key: "retry",
-            icon: RefreshCw,
-            label: "Retry",
-            onClick: onRetry,
-          },
-        ]
-      : []),
-    // Where the writer ends the story, not where they restart it: the passages
-    // after this one are set aside, nothing is regenerated, and one ⌘Z brings
-    // the whole tail back — which is why the glyph is undo's and not a
-    // scissors or a trash can. Never on the last block, where it would offer
-    // to remove nothing, so it and Retry are mutually exclusive and the
-    // cluster stays three buttons wide.
-    ...(isLast
-      ? []
-      : [
-          {
-            key: "rewind",
-            icon: Undo2,
-            label: "Rewind to here",
-            onClick: () => setRewindOpen(true),
-          },
-        ]),
-    {
-      key: "delete",
-      icon: Trash2,
-      label: "Delete passage",
-      onClick: () => setConfirmOpen(true),
-    },
-  ]
+  // A player turn opens an editor seeded with the writer's first-person input,
+  // not the passage, so the label has to say which one it is — the same branch
+  // the editor's own label makes.
+  const editLabel =
+    entry.actionKind === null || entry.inputText === null
+      ? "Edit passage"
+      : `Edit your ${entry.actionKind === "say" ? "Say" : "Do"}`
 
   return (
     <div
@@ -197,24 +160,52 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
             <Separator orientation="vertical" className="mx-0.5 h-4" />
           </>
         )}
-        {actions.map(({ key, icon: Icon, label, onClick }) => (
-          <Tooltip key={key}>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={label}
-                  onClick={onClick}
-                  disabled={locked}
-                />
-              }
-            >
-              <Icon />
-            </TooltipTrigger>
-            <TooltipContent>{label}</TooltipContent>
-          </Tooltip>
-        ))}
+        <ClusterButton
+          icon={Pencil}
+          label={editLabel}
+          disabled={locked}
+          onClick={() => setEditing(true)}
+        />
+
+        {isLast ? (
+          // Only the last generated passage can be retried, because the story
+          // never branches: regenerating anything earlier would have to decide
+          // what happens to the prose written after it, and every answer to
+          // that is a branch. A retry keeps the old take beside the new one in
+          // the same slot, so the label is a plain "Retry" — nothing is thrown
+          // away and nothing "from here" is removed. The caret beside it asks
+          // the second question a disliked passage raises: not "again?" but
+          // "who else?".
+          entry.source === "generated" && (
+            <RetryButton
+              icon={RefreshCw}
+              label="Retry"
+              size="xs"
+              disabled={locked}
+              onRetry={onRetry}
+            />
+          )
+        ) : (
+          // Where the writer ends the story, not where they restart it: the
+          // passages after this one are set aside, nothing is regenerated, and
+          // one ⌘Z brings the whole tail back — which is why the glyph is
+          // undo's and not a scissors or a trash can. Never on the last block,
+          // where it would offer to remove nothing, so it and Retry are
+          // mutually exclusive and the cluster stays three buttons wide.
+          <ClusterButton
+            icon={Undo2}
+            label="Rewind to here"
+            disabled={locked}
+            onClick={() => setRewindOpen(true)}
+          />
+        )}
+
+        <ClusterButton
+          icon={Trash2}
+          label="Delete passage"
+          disabled={locked}
+          onClick={() => setConfirmOpen(true)}
+        />
       </div>
 
       <Dialog open={rewindOpen} onOpenChange={setRewindOpen}>
@@ -293,3 +284,35 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
     </div>
   )
 })
+
+/** One icon-only action in the cluster: the shape all of them but Retry share. */
+function ClusterButton({
+  icon: Icon,
+  label,
+  disabled,
+  onClick,
+}: {
+  icon: LucideIcon
+  label: string
+  disabled: boolean
+  onClick: () => void
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={label}
+            onClick={onClick}
+            disabled={disabled}
+          />
+        }
+      >
+        <Icon />
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}

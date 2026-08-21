@@ -22,6 +22,7 @@ import {
   type InspectorTab,
 } from "@/components/inspector/inspector-panel"
 import { Composer } from "@/components/story/composer"
+import { RetryProfilesProvider } from "@/components/story/retry-profile-menu"
 import { StoryCanvas } from "@/components/story/story-canvas"
 import { StoryHeader } from "@/components/story/story-header"
 import {
@@ -105,6 +106,9 @@ export function StoryWorkspace({
         <StoryEditor
           key={story.id}
           story={story}
+          models={models}
+          profiles={profiles}
+          defaultProfileId={defaultProfileId}
           actionKind={actionKind}
           onActionKindChange={setActionKind}
           attachRef={attachRef}
@@ -147,11 +151,18 @@ export function StoryWorkspace({
 /** Canvas + composer + generation: the part that is per-story. */
 function StoryEditor({
   story,
+  models,
+  profiles,
+  defaultProfileId,
   actionKind,
   onActionKindChange,
   attachRef,
 }: {
   story: Story
+  /** For the retry menu's one-line summary of each profile. */
+  models: OpenRouterModel[]
+  profiles: ModelProfile[]
+  defaultProfileId: string | null
   actionKind: ActionKind
   onActionKindChange: (kind: ActionKind) => void
   /** Bridge from the workspace's sync channel: run-started → attach mid-flight; null = re-probe. */
@@ -171,9 +182,25 @@ function StoryEditor({
 
   // Wrapped rather than passed straight through: both callers hang this off a
   // button's onClick, and retryLast's first parameter is a profile id.
+  const { retryLast } = generation
   const handleRetry = React.useCallback(() => {
-    generation.retryLast()
-  }, [generation])
+    retryLast()
+  }, [retryLast])
+
+  // Supplied to the composer's Retry and to every passage's, which are the same
+  // control in two places. Memoised because the passage blocks are memoised:
+  // a fresh object here would re-render the whole manuscript on every keystroke
+  // in the composer.
+  const retryProfiles = React.useMemo(
+    () => ({
+      profiles,
+      models,
+      defaultProfileId,
+      currentProfileId: story.profileId,
+      onRetryWithProfile: (profileId: string) => retryLast(profileId),
+    }),
+    [profiles, models, defaultProfileId, story.profileId, retryLast]
+  )
 
   useDraftPersistence(story.id, draft, setDraft)
 
@@ -215,40 +242,42 @@ function StoryEditor({
   )
 
   return (
-    <div ref={shellRef} className="relative flex min-w-0 flex-1 flex-col">
-      <StoryCanvas
-        story={story}
-        status={generation.status}
-        busy={generation.busy}
-        streamingText={generation.streamingText}
-        optimisticUserText={generation.optimisticUserText}
-        optimisticUserPending={generation.optimisticUserPending}
-        removingEntryIds={generation.removingEntryIds}
-        onRetry={handleRetry}
-        onSuggestion={handleSuggestion}
-      />
-      <Composer
-        value={draft}
-        onValueChange={setDraft}
-        actionKind={actionKind}
-        onActionKindChange={onActionKindChange}
-        textareaRef={composerRef}
-        containerRef={composerBoxRef}
-        status={generation.status}
-        busy={generation.busy}
-        canUndo={generation.canUndo}
-        canRedo={generation.canRedo}
-        canRetry={generation.canRetry}
-        undoLabel={generation.undoLabel}
-        redoLabel={generation.redoLabel}
-        onSend={generation.send}
-        onContinue={generation.continueStory}
-        onRetry={handleRetry}
-        onUndo={generation.undo}
-        onRedo={generation.redo}
-        onStop={generation.stop}
-      />
-    </div>
+    <RetryProfilesProvider value={retryProfiles}>
+      <div ref={shellRef} className="relative flex min-w-0 flex-1 flex-col">
+        <StoryCanvas
+          story={story}
+          status={generation.status}
+          busy={generation.busy}
+          streamingText={generation.streamingText}
+          optimisticUserText={generation.optimisticUserText}
+          optimisticUserPending={generation.optimisticUserPending}
+          removingEntryIds={generation.removingEntryIds}
+          onRetry={handleRetry}
+          onSuggestion={handleSuggestion}
+        />
+        <Composer
+          value={draft}
+          onValueChange={setDraft}
+          actionKind={actionKind}
+          onActionKindChange={onActionKindChange}
+          textareaRef={composerRef}
+          containerRef={composerBoxRef}
+          status={generation.status}
+          busy={generation.busy}
+          canUndo={generation.canUndo}
+          canRedo={generation.canRedo}
+          canRetry={generation.canRetry}
+          undoLabel={generation.undoLabel}
+          redoLabel={generation.redoLabel}
+          onSend={generation.send}
+          onContinue={generation.continueStory}
+          onRetry={handleRetry}
+          onUndo={generation.undo}
+          onRedo={generation.redo}
+          onStop={generation.stop}
+        />
+      </div>
+    </RetryProfilesProvider>
   )
 }
 
