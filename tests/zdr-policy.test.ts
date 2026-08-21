@@ -16,7 +16,7 @@ mock.module("server-only", () => ({}))
 
 const { probeModels } = await import("@/lib/generation/zdr")
 
-function model(id: string): OpenRouterModel {
+function model(id: string, zdr = false): OpenRouterModel {
   return {
     id,
     name: id,
@@ -24,6 +24,7 @@ function model(id: string): OpenRouterModel {
     contextLength: 8192,
     pricing: { prompt: "$0.00", completion: "$0.00" },
     reasoning: null,
+    zdr,
   }
 }
 
@@ -37,19 +38,19 @@ const FREE = [
 describe("probeModels", () => {
   test("only free models are ever asked about", () => {
     const models = [...FREE, model("alpha/paid")]
-    expect(probeModels(models, new Set()).map((m) => m.id)).not.toContain(
-      "alpha/paid"
-    )
+    expect(probeModels(models).map((m) => m.id)).not.toContain("alpha/paid")
   })
 
   test("a model with a ZDR endpoint proves nothing and is skipped", () => {
     // It would be served under either policy, so its success is not an answer.
-    const picked = probeModels(FREE, new Set(["beta/one:free"]))
-    expect(picked.map((m) => m.id)).not.toContain("beta/one:free")
+    const withZdr = [...FREE, model("delta/one:free", true)]
+    expect(probeModels(withZdr).map((m) => m.id)).not.toContain(
+      "delta/one:free"
+    )
   })
 
   test("at most one model per author, so refusals are independent votes", () => {
-    expect(probeModels(FREE, new Set()).map((m) => m.id)).toEqual([
+    expect(probeModels(FREE).map((m) => m.id)).toEqual([
       "alpha/one:free",
       "beta/one:free",
       "gamma/one:free",
@@ -59,19 +60,16 @@ describe("probeModels", () => {
   test("router aliases are not probe material", () => {
     // An alias serves nothing itself; what answers for it is its target, which
     // is in the list under its own id.
-    const picked = probeModels(
-      [model("~alpha/latest:free"), ...FREE],
-      new Set()
-    )
+    const picked = probeModels([model("~alpha/latest:free"), ...FREE])
     expect(picked.map((m) => m.id)).not.toContain("~alpha/latest:free")
   })
 
   test("the sample is capped — five refusals is the evidence, not fifty", () => {
     const many = Array.from({ length: 12 }, (_, i) => model(`lab${i}/m:free`))
-    expect(probeModels(many, new Set())).toHaveLength(5)
+    expect(probeModels(many)).toHaveLength(5)
   })
 
   test("nothing free to ask about is an empty sample, not a wrong answer", () => {
-    expect(probeModels([model("alpha/paid")], new Set())).toEqual([])
+    expect(probeModels([model("alpha/paid")])).toEqual([])
   })
 })

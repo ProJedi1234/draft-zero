@@ -20,6 +20,7 @@ const MODELS: OpenRouterModel[] = [
     contextLength: 200_000,
     pricing: { prompt: "$3.00", completion: "$15.00" },
     reasoning: { efforts: ["low", "medium", "high"], mandatory: false },
+    zdr: false,
   },
 ]
 

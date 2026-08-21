@@ -156,6 +156,15 @@ describe("partitionByZdr", () => {
     // The picker's cue that the model itself is the problem, not the provider.
     expect(partitionByZdr(ENDPOINTS, true).allowed).toEqual([])
   })
+
+  test("nothing is dropped — every endpoint lands in exactly one list", () => {
+    // The blocked half is rendered, greyed, rather than filtered away, so a
+    // provider that went missing from both lists would go missing from the UI.
+    const { allowed, blocked } = partitionByZdr(MIXED, true)
+    expect([...allowed, ...blocked].map((e) => e.tag).sort()).toEqual(
+      MIXED.map((e) => e.tag).sort()
+    )
+  })
 })
 
 describe("formatThroughput", () => {

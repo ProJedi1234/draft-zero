@@ -27,7 +27,7 @@ import { setStoryProfile } from "@/lib/actions/profiles"
 import { updateGenerationSettings } from "@/lib/actions/stories"
 import {
   clampContextWindow,
-  endpointForTag,
+  routableEndpointForTag,
   type GenerationSettings,
   type ModelProfile,
   type OpenRouterModel,
@@ -159,7 +159,7 @@ export function useModelSettings({
   // i.e. no clamp. A pinned endpoint wins: a third-party host commonly serves a
   // shorter window than the lab does, and that shorter window is the real ceiling.
   const liveContextLength =
-    endpointForTag(endpoints, providerTag)?.contextLength ??
+    routableEndpointForTag(endpoints, providerTag, zdr)?.contextLength ??
     models.find((m) => m.id === modelId)?.contextLength ??
     0
 
@@ -281,7 +281,7 @@ export function useModelSettings({
     // window, so pinning a smaller one has to pull the slider down with it.
     const nextContextWindow = clampContextWindow(
       storedContextWindow,
-      endpointForTag(endpoints, nextProviderTag)?.contextLength ??
+      routableEndpointForTag(endpoints, nextProviderTag, zdr)?.contextLength ??
         models.find((m) => m.id === modelId)?.contextLength ??
         0
     )
