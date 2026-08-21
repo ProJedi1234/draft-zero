@@ -20,27 +20,238 @@
 }
 
 /*
- * The thinking indicator's dots (GenerationCaret). Its own keyframe rather than
- * animate-bounce: bounce translates by a percentage of the element, which on a
- * 3px dot is a sub-pixel move that renders as nothing at all. This travels a
- * flat 3px. Applied under motion-safe, so reduced-motion leaves three static
- * dots — still a legible "waiting" mark, just not a moving one.
+ * The thinking indicator's dots (GenerationCaret), and the sidebar run mark
+ * that borrows them. Its own keyframe rather than animate-bounce: bounce
+ * translates by a percentage of the element, which on a 3px dot is a sub-pixel
+ * move that renders as nothing at all. This travels a flat 3px. Applied under
+ * motion-safe, so reduced-motion leaves three static dots — still a legible
+ * "waiting" mark, just not a moving one.
+ *
+ * On `translate` rather than `transform` so it composes: the sidebar mark
+ * needs `transform` for each dot's resting offset along the line, and one
+ * property cannot carry both. It also makes the landing possible — a class
+ * flip can drop the animation and transition `translate` back to zero, so a
+ * dot caught mid-hop glides down instead of snapping 3px in one frame.
  */
 @keyframes dot-hop {
   0%,
   70%,
   100% {
     opacity: 0.3;
-    transform: translateY(0);
+    translate: 0 0;
   }
   35% {
     opacity: 1;
-    transform: translateY(-3px);
+    translate: 0 -3px;
   }
 }
 
 @utility animate-dot-hop {
   animation: dot-hop 1.2s ease-in-out infinite;
+}
+
+/*
+ * The sidebar's run mark: three 3px squares that hop while a story is
+ * generating, and resolve into one 6px dot when its passage lands.
+ *
+ * Absolutely placed inside a 20px arena rather than flexed, because a flex row
+ * cannot animate into a single stacked point — and in explicit px because the
+ * landing has to finish on the settled mark's exact geometry, so swapping the
+ * real element in underneath is invisible. --dx is each dot's resting offset
+ * from the centre; every transform is written around it.
+ */
+.run-mark {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+
+.run-mark i {
+  position: absolute;
+  top: 8.5px;
+  left: 8.5px;
+  width: 3px;
+  height: 3px;
+  background: var(--primary);
+  opacity: 0.6;
+  transform: translateX(var(--dx));
+}
+
+/*
+ * --delay rides inside the animation shorthand rather than sitting in its own
+ * declaration. A bare animation-delay here is a coin toss: this selector and
+ * the one below it have identical specificity, so whichever lands later wins —
+ * and the shorthand resets the delay to 0s, which un-staggers the dots and
+ * turns typing into the whole cluster bobbing as one block.
+ */
+.run-mark i:nth-child(1) {
+  --dx: -5px;
+  --delay: 0s;
+}
+.run-mark i:nth-child(2) {
+  --dx: 0px;
+  --delay: 0.16s;
+}
+.run-mark i:nth-child(3) {
+  --dx: 5px;
+  --delay: 0.32s;
+}
+
+.run-mark[data-hop="true"] i {
+  animation: dot-hop 1.2s ease-in-out var(--delay, 0s) infinite;
+}
+
+/*
+ * The landing, in two beats that never overlap: 160ms of pure motion, then
+ * 140ms of pure shape. The outer squares slide straight down the line they
+ * already sit on and stop AT centre, never past it, and their arrival is what
+ * makes the middle one swell. Nothing rotates; nothing moves during the morph.
+ * The middle dot is the same element as the settled dot, which is the point —
+ * you watch the thing that was working become the thing that finished.
+ */
+@keyframes run-mark-gather {
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes run-mark-vanish {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes run-mark-settle {
+  from {
+    top: 8.5px;
+    left: 8.5px;
+    width: 3px;
+    height: 3px;
+    border-radius: 0;
+    opacity: 0.6;
+  }
+  to {
+    top: 7px;
+    left: 7px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    opacity: 0.85;
+  }
+}
+
+/*
+ * The failure, built as the landing's opposite. Both endings resolve in the
+ * same six pixels, so the one thing they must not share is a gesture: the
+ * landing converges and FILLS, this gives out and EMPTIES. Its outer squares
+ * never reach centre — nothing arrived — they sink through the baseline the
+ * hop had been lifting them off and go. The survivor drains: its fill turns
+ * transparent as its border opens to 1.5px, so the hole is the fill leaving
+ * rather than a new shape arriving. No beats, because a landing earns its
+ * staging by having completed something and a failure has nothing to stage.
+ */
+@keyframes run-mark-sink {
+  to {
+    translate: 0 3px;
+    opacity: 0;
+  }
+}
+@keyframes run-mark-hollow {
+  from {
+    top: 8.5px;
+    left: 8.5px;
+    width: 3px;
+    height: 3px;
+    border-width: 0;
+    border-color: var(--primary);
+    border-radius: 0;
+    background-color: var(--primary);
+    opacity: 0.6;
+  }
+  to {
+    top: 7px;
+    left: 7px;
+    width: 6px;
+    height: 6px;
+    border-width: 1.5px;
+    border-color: var(--destructive);
+    border-radius: 50%;
+    background-color: transparent;
+    opacity: 0.9;
+  }
+}
+
+/* Absorbs whatever phase the hop was caught in rather than freezing it. */
+.run-mark[data-end] i {
+  animation: none;
+  translate: 0 0;
+  transition: translate 90ms ease-out;
+}
+
+.run-mark[data-end="land"] i:nth-child(1),
+.run-mark[data-end="land"] i:nth-child(3) {
+  animation:
+    run-mark-gather 160ms cubic-bezier(0.4, 0, 1, 1) forwards,
+    run-mark-vanish 140ms linear 160ms forwards;
+}
+.run-mark[data-end="land"] i:nth-child(2) {
+  animation: run-mark-settle 140ms cubic-bezier(0, 0, 0.2, 1) 160ms forwards;
+}
+
+.run-mark[data-end="fail"] i:nth-child(1),
+.run-mark[data-end="fail"] i:nth-child(3) {
+  animation: run-mark-sink 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+.run-mark[data-end="fail"] i:nth-child(2) {
+  border-style: solid;
+  animation: run-mark-hollow 240ms cubic-bezier(0, 0, 0.2, 1) forwards;
+}
+
+/* The settled marks. Deliberately static: motion is a claim that something is
+   happening, and both of these are claims that something has stopped. */
+.run-mark-done,
+.run-mark-failed {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.run-mark-done {
+  background: var(--primary);
+  opacity: 0.85;
+}
+.run-mark-failed {
+  border: 1.5px solid var(--destructive);
+  opacity: 0.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-mark[data-hop="true"] i {
+    animation: none;
+    opacity: 0.75;
+  }
+  /* Both endings collapse to their final frame. A mark asked not to move must
+     still arrive somewhere, and it is the same somewhere. */
+  .run-mark[data-end] i {
+    animation: none;
+    transition: none;
+  }
+  .run-mark[data-end] i:nth-child(1),
+  .run-mark[data-end] i:nth-child(3) {
+    opacity: 0;
+  }
+  .run-mark[data-end] i:nth-child(2) {
+    top: 7px;
+    left: 7px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .run-mark[data-end="land"] i:nth-child(2) {
+    opacity: 0.85;
+  }
+  .run-mark[data-end="fail"] i:nth-child(2) {
+    border: 1.5px solid var(--destructive);
+    background-color: transparent;
+    opacity: 0.9;
+  }
 }
 
 @theme inline {
