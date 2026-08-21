@@ -714,6 +714,14 @@ export function routableEndpointForTag(
 export const OPENROUTER_PRIVACY_URL = "https://openrouter.ai/settings/privacy"
 
 /**
+ * What this app has managed to learn about the OpenRouter account's own
+ * retention policy. "unknown" is the honest and common answer — there is no API
+ * for it, only a probe (lib/generation/zdr.ts) that can come back inconclusive
+ * — and every control reads it as "not locked", leaving the writer in charge.
+ */
+export type AccountZdrPolicy = "enforced" | "not-enforced" | "unknown"
+
+/**
  * The endpoints a bundle may actually be routed to, and the ones its data
  * policy rules out. Under `zdr: false` nothing is ruled out and `blocked` is
  * empty — the picker renders the same two lists either way and simply has

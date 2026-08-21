@@ -2,11 +2,12 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ChevronsUpDownIcon, Loader2, Star } from "lucide-react"
+import { ChevronsUpDownIcon, Loader2, ShieldCheck, Star } from "lucide-react"
 
 import { ModelCombobox } from "@/components/model-combobox"
 import { ProviderCombobox } from "@/components/provider-combobox"
 import { ThinkingSelect } from "@/components/thinking-select"
+import { ZdrSwitch, type ZdrLock } from "@/components/zdr-switch"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -33,10 +34,11 @@ import { cn } from "@/lib/utils"
  * meter can size itself against the model the writer just picked; persistence
  * happens in `onValueChange` (immediate, never debounced — §4.4).
  *
- * Underneath sit the two settings that only mean anything one model deep: which
- * upstream endpoint serves it, and how hard it thinks. The footnote reports the
- * price and window of whatever will actually serve the request — the pinned
- * endpoint's numbers when there is one, the model's own under Auto, because on a
+ * Underneath sit the settings that only mean anything one model deep: which
+ * upstream endpoint serves it, how hard it thinks, and whether the endpoints it
+ * may be served by have to keep nothing. The footnote reports the price and
+ * window of whatever will actually serve the request — the pinned endpoint's
+ * numbers when there is one, the model's own under Auto, because on a
  * multi-provider model those are frequently not the same numbers.
  */
 export function ModelPicker({
@@ -48,6 +50,9 @@ export function ModelPicker({
   onProviderTagChange,
   thinking,
   onThinkingChange,
+  zdr,
+  onZdrChange,
+  zdrLock = null,
   onOpenChange,
 }: {
   models: OpenRouterModel[]
@@ -59,6 +64,11 @@ export function ModelPicker({
   onProviderTagChange: (providerTag: string | null) => void
   thinking: ThinkingLevel
   onThinkingChange: (thinking: ThinkingLevel) => void
+  /** Effective retention policy for this bundle — the floor is already in it. */
+  zdr: boolean
+  onZdrChange: (zdr: boolean) => void
+  /** Why the writer cannot turn it off here, if they cannot. */
+  zdrLock?: ZdrLock
   /**
    * True while any of the three is open. These settings depend on each other —
    * the model decides which thinking levels and which endpoints exist — so a
@@ -120,6 +130,14 @@ export function ModelPicker({
         onOpenChange={(next) => report("thinking", next)}
       />
       <PricingLine pricing={pricing} contextLength={contextLength} />
+      <div className="pt-1">
+        <ZdrSwitch
+          checked={zdr}
+          onCheckedChange={onZdrChange}
+          lock={zdrLock}
+          hint="Only providers that keep nothing."
+        />
+      </div>
     </div>
   )
 }
@@ -163,6 +181,7 @@ export function ProfileCard({
   switching = false,
   models,
   endpoints,
+  zdr,
   basedOnName,
   onOpenChange,
 }: {
@@ -182,6 +201,12 @@ export function ProfileCard({
   models: OpenRouterModel[]
   /** Endpoints serving the effective model, for the pinned endpoint's price. */
   endpoints: ModelEndpoint[]
+  /**
+   * The effective retention policy. Shown here because a followed profile hides
+   * every control below this card, and this mark is then the only place a
+   * writer can see what their story's data policy actually is.
+   */
+  zdr: boolean
   /** Profile this session left for Custom, if any; drives the "based on" line. */
   basedOnName?: string | null
   /** Reported so the caller can hold server-driven changes while the menu is open. */
@@ -241,6 +266,15 @@ export function ProfileCard({
               <span className="truncate text-sm font-medium">
                 {followed ? followed.name : "Custom"}
               </span>
+              {zdr ? (
+                <>
+                  <ShieldCheck
+                    aria-hidden
+                    className="size-3.5 shrink-0 text-muted-foreground"
+                  />
+                  <span className="sr-only">Zero data retention</span>
+                </>
+              ) : null}
               {followed ? null : (
                 <Badge variant="secondary" className="shrink-0">
                   this story

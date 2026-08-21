@@ -54,6 +54,7 @@ export function StoryWorkspace({
   costProfile,
   profiles,
   defaultProfileId,
+  requireZdr,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
@@ -64,6 +65,8 @@ export function StoryWorkspace({
   profiles: ModelProfile[]
   /** The profile new stories start from; starred in the switcher. */
   defaultProfileId: string | null
+  /** The app-wide retention policy, for the inspector's zero-data-retention switch. */
+  requireZdr: boolean
 }) {
   const [inspectorOpen, setInspectorOpen] = useInspectorOpen()
   const [inspectorTab, setInspectorTab] = useInspectorTab()
@@ -119,6 +122,7 @@ export function StoryWorkspace({
           models={models}
           profiles={profiles}
           defaultProfileId={defaultProfileId}
+          requireZdr={requireZdr}
           tab={inspectorTab}
           onTabChange={setInspectorTab}
           className={cn("hidden", inspectorOpen && "lg:flex")}
@@ -139,6 +143,7 @@ export function StoryWorkspace({
             models={models}
             profiles={profiles}
             defaultProfileId={defaultProfileId}
+            requireZdr={requireZdr}
             tab={inspectorTab}
             onTabChange={setInspectorTab}
           />

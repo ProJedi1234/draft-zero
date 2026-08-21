@@ -6,6 +6,7 @@ import {
   MoreHorizontal,
   PencilLine,
   Plus,
+  ShieldCheck,
   Star,
   Trash2,
 } from "lucide-react"
@@ -52,11 +53,14 @@ export function ModelProfilesCard({
   profiles,
   models,
   defaults,
+  requireZdr,
   defaultProfileId,
   followerCounts,
 }: {
   profiles: ModelProfile[]
   models: OpenRouterModel[]
+  /** The app-wide retention policy, which the editor's switch sits on top of. */
+  requireZdr: boolean
   /** The shared slider values a profile's unset fields fall back to. */
   defaults: GenerationDefaults
   defaultProfileId: string | null
@@ -121,6 +125,10 @@ export function ModelProfilesCard({
                 key={profile.id}
                 profile={profile}
                 summary={settingsSummaryWithPrice(profile.settings, models)}
+                // Effective, not stored: a profile that says nothing about
+                // retention is still under the app-wide policy, and a row that
+                // showed no mark would be describing a bundle nobody generates.
+                zdr={profile.settings.zdr || requireZdr}
                 isDefault={profile.id === defaultProfileId}
                 onEdit={() => openEditor({ mode: "edit", profile })}
                 onDuplicate={() => openEditor({ mode: "duplicate", profile })}
@@ -141,6 +149,7 @@ export function ModelProfilesCard({
           onOpenChange={setEditorOpen}
           models={models}
           defaults={defaults}
+          requireZdr={requireZdr}
           isDefault={
             editorTarget.mode === "edit" &&
             editorTarget.profile?.id === defaultProfileId
@@ -167,6 +176,7 @@ export function ModelProfilesCard({
 function ProfileRow({
   profile,
   summary,
+  zdr,
   isDefault,
   onEdit,
   onDuplicate,
@@ -174,6 +184,8 @@ function ProfileRow({
 }: {
   profile: ModelProfile
   summary: string
+  /** Routed only through providers that keep nothing — shown as a mark, not a word. */
+  zdr: boolean
   isDefault: boolean
   onEdit: () => void
   onDuplicate: () => void
@@ -219,9 +231,18 @@ function ProfileRow({
           )}
         />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium">
-            {profile.name}
+          <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+            <span className="truncate">{profile.name}</span>
             {isDefault ? <span className="sr-only"> (default)</span> : null}
+            {zdr ? (
+              <>
+                <ShieldCheck
+                  aria-hidden
+                  className="size-3.5 shrink-0 text-muted-foreground"
+                />
+                <span className="sr-only">, zero data retention</span>
+              </>
+            ) : null}
           </span>
           <span className="truncate text-xs text-muted-foreground">
             {summary}

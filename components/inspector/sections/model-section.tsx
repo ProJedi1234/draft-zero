@@ -7,11 +7,13 @@ import { ModelPicker, ProfileCard } from "@/components/inspector/model-picker"
 import { SaveProfileDialog } from "@/components/inspector/save-profile-dialog"
 import { SettingSlider } from "@/components/inspector/setting-slider"
 import { Button } from "@/components/ui/button"
+import type { ZdrLock } from "@/components/zdr-switch"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { useAccountZdr } from "@/hooks/use-account-zdr"
 import type { ModelSettings } from "@/hooks/use-model-settings"
 import {
   LORE_BUDGET_MAX,
@@ -34,17 +36,25 @@ export function ModelSection({
   models,
   profiles,
   defaultProfileId,
+  requireZdr,
   settings,
 }: {
   story: Story
   models: OpenRouterModel[]
   profiles: ModelProfile[]
   defaultProfileId: string | null
+  /** The app-wide retention policy; a story can add to it, never lower it. */
+  requireZdr: boolean
   settings: ModelSettings
 }) {
   // Bound out so the ternary below narrows it — reaching through `settings`
   // inside the branch would need a non-null assertion to say the same thing.
   const { basedOnProfile } = settings
+  const accountZdr = useAccountZdr()
+  // A floor the writer cannot lower from here. The story's own column still
+  // holds its false underneath, so dropping the floor gives it back.
+  const zdrLock: ZdrLock =
+    accountZdr === "enforced" ? "account" : requireZdr ? "app" : null
 
   return (
     <div className="space-y-3">
@@ -56,6 +66,7 @@ export function ModelSection({
         switching={settings.profileSwitching}
         models={models}
         endpoints={settings.endpoints}
+        zdr={settings.zdr}
         basedOnName={basedOnProfile?.name ?? null}
         onOpenChange={settings.setProfileMenuOpen}
       />
@@ -73,6 +84,9 @@ export function ModelSection({
             onProviderTagChange={settings.handleProviderChange}
             thinking={settings.thinking}
             onThinkingChange={settings.handleThinkingChange}
+            zdr={settings.zdr}
+            onZdrChange={settings.handleZdrChange}
+            zdrLock={zdrLock}
             onOpenChange={settings.setPickerOpen}
           />
           <Collapsible>

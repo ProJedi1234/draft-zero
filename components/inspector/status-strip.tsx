@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { ShieldCheck } from "lucide-react"
 
 import { ContextDialog } from "@/components/context/context-dialog"
 import { Meter } from "@/components/ui/meter"
@@ -32,6 +33,7 @@ export function StatusStrip({
   contextWindow,
   models,
   identity,
+  zdr,
   onModelClick,
 }: {
   story: Story
@@ -46,6 +48,12 @@ export function StatusStrip({
    * two inches above it.
    */
   identity: GenerationSummaryIdentity
+  /**
+   * Whether the next request will be routed only through providers that keep
+   * nothing. A mark rather than a word: the line beside it is already three
+   * facts long, and this one is either true or absent.
+   */
+  zdr: boolean
   /** Jump to the segment that owns these settings. */
   onModelClick: () => void
 }) {
@@ -58,10 +66,18 @@ export function StatusStrip({
       <button
         type="button"
         onClick={onModelClick}
-        aria-label={`Model: ${parts.model}, ${parts.provider}, ${parts.thinking}. Show model settings.`}
+        aria-label={`Model: ${parts.model}, ${parts.provider}, ${parts.thinking}${zdr ? ", zero data retention" : ""}. Show model settings.`}
         className="flex w-full items-baseline justify-between gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
       >
-        <span className="truncate text-xs font-medium">{parts.model}</span>
+        <span className="flex min-w-0 items-baseline gap-1">
+          {zdr ? (
+            <ShieldCheck
+              aria-hidden
+              className="size-3 shrink-0 translate-y-px text-muted-foreground"
+            />
+          ) : null}
+          <span className="truncate text-xs font-medium">{parts.model}</span>
+        </span>
         <span className="shrink-0 text-xs text-muted-foreground">
           {parts.provider} · {parts.thinking}
         </span>

@@ -8,6 +8,7 @@ import { ContextWindowSlider } from "@/components/inspector/context-window-slide
 import { ModelPicker } from "@/components/inspector/model-picker"
 import { SliderField } from "@/components/slider-field"
 import { levelForModel } from "@/components/thinking-select"
+import type { ZdrLock } from "@/components/zdr-switch"
 import { Button } from "@/components/ui/button"
 import {
   Collapsible,
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useAccountZdr } from "@/hooks/use-account-zdr"
 import { useModelEndpoints } from "@/hooks/use-model-endpoints"
 import {
   createProfile,
@@ -86,6 +88,7 @@ export function ProfileEditorDialog({
   onOpenChange,
   models,
   defaults,
+  requireZdr,
   isDefault,
   followerCount,
 }: {
@@ -95,6 +98,8 @@ export function ProfileEditorDialog({
   models: OpenRouterModel[]
   /** The global slider values an inheriting field shows and generates under. */
   defaults: GenerationDefaults
+  /** The app-wide retention policy; a profile can add to it, never lower it. */
+  requireZdr: boolean
   /** True when the profile being edited is already the one new stories start from. */
   isDefault: boolean
   /** Stories following the profile being edited; 0 for a create. */
@@ -110,6 +115,7 @@ export function ProfileEditorDialog({
           target={target}
           models={models}
           defaults={defaults}
+          requireZdr={requireZdr}
           isDefault={isDefault}
           followerCount={followerCount}
           onDone={() => onOpenChange(false)}
@@ -159,6 +165,7 @@ function ProfileEditorForm({
   target,
   models,
   defaults,
+  requireZdr,
   isDefault,
   followerCount,
   onDone,
@@ -166,6 +173,7 @@ function ProfileEditorForm({
   target: ProfileEditorTarget
   models: OpenRouterModel[]
   defaults: GenerationDefaults
+  requireZdr: boolean
   isDefault: boolean
   followerCount: number
   onDone: () => void
@@ -176,6 +184,11 @@ function ProfileEditorForm({
   const [makeDefault, setMakeDefault] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
   const { endpoints } = useModelEndpoints(settings.modelId)
+  const accountZdr = useAccountZdr()
+  // The floor, wherever it comes from. A profile under one still stores its own
+  // false — lowering the floor later has to give the profile back what it says.
+  const zdrLock: ZdrLock =
+    accountZdr === "enforced" ? "account" : requireZdr ? "app" : null
 
   const model = models.find((m) => m.id === settings.modelId)
   // A pinned endpoint wins over the model's own window, same as the inspector:
@@ -339,6 +352,9 @@ function ProfileEditorForm({
             onProviderTagChange={handleProviderChange}
             thinking={settings.thinking}
             onThinkingChange={(thinking) => patch({ thinking })}
+            zdr={settings.zdr}
+            onZdrChange={(zdr) => patch({ zdr })}
+            zdrLock={zdrLock}
           />
 
           <Collapsible>
