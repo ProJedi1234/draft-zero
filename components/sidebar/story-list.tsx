@@ -4,6 +4,7 @@ import * as React from "react"
 import { Loader2, Plus } from "lucide-react"
 
 import type { StorySummary } from "@/lib/types"
+import type { RunStatus } from "@/hooks/use-run-status"
 import {
   SidebarGroup,
   SidebarGroupAction,
@@ -30,9 +31,12 @@ function matchesQuery(story: StorySummary, needle: string): boolean {
 export function StoryList({
   stories,
   query,
+  runStatus,
 }: {
   stories: StorySummary[]
   query: string
+  /** What each story is doing — see hooks/use-run-status.ts. */
+  runStatus: (storyId: string) => RunStatus
 }) {
   const { createNewStory, isPending } = useCreateStory()
   const trimmedQuery = query.trim()
@@ -69,7 +73,11 @@ export function StoryList({
         ) : (
           <SidebarMenu>
             {filtered.map((story) => (
-              <StoryListItem key={story.id} story={story} />
+              <StoryListItem
+                key={story.id}
+                story={story}
+                run={runStatus(story.id)}
+              />
             ))}
           </SidebarMenu>
         )}

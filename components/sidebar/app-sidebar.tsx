@@ -1,9 +1,12 @@
 "use client"
 
 import * as React from "react"
+import { usePathname } from "next/navigation"
 import { Feather, Search } from "lucide-react"
 
 import type { StorySummary } from "@/lib/types"
+import type { ActiveRun } from "@/lib/sync/types"
+import { useRunStatus } from "@/hooks/use-run-status"
 import {
   Sidebar,
   SidebarContent,
@@ -18,9 +21,23 @@ import { ThemeToggle } from "@/components/theme-toggle"
 
 export function AppSidebar({
   stories,
+  activeRuns,
   ...props
-}: { stories: StorySummary[] } & React.ComponentProps<typeof Sidebar>) {
+}: {
+  stories: StorySummary[]
+  /** Runs in flight, from the registry. Re-arrives with every RSC payload. */
+  activeRuns: ActiveRun[]
+} & React.ComponentProps<typeof Sidebar>) {
   const [query, setQuery] = React.useState("")
+  // The open story, read from the path rather than passed down: the sidebar
+  // lives in the root layout, which does not know which story the slot below
+  // it is rendering. An open story needs no mark — the writer is watching that
+  // passage land in the manuscript itself.
+  const pathname = usePathname()
+  const openStoryId = pathname.startsWith("/story/")
+    ? (pathname.split("/")[2] ?? null)
+    : null
+  const runStatus = useRunStatus(activeRuns, openStoryId)
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -46,7 +63,7 @@ export function AppSidebar({
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <StoryList stories={stories} query={query} />
+        <StoryList stories={stories} query={query} runStatus={runStatus} />
         <NavWorkspace />
       </SidebarContent>
       <SidebarFooter>
