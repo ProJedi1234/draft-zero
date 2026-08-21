@@ -30,7 +30,7 @@ import { reconcileCall, shouldReconcile } from "@/lib/generation/reconcile"
 import {
   invalidateAccountZdrPolicy,
   isDataPolicyRefusal,
-} from "@/lib/generation/zdr"
+} from "@/lib/generation/zdr-account"
 import type {
   ComposedContext,
   GenerationEvent,
@@ -38,11 +38,12 @@ import type {
 } from "@/lib/generation/types"
 import { publishBus, touchStory } from "@/lib/sync/bus"
 import type { RunEndFrame, RunFrame, RunWireEvent } from "@/lib/sync/types"
-import type {
-  EntryGeneration,
-  GenerationRequestKind,
-  GenerationSettings,
-  SettledCallStatus,
+import {
+  zdrGroupForModel,
+  type EntryGeneration,
+  type GenerationRequestKind,
+  type GenerationSettings,
+  type SettledCallStatus,
 } from "@/lib/types"
 
 /** How long a finished run stays addressable, so a subscriber racing the finish still gets snapshot + end. */
@@ -474,7 +475,7 @@ async function runLoop(run: LiveRun, context: ComposedContext): Promise<void> {
         // out to be wrong. Dropping it makes the next reader re-probe; the
         // probe, not this failure, gets to say what replaced it.
         if (!run.settings.zdr && isDataPolicyRefusal(err)) {
-          invalidateAccountZdrPolicy()
+          invalidateAccountZdrPolicy(zdrGroupForModel(run.settings.modelId))
         }
         status = "error"
         errorMessage = mapOpenRouterError(err).message

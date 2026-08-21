@@ -725,11 +725,67 @@ export const OPENROUTER_PRIVACY_URL = "https://openrouter.ai/settings/privacy"
 
 /**
  * What this app has managed to learn about the OpenRouter account's own
- * retention policy. "unknown" is the honest and common answer — there is no API
- * for it, only a probe (lib/generation/zdr.ts) that can come back inconclusive
- * — and every control reads it as "not locked", leaving the writer in charge.
+ * retention policy, for one model group. "unknown" is the honest and common
+ * answer — there is no API for it, only a probe (lib/generation/zdr.ts) that
+ * can come back inconclusive — and every control reads it as "not locked",
+ * leaving the writer in charge.
  */
 export type AccountZdrPolicy = "enforced" | "not-enforced" | "unknown"
+
+/**
+ * OpenRouter's own five model groups. Its privacy settings carry one
+ * zero-data-retention toggle per group, not one for the account, and real
+ * accounts genuinely differ across them — Anthropic and OpenAI locked down
+ * while Google and xAI are not is a normal state, not a misconfiguration.
+ *
+ * So this app cannot hold a single answer about "the account" either. Every
+ * question about enforcement is a question about one group, and the group comes
+ * from the model.
+ */
+export const ZDR_GROUPS = [
+  "anthropic",
+  "openai",
+  "google",
+  "xai",
+  "other",
+] as const
+export type ZdrGroup = (typeof ZDR_GROUPS)[number]
+
+/** Display names for the groups, in the order ZDR_GROUPS lists them. */
+export const ZDR_GROUP_LABELS: Record<ZdrGroup, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  google: "Google",
+  xai: "xAI",
+  other: "other providers",
+}
+
+/** Per-group verdicts — what a surface with no single model in front of it reads. */
+export type AccountZdrPolicies = Record<ZdrGroup, AccountZdrPolicy>
+
+/**
+ * Which group a model's retention policy is decided by: its author, with
+ * everything outside the four frontier labs landing in "other".
+ *
+ * The alias prefix is stripped first — "~anthropic/claude-sonnet-latest" is an
+ * Anthropic model however it is spelled — and OpenRouter's own slug for xAI is
+ * "x-ai", which is the one place the author and the group name differ.
+ */
+export function zdrGroupForModel(modelId: string): ZdrGroup {
+  const author = modelId.replace(/^~/, "").split("/")[0]
+  switch (author) {
+    case "anthropic":
+      return "anthropic"
+    case "openai":
+      return "openai"
+    case "google":
+      return "google"
+    case "x-ai":
+      return "xai"
+    default:
+      return "other"
+  }
+}
 
 /**
  * The endpoints a bundle may actually be routed to, and the ones its data

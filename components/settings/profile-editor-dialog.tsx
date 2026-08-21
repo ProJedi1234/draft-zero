@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useAccountZdr } from "@/hooks/use-account-zdr"
+import { useAccountZdrForModel } from "@/hooks/use-account-zdr"
 import { useModelEndpoints } from "@/hooks/use-model-endpoints"
 import {
   createProfile,
@@ -184,7 +184,7 @@ function ProfileEditorForm({
   const [makeDefault, setMakeDefault] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
   const { endpoints } = useModelEndpoints(settings.modelId)
-  const accountZdr = useAccountZdr()
+  const accountZdr = useAccountZdrForModel(settings.modelId)
   // The floor, wherever it comes from. A profile under one still stores its own
   // false — lowering the floor later has to give the profile back what it says.
   const zdrLock: ZdrLock =
@@ -193,11 +193,17 @@ function ProfileEditorForm({
   const model = models.find((m) => m.id === settings.modelId)
   // A pinned endpoint wins over the model's own window, same as the inspector:
   // a third-party host frequently serves less than the lab does.
-  // The effective policy, which is also what the pickers below filter against.
-  const zdr = settings.zdr || zdrLock !== null
+  // The bundle's own policy — what the model list filters against and what the
+  // switch stores. The account's per-group enforcement rides alongside rather
+  // than inside it: it belongs to the selected model, not to the profile.
+  const zdr = settings.zdr || requireZdr
+  const accountEnforced = accountZdr === "enforced"
   const contextLength =
-    routableEndpointForTag(endpoints, settings.providerTag, zdr)
-      ?.contextLength ??
+    routableEndpointForTag(
+      endpoints,
+      settings.providerTag,
+      zdr || accountEnforced
+    )?.contextLength ??
     model?.contextLength ??
     0
   // Clamped for display, and saved that way — the ladder stop the writer can
@@ -262,8 +268,11 @@ function ProfileEditorForm({
           ? null
           : clampContextWindow(
               settings.contextWindow,
-              routableEndpointForTag(endpoints, nextProviderTag, zdr)
-                ?.contextLength ??
+              routableEndpointForTag(
+                endpoints,
+                nextProviderTag,
+                zdr || accountEnforced
+              )?.contextLength ??
                 model?.contextLength ??
                 0
             ),
@@ -359,6 +368,7 @@ function ProfileEditorForm({
             zdr={zdr}
             onZdrChange={(next) => patch({ zdr: next })}
             zdrLock={zdrLock}
+            accountEnforced={accountEnforced}
           />
 
           <Collapsible>

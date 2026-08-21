@@ -32,6 +32,19 @@ const LOCK_NOTE: Record<NonNullable<ZdrLock>, string> = {
  * One component because the three must not drift — the same sentence, the same
  * lock states, the same link out. What differs is only who owns the value.
  */
+function PrivacyLink() {
+  return (
+    <Link
+      href={OPENROUTER_PRIVACY_URL}
+      target="_blank"
+      rel="noreferrer"
+      className="underline underline-offset-2 hover:text-foreground"
+    >
+      OpenRouter privacy settings
+    </Link>
+  )
+}
+
 export function ZdrSwitch({
   id,
   checked,
@@ -39,6 +52,7 @@ export function ZdrSwitch({
   lock = null,
   disabled,
   hint,
+  accountNote,
 }: {
   id?: string
   /** The effective value: a locked switch is always shown on. */
@@ -52,6 +66,13 @@ export function ZdrSwitch({
    * costs here.
    */
   hint?: string
+  /**
+   * What the OpenRouter account already enforces on its own, when that is some
+   * of the model groups rather than all of them — too partial to lock this
+   * switch, too important to leave the writer to discover one refused
+   * generation at a time.
+   */
+  accountNote?: string
 }) {
   // Base UI puts this on the hidden input the label points at, so the caption
   // is clickable. Generated when the caller has no id of its own to lend.
@@ -73,14 +94,7 @@ export function ZdrSwitch({
             ? LOCK_NOTE[lock]
             : (hint ?? "Only route to providers that keep nothing.")}{" "}
           {lock === "account" ? (
-            <Link
-              href={OPENROUTER_PRIVACY_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-2 hover:text-foreground"
-            >
-              OpenRouter privacy settings
-            </Link>
+            <PrivacyLink />
           ) : lock === "app" ? (
             <Link
               href="/settings"
@@ -90,6 +104,13 @@ export function ZdrSwitch({
             </Link>
           ) : null}
         </p>
+        {/* Only where the switch is not already saying it: a locked switch has
+            said everything this line would, and said it about every model. */}
+        {accountNote && !locked ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {accountNote} <PrivacyLink />
+          </p>
+        ) : null}
       </div>
       <Switch
         id={switchId}
