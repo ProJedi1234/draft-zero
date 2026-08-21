@@ -54,6 +54,12 @@ import {
 /** How long a finished run stays addressable, so a subscriber racing the finish still gets snapshot + end. */
 const LINGER_MS = 60_000
 
+/** Undefined for anything not a positive integer, so the provider keeps its own default. */
+function positiveEnvInt(name: string): number | undefined {
+  const parsed = Number(process.env[name])
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
+}
+
 type RunListener = (event: RunWireEvent) => void
 
 export interface LiveRun {
@@ -561,7 +567,17 @@ async function runLoop(run: LiveRun, context: ComposedContext): Promise<void> {
       // No key → the offline mock, resolved here and nowhere else. It records
       // no ledger row and claims no generation id: nothing was billed, and a
       // plausible-looking id would be a lie the reconciler could act on.
-      const provider = new MockGenerationProvider()
+      // The offline mock exists so UI states are reachable without a key (see
+      // REASONING_TICKS in mock-provider.ts). Its default pacing finishes a
+      // passage in about two seconds, which is too fast to exercise anything
+      // about a run being IN PROGRESS — the library's status marks, switching
+      // stories mid-run, attaching a second device. This env knob is how a
+      // demo stack slows it down; it can never touch a real generation,
+      // because reaching this branch at all means there is no API key.
+      const provider = new MockGenerationProvider({
+        chunkDelayMs: positiveEnvInt("MOCK_CHUNK_DELAY_MS"),
+        initialDelayMs: positiveEnvInt("MOCK_INITIAL_DELAY_MS"),
+      })
       try {
         for await (const event of provider.generate({
           context,

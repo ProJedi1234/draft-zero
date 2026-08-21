@@ -13,6 +13,9 @@ import {
   type SyncWireEvent,
 } from "@/lib/sync/types"
 
+/** The `run-ended` frame, narrowed out of the union for subscribers. */
+export type RunEndedEvent = Extract<SyncWireEvent, { type: "run-ended" }>
+
 /**
  * Silence past ~2 ping intervals means the socket is dead, per the contract.
  * iOS in particular kills a background PWA's sockets without an error or a
@@ -56,6 +59,35 @@ export const runHandoff: {
     onReconnect: () => void
   } | null
 } = { current: null }
+
+/**
+ * Run endings, fanned out to whoever is listening — in practice the library's
+ * status marks. A module singleton for the same reason runHandoff is: the
+ * channel holder lives in the root layout while the listener lives in the
+ * sidebar, and neither should re-render or reconnect because of the other.
+ *
+ * Distinct from runHandoff, which routes a run to the ONE story workspace that
+ * is open. This is the opposite audience: rows for stories nobody is looking
+ * at, which is the only place an ending is news.
+ */
+export const runEndings = {
+  listeners: new Set<(event: RunEndedEvent) => void>(),
+  subscribe(listener: (event: RunEndedEvent) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  },
+  publish(event: RunEndedEvent): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event)
+      } catch {
+        // One broken subscriber must not mute the rest, same as the bus.
+      }
+    }
+  },
+}
 
 /**
  * One NDJSON response to a stream of parsed records.

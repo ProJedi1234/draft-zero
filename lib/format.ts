@@ -154,3 +154,27 @@ export function formatRelativeDate(
   if (days < 365) return `${Math.floor(days / 30)}mo ago`
   return `${Math.floor(days / 365)}y ago`
 }
+
+/**
+ * How long a run has been going, for a library row: 9s -> "9s"; 74s ->
+ * "1m 14s"; 3700s -> "1h 2m". Clamped at zero because a device whose clock
+ * runs behind the server's would otherwise count down.
+ *
+ * Coarser than the manuscript's "thinking 12s" on purpose: that readout sits
+ * where the writer is watching one passage, and this one is a glance across a
+ * whole library, where the answer is "a while" long before it is a number.
+ */
+export function formatElapsed(
+  startedAtIso: string,
+  nowMs = Date.now()
+): string {
+  const seconds = Math.max(
+    0,
+    Math.floor((nowMs - Date.parse(startedAtIso)) / 1000)
+  )
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60)
+    return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
