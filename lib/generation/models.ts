@@ -15,6 +15,7 @@ import {
 } from "@/lib/types"
 
 import { resolveOpenRouterKey } from "./key"
+import { zdrModelSlugs } from "./zdr"
 
 const TTL_MS = 60 * 60 * 1000
 let cache: { at: number; data: OpenRouterModel[] } | null = null
@@ -57,7 +58,7 @@ function toReasoning(m: Model): ModelReasoning | null {
   }
 }
 
-function toDomainModel(m: Model): OpenRouterModel {
+function toDomainModel(m: Model, zdrSlugs: Set<string>): OpenRouterModel {
   // OpenRouter names are "Provider: Model Name" — split for grouping. Not all
   // of them: entries named without the colon fall back to the id's author, and
   // a router alias ("~anthropic/claude-sonnet-latest") carries a "~" there that
@@ -73,6 +74,10 @@ function toDomainModel(m: Model): OpenRouterModel {
       completion: per1M(m.pricing.completion),
     },
     reasoning: toReasoning(m),
+    // Through the alias, not on it: OpenRouter lists endpoints under the model
+    // that serves them, and a request against "~lab/family-latest" is served by
+    // whatever currently sits behind it.
+    zdr: zdrSlugs.has(m.aliasTarget?.slug ?? m.id),
     ...(m.aliasTarget ? { aliasTarget: m.aliasTarget.slug } : {}),
   }
 }
@@ -88,10 +93,16 @@ export async function listModels(): Promise<OpenRouterModel[]> {
   if (!key) return MOCK_MODELS
   try {
     const client = new OpenRouter({ apiKey: key, appTitle: "draft-zero" })
-    const page = await client.models.list()
+    // Two fetches, both cached, and only one of them per catalog refresh: the
+    // ZDR list is global, so joining it here costs the picker nothing and saves
+    // every surface from asking about retention model by model.
+    const [page, zdrSlugs] = await Promise.all([
+      client.models.list(),
+      zdrModelSlugs(),
+    ])
     const data = page.result.data
       .filter((m) => m.architecture.outputModalities.includes("text"))
-      .map(toDomainModel)
+      .map((m) => toDomainModel(m, zdrSlugs))
       .sort(
         (a, b) =>
           a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name)

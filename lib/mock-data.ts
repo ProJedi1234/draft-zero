@@ -80,6 +80,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
       efforts: ["low", "medium", "high", "xhigh", "max"],
       mandatory: false,
     },
+    zdr: true,
     aliasTarget: "anthropic/claude-sonnet-5",
   },
   {
@@ -92,6 +93,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
       efforts: ["low", "medium", "high", "xhigh", "max"],
       mandatory: false,
     },
+    zdr: true,
     aliasTarget: "anthropic/claude-opus-5",
   },
   {
@@ -104,6 +106,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
       efforts: ["minimal", "low", "medium", "high", "xhigh", "max"],
       mandatory: false,
     },
+    zdr: true,
     aliasTarget: "anthropic/claude-haiku-4.5",
   },
   {
@@ -116,6 +119,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
       efforts: ["low", "medium", "high", "xhigh", "max"],
       mandatory: false,
     },
+    zdr: true,
     aliasTarget: "openai/gpt-5.6-sol",
   },
   {
@@ -128,6 +132,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
       efforts: ["low", "medium", "high", "xhigh"],
       mandatory: false,
     },
+    zdr: true,
     aliasTarget: "openai/gpt-5.4-mini",
   },
   {
@@ -137,6 +142,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     contextLength: 1_048_576,
     pricing: { prompt: "$2.00", completion: "$12.00" },
     reasoning: { efforts: ["low", "medium", "high"], mandatory: true },
+    zdr: true,
     aliasTarget: "google/gemini-3.1-pro-preview",
   },
   {
@@ -149,6 +155,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
       efforts: ["minimal", "low", "medium", "high"],
       mandatory: true,
     },
+    zdr: true,
     aliasTarget: "google/gemini-3.6-flash",
   },
   {
@@ -161,6 +168,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
       efforts: ["low", "medium", "high", "xhigh"],
       mandatory: true,
     },
+    zdr: true,
     aliasTarget: "x-ai/grok-4.6",
   },
   {
@@ -170,6 +178,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     contextLength: 1_048_576,
     pricing: { prompt: "$2.80", completion: "$14.00" },
     reasoning: { efforts: ["low", "high", "max"], mandatory: false },
+    zdr: false,
     aliasTarget: "moonshotai/kimi-k3",
   },
   {
@@ -179,6 +188,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     contextLength: 1_048_576,
     pricing: { prompt: "$0.08", completion: "$0.25" },
     reasoning: { efforts: ["low", "high", "max"], mandatory: false },
+    zdr: false,
     aliasTarget: "deepseek/deepseek-v4-flash-0731",
   },
 ]

@@ -36,7 +36,7 @@ import {
 } from "@/lib/actions/profiles"
 import {
   clampContextWindow,
-  endpointForTag,
+  routableEndpointForTag,
   LORE_BUDGET_MAX,
   LORE_BUDGET_MIN,
   LORE_BUDGET_STEP,
@@ -193,8 +193,11 @@ function ProfileEditorForm({
   const model = models.find((m) => m.id === settings.modelId)
   // A pinned endpoint wins over the model's own window, same as the inspector:
   // a third-party host frequently serves less than the lab does.
+  // The effective policy, which is also what the pickers below filter against.
+  const zdr = settings.zdr || zdrLock !== null
   const contextLength =
-    endpointForTag(endpoints, settings.providerTag)?.contextLength ??
+    routableEndpointForTag(endpoints, settings.providerTag, zdr)
+      ?.contextLength ??
     model?.contextLength ??
     0
   // Clamped for display, and saved that way — the ladder stop the writer can
@@ -259,7 +262,8 @@ function ProfileEditorForm({
           ? null
           : clampContextWindow(
               settings.contextWindow,
-              endpointForTag(endpoints, nextProviderTag)?.contextLength ??
+              routableEndpointForTag(endpoints, nextProviderTag, zdr)
+                ?.contextLength ??
                 model?.contextLength ??
                 0
             ),
@@ -352,8 +356,8 @@ function ProfileEditorForm({
             onProviderTagChange={handleProviderChange}
             thinking={settings.thinking}
             onThinkingChange={(thinking) => patch({ thinking })}
-            zdr={settings.zdr}
-            onZdrChange={(zdr) => patch({ zdr })}
+            zdr={zdr}
+            onZdrChange={(next) => patch({ zdr: next })}
             zdrLock={zdrLock}
           />
 

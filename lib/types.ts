@@ -627,6 +627,16 @@ export interface OpenRouterModel {
   /** Reasoning support, or null when the model cannot think. */
   reasoning: ModelReasoning | null
   /**
+   * At least one endpoint serving this model retains nothing, so it can be
+   * generated under a zero-data-retention policy at all. False makes the model
+   * unpickable while such a policy is in force — every request for it would be
+   * refused before it reached a provider.
+   *
+   * Resolved through the alias for a router model: the alias serves nothing
+   * itself, so what answers for it is whatever sits behind it.
+   */
+  zdr: boolean
+  /**
    * For a "~lab/family-latest" router alias, the id of the concrete model it
    * currently redirects to, e.g. "anthropic/claude-sonnet-5". Absent on ordinary
    * models. An alias serves nothing itself, so this is the only id that has an

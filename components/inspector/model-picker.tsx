@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label"
 import { formatContextLength } from "@/lib/format"
 import { settingsSummary } from "@/lib/settings-summary"
 import {
-  endpointForTag,
+  routableEndpointForTag,
   type ModelEndpoint,
   type ModelProfile,
   type OpenRouterModel,
@@ -104,7 +104,10 @@ export function ModelPicker({
   // the whole inspector from following the server for the life of the mount.
   React.useEffect(() => () => onOpenChange?.(false), [onOpenChange])
 
-  const endpoint = endpointForTag(endpoints, providerTag)
+  // Routable, not merely pinned: under a retention policy a pin naming an
+  // endpoint that retains is dropped on the way out, and pricing the request
+  // against it would quote a provider that is not going to serve it.
+  const endpoint = routableEndpointForTag(endpoints, providerTag, zdr)
   const pricing = endpoint?.pricing ?? selected?.pricing
   const contextLength = endpoint?.contextLength ?? selected?.contextLength
 
@@ -115,12 +118,14 @@ export function ModelPicker({
         models={models}
         value={value}
         onValueChange={onValueChange}
+        zdr={zdr}
         onOpenChange={(next) => report("model", next)}
       />
       <ProviderCombobox
         endpoints={endpoints}
         value={providerTag}
         onValueChange={onProviderTagChange}
+        zdr={zdr}
         onOpenChange={(next) => report("provider", next)}
       />
       <ThinkingSelect
@@ -221,7 +226,7 @@ export function ProfileCard({
     ? models.find((m) => m.id === followed.settings.modelId)
     : undefined
   const endpoint = followed
-    ? endpointForTag(endpoints, followed.settings.providerTag)
+    ? routableEndpointForTag(endpoints, followed.settings.providerTag, zdr)
     : undefined
 
   function changeOpen(next: boolean) {

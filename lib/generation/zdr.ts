@@ -70,20 +70,15 @@ export async function zdrTagsForModel(modelId: string): Promise<Set<string>> {
 }
 
 /**
- * Every model with at least one endpoint that retains nothing — the set the
- * model picker greys the complement of.
+ * Every model id with at least one endpoint that retains nothing.
  *
- * Router aliases are folded in through their targets: the alias has no
- * endpoints of its own, but a request against it is served by whatever sits
- * behind it, so its availability is that model's availability.
+ * Concrete ids only — router aliases are absent, because OpenRouter lists
+ * endpoints under the model that actually serves them. listModels() is what
+ * folds an alias in through its target; doing it here would mean asking the
+ * catalog for the catalog.
  */
-export async function zdrModelIds(): Promise<Set<string>> {
-  const [tags, models] = await Promise.all([zdrTagsByModel(), listModels()])
-  const ids = new Set(tags.keys())
-  for (const model of models) {
-    if (model.aliasTarget && ids.has(model.aliasTarget)) ids.add(model.id)
-  }
-  return ids
+export async function zdrModelSlugs(): Promise<Set<string>> {
+  return new Set((await zdrTagsByModel()).keys())
 }
 
 let accountCache: { at: number; data: AccountZdrPolicy } | null = null
@@ -127,15 +122,12 @@ const PROBE_LIMIT = 5
  *
  * Exported for the test that pins that spread; nothing else calls it.
  */
-export function probeModels(
-  models: OpenRouterModel[],
-  zdrIds: Set<string>
-): OpenRouterModel[] {
+export function probeModels(models: OpenRouterModel[]): OpenRouterModel[] {
   const authors = new Set<string>()
   const picked: OpenRouterModel[] = []
   for (const model of [...models].sort((a, b) => a.id.localeCompare(b.id))) {
     if (!model.id.endsWith(":free")) continue
-    if (model.id.startsWith("~") || zdrIds.has(model.id)) continue
+    if (model.id.startsWith("~") || model.zdr) continue
     const author = model.id.split("/")[0]
     if (authors.has(author)) continue
     authors.add(author)
@@ -192,8 +184,7 @@ export async function accountZdrPolicy(): Promise<AccountZdrPolicy> {
   const key = resolveOpenRouterKey()
   if (!key) return "unknown"
 
-  const [models, zdrIds] = await Promise.all([listModels(), zdrModelIds()])
-  const candidates = probeModels(models, zdrIds)
+  const candidates = probeModels(await listModels())
   const core = new OpenRouterCore({ apiKey: key, appTitle: "draft-zero" })
 
   let refused = 0
