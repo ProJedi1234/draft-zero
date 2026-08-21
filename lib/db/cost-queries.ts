@@ -20,6 +20,7 @@
 
 import { and, asc, eq, isNull, ne, sql } from "drizzle-orm"
 
+import { zonedDayStart } from "@/lib/time-zone"
 import type {
   EntrySpendRow,
   GlobalCostSummary,
@@ -44,31 +45,15 @@ const callCount = sql<number>`count(*)::int`
 const unpricedCount = sql<number>`count(*) filter (where ${generationCalls.costUsd} is null)::int`
 
 /**
- * A UTC day key from an ISO-8601 `text` timestamp.
+ * A calendar day key from an ISO-8601 `text` timestamp, bucketed in `timeZone`.
  *
- * `left(created_at, 10)` rather than a timestamptz cast: the column is ISO text
- * by house convention, ISO sorts lexicographically, and a prefix keeps the
- * range predicates on the raw column so the (created_at) index still scans.
+ * Bucketing needs a real conversion, so unlike everything else in this module
+ * it cannot stay on the raw text. Only the GROUP BY pays: the range predicates
+ * still compare plain ISO strings, so the (created_at) index scans and this
+ * runs over rows already narrowed to the window.
  */
-const dayKey = sql<string>`left(${generationCalls.createdAt}, 10)`
-
-/**
- * ISO bound for "midnight UTC, `daysAgo` days back".
- *
- * Exported so a caller can ask getSpendSince for the exact total of the same
- * window it is drawing. Summing the daily buckets in JS would re-cross the float
- * boundary this module exists to keep closed.
- */
-export function utcDayStart(daysAgo = 0): string {
-  const now = new Date()
-  const day = new Date(
-    Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate() - daysAgo
-    )
-  )
-  return day.toISOString()
+function dayKey(timeZone: string) {
+  return sql<string>`to_char(${generationCalls.createdAt}::timestamptz at time zone ${timeZone}::text, 'YYYY-MM-DD')`
 }
 
 /**
@@ -150,12 +135,14 @@ export async function getStoryCostProfile(
  * Spans deleted stories on purpose: story_id is SET NULL, not cascade, so
  * deleting a manuscript does not un-spend what it cost.
  */
-export async function getGlobalCostSummary(): Promise<GlobalCostSummary> {
+export async function getGlobalCostSummary(
+  timeZone: string
+): Promise<GlobalCostSummary> {
   const db = await getDb()
-  const today = utcDayStart(0)
+  const today = zonedDayStart(0, timeZone)
   // Seven days INCLUDING today, which is what "this week" means to someone
   // looking at a spend figure.
-  const weekStart = utcDayStart(6)
+  const weekStart = zonedDayStart(6, timeZone)
 
   const row = await db
     .select({
@@ -184,21 +171,30 @@ export async function getGlobalCostSummary(): Promise<GlobalCostSummary> {
 }
 
 /**
- * Spend per UTC day over the last `days` days, oldest first, empty days absent.
+ * Spend per local day over the last `days` days, oldest first, empty days
+ * absent. "Local" is `timeZone`, the same clock the caller's window bounds and
+ * captions come from.
  *
  * Zero-filling is the caller's job: a `generate_series` join is more machinery
  * than a sparkline is worth, and a chart that wants gaps drawn as gaps would
  * have to undo it.
+ *
+ * `timeZone` has no default: a defaulted "UTC" is the bug this replaced.
  */
-export async function getSpendByDay(days = 30): Promise<SpendDay[]> {
+export async function getSpendByDay(
+  timeZone: string,
+  days = 30
+): Promise<SpendDay[]> {
   const db = await getDb()
-  const since = utcDayStart(Math.max(0, days - 1))
-
+  const since = zonedDayStart(Math.max(0, days - 1), timeZone)
+  // GROUP BY 1, never the expression again: the zone is a bound parameter, so
+  // repeating it emits $1 in the SELECT and $2 in the GROUP BY, which Postgres
+  // rejects as different expressions. The ordinal needs `day` to stay first.
   return db
-    .select({ day: dayKey, costUsd: totalUsd, calls: callCount })
+    .select({ day: dayKey(timeZone), costUsd: totalUsd, calls: callCount })
     .from(generationCalls)
     .where(and(settled, sql`${generationCalls.createdAt} >= ${since}`))
-    .groupBy(dayKey)
+    .groupBy(sql`1`)
     .orderBy(sql`1 asc`)
 }
 

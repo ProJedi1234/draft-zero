@@ -14,9 +14,15 @@ const HEIGHT = 40
 /** A day with no spend still gets a mark, so the gap reads as "nothing" not "no data". */
 const STUB = 1
 
-/** "2026-08-11" -> "Tue 11 Aug", in UTC to match the buckets. */
-function formatBarDay(day: string): string {
-  return new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", {
+/**
+ * "2026-08-11" -> "Tue 11 Aug", in the writer's locale.
+ *
+ * `timeZone: "UTC"` is not a leftover: `day` is a bare calendar date pinned to
+ * UTC midnight only so it can be parsed. Rendering it elsewhere shifts the
+ * label off the day it names.
+ */
+function formatBarDay(day: string, locale: string): string {
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString(locale, {
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -34,9 +40,12 @@ function formatBarDay(day: string): string {
  */
 export function SpendBars({
   bars,
+  locale,
   className,
 }: {
   bars: SpendBar[]
+  /** Resolved on the server, so SSR and hydration format the same string. */
+  locale: string
   className?: string
 }) {
   const [active, setActive] = React.useState<number | null>(null)
@@ -66,7 +75,7 @@ export function SpendBars({
               left: `${(((active ?? 0) + 0.5) / bars.length) * 100}%`,
             }}
           >
-            {formatBarDay(hovered.day)} · {formatUsd(hovered.costUsd)} ·{" "}
+            {formatBarDay(hovered.day, locale)} · {formatUsd(hovered.costUsd)} ·{" "}
             {hovered.calls} {hovered.calls === 1 ? "generation" : "generations"}
           </div>
         ) : null}
