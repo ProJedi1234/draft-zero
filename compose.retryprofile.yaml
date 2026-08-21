@@ -1,0 +1,101 @@
+# compose.retryprofile.yaml — the retry-with-a-profile branch, up on its own so
+# the split Retry control can be exercised beside whatever else is running on
+# this box.
+#
+#   docker compose -f compose.retryprofile.yaml up -d --build
+#   docker compose -f compose.retryprofile.yaml down -v
+#
+# Its own project name, volume and ports: `draft-zero` (5433/3000),
+# `draft-zero-composer` (5435/3003), `draft-zero-images` (5437/3005),
+# `draft-zero-modelswitch` (5438/3006), `draft-zero-lorebook` (5439/3007) and
+# `draft-zero-zdr` (5441/3008) already exist on argos, and a stack sharing any
+# of them would take one over rather than sit alongside. `docker ps` is the
+# register; it is worth re-reading rather than trusting this list, which is
+# only true on the day it was written.
+#
+# 3010 binds to 0.0.0.0 so the demo is reachable from a phone or an iPad.
+name: draft-zero-retryprofile
+
+services:
+  postgres:
+    # 17, matching the base stack: this database is seeded from the repo's own
+    # mock fixtures, not copied from devpg, so there is no 18 dump to read.
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: draft_zero
+      POSTGRES_PASSWORD: draft_zero
+      POSTGRES_DB: draft_zero
+    ports:
+      - "127.0.0.1:5440:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U draft_zero -d draft_zero"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: ["bun", "run", "db:migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The demonstration data. `db:seed` is DESTRUCTIVE — it wipes every table
+  # before inserting the fixtures — which is safe here and nowhere else: the
+  # DATABASE_URL below names this stack's own postgres service, backed by this
+  # file's own named volume, created empty by `up`. It is not devpg (5432) and
+  # not the base stack (5433).
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: ["bun", "run", "db:seed"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+      # Deliberately empty: an empty key drops generation to the offline mock
+      # provider, which is what this demo wants. Retrying under a profile is a
+      # question about which settings the request is built from, and the mock
+      # answers it without billing anything.
+      OPENROUTER_API_KEY: ""
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "0.0.0.0:3010:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:

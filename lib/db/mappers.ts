@@ -101,10 +101,26 @@ export interface EntryCost {
 }
 
 /**
+ * Did this slot's takes come from more than one profile?
+ *
+ * A missing name counts as its own answer rather than as "unknown": a take
+ * generated under a Custom story's own columns really did come from somewhere
+ * else than one generated under a profile, and the writer comparing the two
+ * wants to be told which is which. The cost of that choice is a pre-migration
+ * take sitting beside a named one, which reads as mixed and is — we just
+ * cannot name its half.
+ */
+export function slotProfilesMixed(
+  rows: Pick<StoryEntryRow, "genProfileName">[]
+): boolean {
+  return new Set(rows.map((row) => row.genProfileName)).size > 1
+}
+
+/**
  * `slot` is what the row's own columns cannot tell it: where this take sits
- * among its siblings and how many there are. Both are facts about the whole
- * slot, so they are resolved once in `toStory` and handed down rather than
- * re-derived per row.
+ * among its siblings, how many there are, and whether they agree about what
+ * wrote them. All three are facts about the whole slot, so they are resolved
+ * once in `toStory` and handed down rather than re-derived per row.
  *
  * `cost` is the same shape of fact from a different table — the money lives in
  * generation_calls, not on the entry, so that a stopped or errored call is
@@ -113,7 +129,7 @@ export interface EntryCost {
  */
 export function toStoryEntry(
   row: StoryEntryRow,
-  slot: { index: number; count: number },
+  slot: { index: number; count: number; profilesMixed: boolean },
   cost?: EntryCost | null
 ): StoryEntry {
   return {
@@ -125,6 +141,7 @@ export function toStoryEntry(
     variantGroupId: row.variantGroupId,
     variantIndex: slot.index,
     variantCount: slot.count,
+    variantProfilesMixed: slot.profilesMixed,
     generation: toEntryGeneration(row),
     costUsd: cost?.costUsd ?? null,
     reasoningTokens: cost?.reasoningTokens ?? null,
@@ -259,7 +276,11 @@ export function toStory(
       const slot = slots.get(entryRow.variantGroupId) ?? [entryRow]
       return toStoryEntry(
         entryRow,
-        { index: slot.indexOf(entryRow), count: slot.length },
+        {
+          index: slot.indexOf(entryRow),
+          count: slot.length,
+          profilesMixed: slotProfilesMixed(slot),
+        },
         costs.get(entryRow.id) ?? null
       )
     })

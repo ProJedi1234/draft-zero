@@ -59,8 +59,24 @@ export function VariantSwitcher({
    */
   const provenance = entry.generation
 
+  // Printed only when the slot's takes disagree about what wrote them, which is
+  // the only time it answers anything: on a slot where every take came from the
+  // same profile the name is the same three words under every take, and the
+  // switcher goes back to being the two arrows and a count it was before.
+  const profileName = entry.variantProfilesMixed
+    ? (provenance?.profileName ?? null)
+    : null
+
   return (
     <div className="mt-1 flex items-center justify-end gap-0.5">
+      {/* A take whose own profile is unrecorded — written before this was kept,
+          or under a Custom story's own columns — prints nothing rather than a
+          placeholder: the slot is still mixed, we just cannot name this half. */}
+      {profileName && (
+        <span className="mr-1 max-w-40 truncate font-mono text-xs text-muted-foreground">
+          {profileName}
+        </span>
+      )}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -95,6 +111,13 @@ export function VariantSwitcher({
             {readout}
           </TooltipTrigger>
           <TooltipContent className="flex-col items-start gap-0.5">
+            {/* Above the model id, because it is the shorter answer to the same
+                question — and the only one that survives being asked a month
+                later, when the model id has stopped meaning anything to
+                anybody. Absent on a take that had no profile. */}
+            {provenance.profileName && (
+              <span className="font-medium">{provenance.profileName}</span>
+            )}
             <span className="font-mono">{provenance.modelId}</span>
             <span className="text-background/70">
               Thinking{" "}

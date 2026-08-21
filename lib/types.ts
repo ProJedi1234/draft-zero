@@ -48,6 +48,12 @@ export interface StoryEntry {
   /** How many takes the slot holds. 1 for a passage that has never been retried. */
   variantCount: number
   /**
+   * True when the slot's takes were not all generated under the same profile —
+   * which is the only time naming one is worth the pixels. A slot whose takes
+   * agree says nothing, exactly as before retrying under a profile existed.
+   */
+  variantProfilesMixed: boolean
+  /**
    * What produced this passage, or null when nothing did — every user passage,
    * and every generated passage written before provenance was recorded. Null is
    * "we do not know", not "default settings".

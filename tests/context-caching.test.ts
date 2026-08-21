@@ -36,6 +36,7 @@ function entry(text: string): StoryEntry {
     variantGroupId: `group-${seq}`,
     variantIndex: 0,
     variantCount: 1,
+    variantProfilesMixed: false,
     generation: null,
     costUsd: null,
     reasoningTokens: null,
