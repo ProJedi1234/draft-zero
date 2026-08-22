@@ -331,6 +331,7 @@ export function toStory(
     ),
     memory: row.memory,
     authorsNote: row.authorsNote,
+    summarize: row.summarize,
     summary,
     systemPrompt: row.systemPrompt,
     activeLorebookEntryIds: matches.map((match) => match.entry.id),
@@ -347,6 +348,15 @@ export function toAppSettings(row: AppSettingsRow): AppSettings {
     defaultThinking: row.defaultThinking,
     defaultProfileId: row.defaultProfileId,
     defaultGeneration: toGenerationDefaults(row),
+    summarizer: {
+      modelId: row.summaryModelId,
+      thinking: row.summaryThinking,
+      providerTag: row.summaryProviderTag,
+      zdr: row.summaryZdr,
+      temperature: row.summaryTemperature,
+      targetWords: row.summaryTargetWords,
+      maxTokens: row.summaryMaxTokens,
+    },
     requireZdr: row.requireZdr,
   }
 }

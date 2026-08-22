@@ -7,6 +7,7 @@ import { toast } from "sonner"
 
 import { GenerationDefaultsCard } from "@/components/settings/generation-defaults-card"
 import { ModelProfilesCard } from "@/components/settings/model-profiles-card"
+import { SummarizerCard } from "@/components/settings/summarizer-card"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ZdrSwitch } from "@/components/zdr-switch"
 import { Button } from "@/components/ui/button"
@@ -185,6 +186,13 @@ function SettingsView({
             accountPolicies={accountPolicies}
             defaultProfileId={settings.defaultProfileId}
             followerCounts={followerCounts}
+          />
+
+          <SummarizerCard
+            models={models}
+            summarizer={settings.summarizer}
+            requireZdr={requireZdr}
+            defaultContextWindow={settings.defaultGeneration.contextWindow}
           />
 
           <Card size="sm">

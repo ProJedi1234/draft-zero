@@ -81,6 +81,7 @@ function story(entries: StoryEntry[], contextWindow = 8192): Story {
     },
     memory: "",
     authorsNote: "",
+    summarize: true,
     summary: "",
     systemPrompt: null,
     activeLorebookEntryIds: [],

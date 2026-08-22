@@ -15,6 +15,7 @@ import "server-only"
 
 import { getDb } from "@/lib/db/client"
 import {
+  getAppSettings,
   getStory,
   listLorebookEntries,
   resolveStoryRecap,
@@ -30,6 +31,7 @@ import { resolveOpenRouterKey } from "@/lib/generation/key"
 import { completeOnce, mapOpenRouterError } from "@/lib/generation/openrouter"
 import { planSummary, summaryWordTarget } from "@/lib/generation/summary-plan"
 import {
+  DEFAULT_SUMMARIZER_MODEL_ID,
   renderSummaryRequest,
   renderSummarySystemPrompt,
 } from "@/lib/generation/summary-prompt"
@@ -41,6 +43,8 @@ import type {
   SettledCallStatus,
   Story,
   StoryRecap,
+  SummarizerSettings,
+  ThinkingLevel,
 } from "@/lib/types"
 
 /**
@@ -59,12 +63,16 @@ export interface SummaryIo {
   getStory(storyId: string): Promise<Story | null>
   listLore(storyId: string): Promise<LorebookEntry[]>
   resolveRecap(storyId: string): Promise<StoryRecap | null>
+  /** App-wide settings — read for the summarizer's bundle and nothing else. */
+  settings(): Promise<{ summarizer: SummarizerSettings }>
   /** Null when OpenRouter is unconfigured — the offline mock path. */
   apiKey(): string | null
   complete(opts: {
     system: string
     user: string
     modelId: string
+    thinking: ThinkingLevel
+    providerTag: string | null
     temperature: number
     maxTokens: number
     zdr: boolean
@@ -100,6 +108,7 @@ export const liveIo: SummaryIo = {
   getStory,
   listLore: listLorebookEntries,
   resolveRecap: resolveStoryRecap,
+  settings: getAppSettings,
   apiKey: resolveOpenRouterKey,
   complete: completeOnce,
   openCall: recordCallStarted,
@@ -114,23 +123,13 @@ export const liveIo: SummaryIo = {
 }
 
 /**
- * What writes the summaries.
+ * Slack over the word target when Settings has not pinned a hard cap.
  *
- * A constant, not a setting. The job is mechanical — compress prose without
- * losing names — and the model that is good at it is not the one the writer
- * picked to write their book: a story on a frontier model would otherwise pay
- * frontier prices, silently, every few passages. Haiku is cheap, fast enough
- * that nobody notices it running, and has providers that retain nothing, which
- * is what keeps the zero-retention path satisfiable.
- *
- * Sampling is fixed for the same reason. Low temperature because faithful
- * compression is not a creative task, and the two penalties are pinned to zero
- * on purpose: a summary has to repeat the names, places and debts that matter,
- * and a frequency penalty punishes exactly that.
+ * The target is a request the model may miss; this is where the provider stops
+ * mid-word. Three times leaves room for an overshoot to finish its sentence,
+ * which matters because an overshoot is normal — the recap runs long on the
+ * turn new material arrives and is compressed back on the next one.
  */
-const SUMMARIZER_MODEL_ID = "~anthropic/claude-haiku-latest"
-const SUMMARIZER_TEMPERATURE = 0.3
-/** Generous against the word target — the target is a request, not a limit. */
 const SUMMARIZER_MAX_TOKEN_FACTOR = 3
 /** How long one refine may take before it is abandoned as hung. */
 const SUMMARIZE_TIMEOUT_MS = 60_000
@@ -222,6 +221,10 @@ async function summarizeOnce(storyId: string, io: SummaryIo): Promise<void> {
 
   const story = await io.getStory(storyId)
   if (story === null) return
+  // The writer switched writing off. Whatever version already exists keeps
+  // being SENT — composeContext neither knows nor cares about this flag — so
+  // the summary freezes rather than disappearing.
+  if (!story.summarize) return
 
   const lorebookEntries = await io.listLore(storyId)
   // Composed rather than reasoned about: this is the same function the turn
@@ -236,7 +239,15 @@ async function summarizeOnce(storyId: string, io: SummaryIo): Promise<void> {
   })
   if (plan === null) return
 
-  const targetWords = summaryWordTarget(story.settings.contextWindow)
+  const { summarizer } = await io.settings()
+  const modelId = summarizer.modelId ?? DEFAULT_SUMMARIZER_MODEL_ID
+  const targetWords = summaryWordTarget(
+    story.settings.contextWindow,
+    summarizer.targetWords
+  )
+  const maxTokens =
+    summarizer.maxTokens ??
+    Math.round(targetWords * SUMMARIZER_MAX_TOKEN_FACTOR)
   const callId = crypto.randomUUID()
   const requestKind: GenerationRequestKind = "summarize"
   // Opened before the request for the same reason a generation's row is: a call
@@ -247,9 +258,9 @@ async function summarizeOnce(storyId: string, io: SummaryIo): Promise<void> {
     origStoryId: storyId,
     storyTitle: story.title,
     requestKind,
-    modelId: SUMMARIZER_MODEL_ID,
-    thinking: null,
-    providerName: null,
+    modelId,
+    thinking: summarizer.thinking,
+    providerName: summarizer.providerTag,
   })
 
   const abort = new AbortController()
@@ -264,13 +275,19 @@ async function summarizeOnce(storyId: string, io: SummaryIo): Promise<void> {
         memory: story.memory,
         targetWords,
       }),
-      modelId: SUMMARIZER_MODEL_ID,
-      temperature: SUMMARIZER_TEMPERATURE,
-      maxTokens: Math.round(targetWords * SUMMARIZER_MAX_TOKEN_FACTOR),
-      // The story's own flag, already ORed with the app-wide floor by
-      // resolveGenerationSettings. Fail-closed lives downstream: with this set
+      modelId,
+      thinking: summarizer.thinking,
+      providerTag: summarizer.providerTag,
+      temperature: summarizer.temperature,
+      maxTokens,
+      // Both, ORed. The summarizer states its own policy, but the STORY's is
+      // the one that cannot be escaped: it is the story's prose on the wire,
+      // and a manuscript that requires zero retention does not stop requiring
+      // it because a different bundle sent it. story.settings.zdr already
+      // carries the app-wide floor (resolveGenerationSettings), so this is
+      // every source at once. Fail-closed lives downstream: with it set,
       // OpenRouter refuses rather than routing to a host that retains prompts.
-      zdr: story.settings.zdr,
+      zdr: summarizer.zdr || story.settings.zdr,
       key,
       signal: abort.signal,
     })
@@ -294,7 +311,7 @@ async function summarizeOnce(storyId: string, io: SummaryIo): Promise<void> {
       throughEntryId: plan.throughEntryId,
       throughPosition: plan.throughPosition,
       text,
-      genModelId: SUMMARIZER_MODEL_ID,
+      genModelId: modelId,
       createdAt: new Date().toISOString(),
     })
     status = "ok"

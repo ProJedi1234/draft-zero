@@ -167,16 +167,20 @@ function userContent(
  * that are about money and policy — the generation id (the only handle that can
  * ever ask OpenRouter what a call cost) and the usage block.
  *
- * `zdr` goes straight through to the provider block, and it is the fail-closed
- * half of the retention rule: with no routable pin the request carries
- * `{ zdr: true }` and OpenRouter answers a 404 rather than routing to a host
- * that retains prompts. That 404 is a refusal, not a fault — the caller treats
- * it as "wrote nothing", which is the correct outcome.
+ * Routing and reasoning are resolved exactly as streamCompletion resolves them
+ * — same catalogs, same providerParam, same reasoningParam — because a pinned
+ * provider and a thinking level mean the same thing whoever is asking. In
+ * particular `zdr` is the fail-closed half of the retention rule: with no
+ * routable pin the request carries `{ zdr: true }` and OpenRouter answers a 404
+ * rather than routing to a host that retains prompts. That 404 is a refusal,
+ * not a fault — the caller treats it as "wrote nothing", which is correct.
  */
 export async function completeOnce(opts: {
   system: string
   user: string
   modelId: string
+  thinking: ThinkingLevel
+  providerTag: string | null
   temperature: number
   maxTokens: number
   zdr: boolean
@@ -188,6 +192,14 @@ export async function completeOnce(opts: {
   usage: GenerationUsage | null
 }> {
   const core = new OpenRouterCore({ apiKey: opts.key, appTitle: "draft-zero" })
+  // Both catalogs are cached per process, so these are lookups rather than
+  // round-trips. The endpoint list is only needed when a provider is pinned.
+  const [models, endpoints] = await Promise.all([
+    listModels(),
+    opts.providerTag === null
+      ? Promise.resolve<ModelEndpoint[]>([])
+      : listModelEndpoints(opts.modelId),
+  ])
   const res = await chatSend(
     core,
     {
@@ -199,9 +211,11 @@ export async function completeOnce(opts: {
         ],
         temperature: opts.temperature,
         maxTokens: opts.maxTokens,
-        // No pin to honour and nothing to reproduce, so the only thing the
-        // provider block ever carries here is the retention floor.
-        ...(opts.zdr ? { provider: { zdr: true as const } } : {}),
+        reasoning: reasoningParam(
+          models.find((model) => model.id === opts.modelId),
+          opts.thinking
+        ),
+        provider: providerParam(endpoints, opts.providerTag, opts.zdr),
         stream: false,
       },
     },

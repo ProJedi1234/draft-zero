@@ -412,6 +412,27 @@ export interface GenerationSettings extends GenerationDefaults {
   zdr: boolean
 }
 
+/**
+ * Everything the summarizer runs under.
+ *
+ * The model half is GenerationIdentity with a nullable model, because "not
+ * chosen" is a real state here and is not the same as any particular model: it
+ * follows the app's built-in default as that changes.
+ *
+ * The two nullable numbers work the same way. NULL is not "unset pending a
+ * value" but a live rule — scale with the story's window, and leave slack over
+ * the target — and it is deliberately the DEFAULT rather than the override,
+ * because a fixed number that suits a 128k window is most of an 8k one.
+ */
+export type SummarizerSettings = Omit<GenerationIdentity, "modelId"> & {
+  modelId: string | null
+  temperature: number
+  /** Words the recap should aim for, or null to scale with the story's window. */
+  targetWords: number | null
+  /** Hard output cap, or null to derive it from the target. */
+  maxTokens: number | null
+}
+
 /** The model half of a bundle — what a profile always states for itself. */
 export type GenerationIdentity = Pick<
   GenerationSettings,
@@ -492,6 +513,14 @@ export interface Story {
   memory: string
   /** Author's note: injected near the most recent words. */
   authorsNote: string
+  /**
+   * Whether new versions of the summary are written as the window slides.
+   *
+   * Writing only. A story with this off keeps SENDING the version it already
+   * had — see the column comment. False is "stop spending money on this", not
+   * "forget what has happened".
+   */
+  summarize: boolean
   /**
    * The rolling recap of prose that has fallen out of the context window, or ""
    * when nothing has (a short story) or nothing has been written yet.
@@ -620,6 +649,16 @@ export interface AppSettings {
    * profile that never disagreed with it moves.
    */
   defaultGeneration: GenerationDefaults
+  /**
+   * What writes the rolling story summaries — the same model/provider/thinking/
+   * policy bundle a profile states for itself, edited by the same picker.
+   *
+   * App-wide rather than per story: compressing prose without losing names is
+   * one job with one right answer, and it is emphatically not the model the
+   * writer picked to write their book. `modelId` is null until the picker is
+   * opened, meaning "the built-in default", which keeps improving.
+   */
+  summarizer: SummarizerSettings
   /**
    * Zero data retention for the whole app: every story, every profile, every
    * generation.

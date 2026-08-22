@@ -36,6 +36,45 @@ export async function updateAppSettings(
     }
     values.defaultThinking = thinking
   }
+  if (patch.summarizer !== undefined) {
+    const { modelId, thinking, providerTag, zdr, temperature } =
+      patch.summarizer
+    const { targetWords, maxTokens } = patch.summarizer
+    // Guarded here rather than trusted from the client, exactly as
+    // defaultThinking is above: an unknown level 400s at generation, and the
+    // failure would reach the writer as a summarizer that has mysteriously
+    // stopped working.
+    if (thinking !== "off" && !REASONING_EFFORTS.includes(thinking)) {
+      return { ok: false, error: "Unknown thinking level." }
+    }
+    // Blank means "use the built-in default" — stored as NULL so the install
+    // keeps following whatever the app thinks is right rather than freezing
+    // today's answer. The model id is deliberately NOT checked against the
+    // catalog: it is a live remote list, and a model that has since left it
+    // should cost a writer a failed summary they are told about, not a
+    // settings page that refuses to save.
+    const trimmed = modelId?.trim() ?? ""
+    values.summaryModelId = trimmed === "" ? null : trimmed
+    // Bounds are enforced here rather than trusted from the sliders: these three
+    // go straight onto the wire, and a negative or absurd value is a provider
+    // 400 that would reach the writer as a summarizer that stopped working for
+    // no stated reason.
+    if (!inRange(temperature, 0, 2)) {
+      return { ok: false, error: "Temperature must be between 0 and 2." }
+    }
+    if (targetWords !== null && !inRange(targetWords, 25, 2000)) {
+      return { ok: false, error: "Summary length must be 25–2000 words." }
+    }
+    if (maxTokens !== null && !inRange(maxTokens, 64, 8192)) {
+      return { ok: false, error: "Output cap must be 64–8192 tokens." }
+    }
+    values.summaryThinking = thinking
+    values.summaryProviderTag = providerTag
+    values.summaryZdr = zdr
+    values.summaryTemperature = temperature
+    values.summaryTargetWords = targetWords
+    values.summaryMaxTokens = maxTokens
+  }
   if (patch.requireZdr !== undefined) {
     values.requireZdr = patch.requireZdr
   }
@@ -124,4 +163,9 @@ export async function verifyOpenRouterKey(): Promise<{
     }
     return { ok: false, message: "Couldn't reach OpenRouter. Try again." }
   }
+}
+
+/** Finite and within bounds — NaN and Infinity both fail, which `<`/`>` alone would not. */
+function inRange(value: number, min: number, max: number): boolean {
+  return Number.isFinite(value) && value >= min && value <= max
 }

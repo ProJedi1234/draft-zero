@@ -4,6 +4,7 @@ import * as React from "react"
 import { ChevronRight } from "lucide-react"
 
 import { NarratorDialog } from "@/components/inspector/narrator-dialog"
+import { SummaryDialog } from "@/components/inspector/summary-dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -24,6 +25,7 @@ export function PromptSection({ story }: { story: Story }) {
   // in the DOM at once, and duplicate ids would cross-wire the labels.
   const uid = React.useId()
   const [narratorOpen, setNarratorOpen] = React.useState(false)
+  const [summaryOpen, setSummaryOpen] = React.useState(false)
 
   const memorySave = useAutosave((value: string) =>
     updateStoryMeta(story.id, { memory: value })
@@ -86,6 +88,34 @@ export function PromptSection({ story }: { story: Story }) {
         </p>
       </div>
 
+      {/* Between the author's note and the narrator: it is prose the model
+          reads, like the two fields above, but it is written BY the model
+          rather than by the writer — so it reads as a status line, not a
+          field. Without a row here the feature is invisible until you happen
+          to open the context viewer, which is not a discovery anyone makes. */}
+      <Button
+        variant="ghost"
+        size="xs"
+        className="w-full justify-between text-muted-foreground"
+        onClick={() => setSummaryOpen(true)}
+      >
+        Story so far
+        <span className="flex items-center gap-1.5">
+          <span className="font-mono text-[0.6875rem]">
+            {summaryState(story)}
+          </span>
+          <ChevronRight className="size-3" />
+        </span>
+      </Button>
+
+      <SummaryDialog
+        storyId={story.id}
+        summary={story.summary}
+        summarize={story.summarize}
+        open={summaryOpen}
+        onOpenChange={setSummaryOpen}
+      />
+
       {/* One line, because the editor is a dialog now: a 48-row monospace box
           never belonged in a 320px column, and the built-in prompt it is
           compared against was unreadable at that width. */}
@@ -112,4 +142,20 @@ export function PromptSection({ story }: { story: Story }) {
       />
     </div>
   )
+}
+
+/**
+ * The one-line state of a story's recap.
+ *
+ * Three states rather than two, because "there is no recap" and "recaps are
+ * switched off" are different facts and a writer looking for the feature needs
+ * to be able to tell them apart. A word count rather than a timestamp: what is
+ * worth knowing at a glance is how much context it is spending, not when it
+ * last ran.
+ */
+function summaryState(story: Story): string {
+  if (!story.summarize) return "Paused"
+  if (story.summary.trim() === "") return "Not needed yet"
+  const words = story.summary.trim().split(/\s+/).length
+  return `${words} words`
 }

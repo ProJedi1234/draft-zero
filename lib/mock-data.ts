@@ -735,6 +735,7 @@ export const MOCK_STORIES: Story[] = [
       "Maren Kestrel is a Guild-licensed surveyor whose maps come true because the river god Elathe guides her hand. She owes Elathe a twelfth and final map: the drowned quarter as it was the night it sank. Tone: literary fantasy, wry, melancholy. Third person past, close on Maren.",
     systemPrompt: null,
     summary: "",
+    summarize: true,
     authorsNote:
       "Keep the river's dialogue literal and contractual. Never let Elathe lie.",
     activeLorebookEntryIds: [
@@ -811,6 +812,7 @@ export const MOCK_STORIES: Story[] = [
       "The salvage tug Magpie (crew: Ade Osei, pilot; Rhys, engineer; the narrator, comms) has intercepted a distress loop from the colony ship Meridian, lost 60 years ago. The loop's timestamp updates every day. Tone: quiet dread, hard-SF texture. First person present.",
     systemPrompt: null,
     summary: "",
+    summarize: true,
     authorsNote:
       "Slow burn. Horror through procedure and radio protocol, not gore.",
     activeLorebookEntryIds: [],
@@ -872,6 +874,7 @@ export const MOCK_STORIES: Story[] = [
       "Esther Hale, recently widowed, has taken the winter keeper's post at Wren Point light. The previous three keepers each resigned on the 14th of February. The Trust's logbooks for that date are razored out. Tone: gothic, restrained. First person past, epistolary logbook entries.",
     systemPrompt: null,
     summary: "",
+    summarize: true,
     authorsNote:
       "Every scene should be explainable two ways until the final act.",
     activeLorebookEntryIds: [],
@@ -925,6 +928,7 @@ export const MOCK_STORIES: Story[] = [
     memory: "",
     systemPrompt: null,
     summary: "",
+    summarize: true,
     authorsNote: "",
     activeLorebookEntryIds: [],
     canUndo: false,
@@ -952,6 +956,7 @@ export const MOCK_STORIES: Story[] = [
       "The generation ship Meridian Ascending is two hundred and six years out from Sol. Captain Ines Vaharan holds the last sealed order and has not opened it. Tone: cold, procedural, elegiac. Third person past, close on Vaharan.",
     systemPrompt: null,
     summary: "",
+    summarize: true,
     // "Compact" appears here and nowhere else, so The Compact is a lore entry
     // the AUTHOR'S NOTE pulls into context — stable, like the memory's two.
     authorsNote:

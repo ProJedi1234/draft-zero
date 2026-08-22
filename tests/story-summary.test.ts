@@ -91,6 +91,7 @@ function story(over: Partial<Story> = {}): Story {
     },
     memory: "",
     authorsNote: "",
+    summarize: true,
     summary: "",
     systemPrompt: null,
     activeLorebookEntryIds: [],

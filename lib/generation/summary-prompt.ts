@@ -1,6 +1,24 @@
-// lib/generation/summary-prompt.ts — What the summarizer is told. Pure data,
-// isomorphic, in the same terse lowercase register as the narrator's prompt
-// (see system-prompt.ts) because that is the register these models imitate.
+// lib/generation/summary-prompt.ts — What the summarizer is told, and which
+// model is told it by default. Pure data, isomorphic, in the same terse
+// lowercase register as the narrator's prompt (see system-prompt.ts) because
+// that is the register these models imitate.
+//
+// The default model id lives here rather than beside the runner for one blunt
+// reason: the Settings card that offers to change it is a client component, and
+// the runner imports the database. Isomorphic constants belong in an isomorphic
+// module — the same rule that puts DEFAULT_SYSTEM_PROMPT in system-prompt.ts.
+
+/**
+ * What writes the summaries when Settings has not been told otherwise.
+ *
+ * A default, not a hard-coded answer. The job is mechanical — compress prose
+ * without losing names — and the model that is good at it is not the one the
+ * writer picked to write their book: a story on a frontier model would
+ * otherwise pay frontier prices, silently, every few passages. Haiku is cheap,
+ * fast enough that nobody notices it running, and has providers that retain
+ * nothing, which is what keeps the zero-retention path satisfiable.
+ */
+export const DEFAULT_SUMMARIZER_MODEL_ID = "~anthropic/claude-haiku-latest"
 
 /**
  * The summarizer's standing brief, sent as a real system turn for the same
