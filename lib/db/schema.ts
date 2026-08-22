@@ -77,6 +77,15 @@ export const stories = pgTable("stories", {
   loreBudget: integer("lore_budget").notNull().default(25),
   frequencyPenalty: doublePrecision("frequency_penalty").notNull(),
   presencePenalty: doublePrecision("presence_penalty").notNull(),
+  // Whether new summary versions are written as the window slides. Defaulted
+  // true in the schema so the generated ALTER TABLE turns it on for every story
+  // that predates the column, which is the behaviour they already had.
+  //
+  // It governs WRITING only. A story with this off keeps sending whatever
+  // version it already had: dropping the block would hand the model a sudden
+  // continuity cliff, and the writer who switched this off asked to stop
+  // spending money, not to forget what has happened so far.
+  summarize: boolean("summarize").notNull().default(true),
   // Seq of the newest APPLIED op; 0 means none. Everything above it is the redo
   // tail, kept on disk so redo need not reconstruct anything. On the story
   // rather than derived from the ops table because "which op is current" is a
@@ -452,6 +461,25 @@ export const appSettings = pgTable("app_settings", {
   // The profile new stories start from. NULL only before the lazy seed in
   // getAppSettings has run. Not a foreign key, matching stories.profile_id.
   defaultProfileId: text("default_profile_id"),
+  // The summarizer's bundle: the same four columns a story and a profile state
+  // for themselves, because it is the same kind of choice and the same picker
+  // edits it. Kept here rather than as a model_profiles row because the
+  // summarizer has no sliders worth inheriting — temperature and the penalties
+  // are properties of the job, fixed in lib/generation/summarize.ts.
+  //
+  // NULL model_id means "the built-in default", which keeps improving; every
+  // install that has never opened the picker follows it. The other three are
+  // defaulted rather than nullable, matching model_profiles: Auto routing and
+  // no thinking are concrete answers, not absent ones.
+  summaryModelId: text("summary_model_id"),
+  summaryThinking: text("summary_thinking")
+    .notNull()
+    .default("off")
+    .$type<ThinkingLevel>(),
+  summaryProviderTag: text("summary_provider_tag"),
+  // A floor it adds to, never an escape from one: the STORY's policy still
+  // binds, since it is the story's prose being sent. See summarizeOnce.
+  summaryZdr: boolean("summary_zdr").notNull().default(false),
   // The app-wide zero-data-retention floor. ORed into every story and profile
   // at read time rather than written into them, so switching it off restores
   // what each of them says for itself instead of leaving a fan-out behind.

@@ -36,6 +36,27 @@ export async function updateAppSettings(
     }
     values.defaultThinking = thinking
   }
+  if (patch.summarizer !== undefined) {
+    const { modelId, thinking, providerTag, zdr } = patch.summarizer
+    // Guarded here rather than trusted from the client, exactly as
+    // defaultThinking is above: an unknown level 400s at generation, and the
+    // failure would reach the writer as a summarizer that has mysteriously
+    // stopped working.
+    if (thinking !== "off" && !REASONING_EFFORTS.includes(thinking)) {
+      return { ok: false, error: "Unknown thinking level." }
+    }
+    // Blank means "use the built-in default" — stored as NULL so the install
+    // keeps following whatever the app thinks is right rather than freezing
+    // today's answer. The model id is deliberately NOT checked against the
+    // catalog: it is a live remote list, and a model that has since left it
+    // should cost a writer a failed summary they are told about, not a
+    // settings page that refuses to save.
+    const trimmed = modelId?.trim() ?? ""
+    values.summaryModelId = trimmed === "" ? null : trimmed
+    values.summaryThinking = thinking
+    values.summaryProviderTag = providerTag
+    values.summaryZdr = zdr
+  }
   if (patch.requireZdr !== undefined) {
     values.requireZdr = patch.requireZdr
   }

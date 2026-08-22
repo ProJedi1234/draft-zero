@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 
-import type { Story, StoryEntry } from "@/lib/types"
+import type { Story, StoryEntry, SummarizerIdentity } from "@/lib/types"
 
 mock.module("server-only", () => ({}))
 
@@ -84,6 +84,7 @@ function makeStory(over: Partial<Story> = {}): Story {
     },
     memory: "Maren owes the river a map.",
     authorsNote: "",
+    summarize: true,
     summary: "",
     systemPrompt: null,
     activeLorebookEntryIds: [],
@@ -107,6 +108,12 @@ type CompleteResult = {
 
 let currentStory: Story | null = makeStory()
 let apiKey: string | null = "test-key"
+let summarizer: SummarizerIdentity = {
+  modelId: null,
+  thinking: "off",
+  providerTag: null,
+  zdr: false,
+}
 let completeImpl: () => Promise<CompleteResult> = async () => ({
   text: "You crossed the Graywater and lost the needle.",
   generationId: "gen-1",
@@ -123,6 +130,7 @@ const io: SummaryIo = {
   getStory: async () => currentStory,
   listLore: async () => [],
   resolveRecap: async () => null,
+  settings: async () => ({ summarizer }),
   apiKey: () => apiKey,
   async complete(opts) {
     completeCalls.push(opts as unknown as Record<string, unknown>)
@@ -152,6 +160,12 @@ beforeEach(() => {
   completeCalls.length = 0
   currentStory = makeStory()
   apiKey = "test-key"
+  summarizer = {
+    modelId: null,
+    thinking: "off",
+    providerTag: null,
+    zdr: false,
+  }
   completeImpl = async () => ({
     text: "You crossed the Graywater and lost the needle.",
     generationId: "gen-1",
@@ -175,7 +189,6 @@ describe("what it writes", () => {
       "You crossed the Graywater and lost the needle."
     )
     expect(typeof inserted[0]!.throughEntryId).toBe("string")
-    expect(inserted[0]!.genModelId).toBe("~anthropic/claude-haiku-latest")
   })
 
   test("opens a ledger row as a summarize call and settles it ok", async () => {
@@ -193,12 +206,65 @@ describe("what it writes", () => {
     expect(completeCalls[0]!.system).toContain("never restate its facts")
   })
 
-  test("carries the story's retention setting to the provider", async () => {
+  test("the summarizer's own retention setting reaches the provider", async () => {
+    summarizer = { ...summarizer, zdr: true }
+    await run()
+    expect(completeCalls[0]!.zdr).toBe(true)
+  })
+})
+
+describe("the settings actually reach it", () => {
+  test("a story with summarizing switched off is left alone", () => {
+    currentStory = makeStory({ summarize: false })
+    return run().then(() => {
+      expect(completeCalls).toHaveLength(0)
+      expect(inserted).toHaveLength(0)
+      // Nothing was billed either — the check is before the ledger row.
+      expect(started).toHaveLength(0)
+    })
+  })
+
+  test("the built-in summarizer is used when Settings names none", async () => {
+    await run()
+    expect(completeCalls[0]!.modelId).toBe("~anthropic/claude-haiku-latest")
+    expect(inserted[0]!.genModelId).toBe("~anthropic/claude-haiku-latest")
+  })
+
+  test("a pinned provider and thinking level reach the request and the ledger", async () => {
+    summarizer = {
+      modelId: "meta/llama-4",
+      thinking: "medium",
+      providerTag: "together",
+      zdr: false,
+    }
+    await run()
+    expect(completeCalls[0]!.providerTag).toBe("together")
+    expect(completeCalls[0]!.thinking).toBe("medium")
+    // Provenance on the ledger row, so "why was that summary slow/expensive"
+    // is answerable after the setting has been changed again.
+    expect(started[0]!.providerName).toBe("together")
+    expect(started[0]!.thinking).toBe("medium")
+  })
+
+  test("the story's retention policy binds even when the summarizer's is off", async () => {
     currentStory = makeStory({
       settings: { ...makeStory().settings, zdr: true },
     })
+    summarizer = { ...summarizer, zdr: false }
     await run()
+    // It is the story's prose on the wire. A manuscript that requires zero
+    // retention does not stop requiring it because a different bundle sent it.
     expect(completeCalls[0]!.zdr).toBe(true)
+  })
+
+  test("a model chosen in Settings overrides it, and is recorded on the row", async () => {
+    summarizer = { ...summarizer, modelId: "openai/gpt-5-mini" }
+    await run()
+    expect(completeCalls[0]!.modelId).toBe("openai/gpt-5-mini")
+    // Frozen on the version it wrote, so "which model said this" survives the
+    // setting being changed afterwards.
+    expect(inserted[0]!.genModelId).toBe("openai/gpt-5-mini")
+    expect(started[0]!.modelId).toBe("openai/gpt-5-mini")
   })
 })
 

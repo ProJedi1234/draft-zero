@@ -322,6 +322,12 @@ export async function getAppSettings(): Promise<AppSettings> {
       defaultModelId: DEFAULT_GENERATION_SETTINGS.modelId,
       defaultThinking: DEFAULT_GENERATION_SETTINGS.thinking,
       defaultProfileId: null,
+      // Null, not the built-in id: the install follows whatever the app thinks
+      // the right summarizer is rather than freezing today's answer.
+      summaryModelId: null,
+      summaryThinking: "off" as const,
+      summaryProviderTag: null,
+      summaryZdr: false,
       requireZdr: false,
       defaultTemperature: DEFAULT_GENERATION_SETTINGS.temperature,
       defaultTopP: DEFAULT_GENERATION_SETTINGS.topP,

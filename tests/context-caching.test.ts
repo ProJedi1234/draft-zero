@@ -88,6 +88,7 @@ function story(overrides: Partial<Story> = {}): Story {
       presencePenalty: 0,
     },
     memory: "",
+    summarize: true,
     summary: "",
     authorsNote: "",
     systemPrompt: null,

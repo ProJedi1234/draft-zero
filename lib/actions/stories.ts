@@ -74,6 +74,8 @@ export async function updateStoryMeta(
     authorsNote?: string
     /** "" clears the override back to the built-in prompt. */
     systemPrompt?: string | null
+    /** Whether new summary versions are written. See the schema's column note. */
+    summarize?: boolean
   }
 ): Promise<ActionResult> {
   const values: Partial<typeof stories.$inferInsert> = {}
@@ -86,6 +88,7 @@ export async function updateStoryMeta(
   if (patch.genre !== undefined) values.genre = patch.genre
   if (patch.memory !== undefined) values.memory = patch.memory
   if (patch.authorsNote !== undefined) values.authorsNote = patch.authorsNote
+  if (patch.summarize !== undefined) values.summarize = patch.summarize
   if (patch.systemPrompt !== undefined) {
     // Blank means "no override" — stored as NULL so the story keeps following
     // the built-in prompt as it changes, rather than freezing an empty string.
