@@ -30,6 +30,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 import {
   localRefresh,
@@ -113,6 +114,16 @@ export function useStorySync(): void {
             // `change` covers this: a run start persists nothing, and
             // touchStory does not fire until the run ENDS.
             scheduleRefresh()
+            continue
+          }
+          if (event.type === "summary-stopped") {
+            // The one message this app raises that nobody asked for. It fires
+            // once, when the summarizer stops retrying — not on the transient
+            // failures before it, which fixed themselves on the next turn and
+            // were never worth interrupting a sentence for.
+            toast.error(
+              "Summarizing stopped after repeated failures. Older passages will fall out of context unsummarized."
+            )
             continue
           }
           if (event.type === "run-ended") {

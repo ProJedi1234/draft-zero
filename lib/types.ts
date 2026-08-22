@@ -101,8 +101,18 @@ export interface EntryGeneration {
   completionTokens: number | null
 }
 
-/** Which move sent a generation request. */
-export type GenerationRequestKind = "generate" | "retry" | "continue"
+/**
+ * What a generation request was for.
+ *
+ * "summarize" is the odd one and deliberately so: it is the only kind the
+ * writer never asked for and never watches, and the only one that produces no
+ * passage. It is in this union because the spend ledger is keyed by it and a
+ * billed call that no aggregate can see is worse than one recorded oddly — see
+ * REQUEST_KINDS in lib/actions/generation.ts, which keeps the three the client
+ * is allowed to name separate from the four that exist.
+ */
+export type GenerationRequestKind =
+  "generate" | "retry" | "continue" | "summarize"
 
 /**
  * A ledger row's lifecycle. The row is written as "streaming" before anything

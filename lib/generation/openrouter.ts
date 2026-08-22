@@ -22,7 +22,7 @@ import { promptSegments, renderPrompt } from "./context"
 import { listModelEndpoints } from "./endpoints"
 import { listModels } from "./models"
 import { resolveSystemPrompt } from "./system-prompt"
-import type { ComposedContext, GenerationEvent } from "./types"
+import type { ComposedContext, GenerationEvent, GenerationUsage } from "./types"
 import { isDataPolicyRefusal } from "./zdr-account"
 
 /** Maps SDK/stream errors to { status, message } safe to show the writer. */
@@ -156,6 +156,87 @@ function userContent(
     text: segment.text,
     ...(segment.cache ? { cacheControl: { type: "ephemeral" as const } } : {}),
   }))
+}
+
+/**
+ * One non-streaming completion, for work the writer never watches.
+ *
+ * Deliberately not built on streamCompletion: nothing here is rendered as it
+ * arrives, so streaming would buy latency the caller cannot use and would cost
+ * the abort-safety bookkeeping the run loop needs. What it keeps is the parts
+ * that are about money and policy — the generation id (the only handle that can
+ * ever ask OpenRouter what a call cost) and the usage block.
+ *
+ * `zdr` goes straight through to the provider block, and it is the fail-closed
+ * half of the retention rule: with no routable pin the request carries
+ * `{ zdr: true }` and OpenRouter answers a 404 rather than routing to a host
+ * that retains prompts. That 404 is a refusal, not a fault — the caller treats
+ * it as "wrote nothing", which is the correct outcome.
+ */
+export async function completeOnce(opts: {
+  system: string
+  user: string
+  modelId: string
+  temperature: number
+  maxTokens: number
+  zdr: boolean
+  key: string
+  signal?: AbortSignal
+}): Promise<{
+  text: string
+  generationId: string | null
+  usage: GenerationUsage | null
+}> {
+  const core = new OpenRouterCore({ apiKey: opts.key, appTitle: "draft-zero" })
+  const res = await chatSend(
+    core,
+    {
+      chatRequest: {
+        model: opts.modelId,
+        messages: [
+          { role: "system", content: opts.system },
+          { role: "user", content: opts.user },
+        ],
+        temperature: opts.temperature,
+        maxTokens: opts.maxTokens,
+        // No pin to honour and nothing to reproduce, so the only thing the
+        // provider block ever carries here is the retention floor.
+        ...(opts.zdr ? { provider: { zdr: true as const } } : {}),
+        stream: false,
+      },
+    },
+    opts.signal ? { signal: opts.signal } : undefined
+  )
+  if (!res.ok) throw res.error
+  if (res.value instanceof EventStream) {
+    throw new Error("OpenRouter streamed a response that was not asked to")
+  }
+
+  const result = res.value
+  const content = result.choices[0]?.message.content
+  // The content union allows structured parts; a summarizer never produces
+  // them, and silently stringifying an unexpected shape would put JSON in the
+  // manuscript's memory. Empty is handled by the caller as "wrote nothing".
+  const text = typeof content === "string" ? content : ""
+  const usage = result.usage
+  return {
+    text,
+    generationId: result.id ?? null,
+    usage: usage
+      ? {
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          reasoningTokens: usage.completionTokensDetails?.reasoningTokens ?? 0,
+          costUsd: usage.cost ?? null,
+          cachedPromptTokens: usage.promptTokensDetails?.cachedTokens ?? null,
+          upstreamPromptCostUsd:
+            usage.costDetails?.upstreamInferencePromptCost ?? null,
+          upstreamCompletionCostUsd:
+            usage.costDetails?.upstreamInferenceCompletionsCost ?? null,
+          isByok: usage.isByok ?? null,
+        }
+      : null,
+  }
 }
 
 /**

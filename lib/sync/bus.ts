@@ -28,6 +28,14 @@ export type BusEvent =
       runId: string
       status: RunEndStatus
     }
+  /**
+   * This story's summarizer has failed enough times in a row to stop trying.
+   * The only unprompted message in the app: everything else that toasts is an
+   * answer to something the writer just did. It earns the interruption by
+   * being the moment a background job stops being self-healing — before this
+   * it retried for free every turn, after it nothing will happen at all.
+   */
+  | { kind: "summary-stopped"; storyId: string }
 
 type BusListener = (event: BusEvent) => void
 
