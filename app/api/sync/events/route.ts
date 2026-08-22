@@ -31,6 +31,8 @@ function toWire(event: BusEvent): SyncWireEvent {
         runId: event.runId,
         status: event.status,
       }
+    case "summary-stopped":
+      return { type: "summary-stopped", storyId: event.storyId }
   }
 }
 

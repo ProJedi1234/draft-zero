@@ -44,12 +44,27 @@ let script: Script = async function* () {
 }
 
 mock.module("@/lib/generation/openrouter", () => ({
+  // See the note in tests/provider-routing.test.ts — the mock has to mirror
+  // the module's exports, not just the ones this file exercises.
+  completeOnce: async () => ({ text: "", generationId: null, usage: null }),
   streamCompletion: (opts: { signal: AbortSignal }) => script(opts.signal),
   mapOpenRouterError: (err: unknown) => ({
     status: 500,
     message:
       err instanceof Error ? err.message : "Generation failed. Try again.",
   }),
+}))
+
+// The run loop schedules a summary after a passage lands. That is the run
+// loop's job and is asserted in tests/summarize-runner.test.ts; here it would
+// only mean a background job reading a database this file has replaced with a
+// two-method fake. Spread the real module rather than replacing it, so the
+// other file still imports the genuine article — a module mock is process-wide
+// and does not unwind between files.
+const realSummarize = await import("@/lib/generation/summarize")
+mock.module("@/lib/generation/summarize", () => ({
+  ...realSummarize,
+  scheduleSummary: () => {},
 }))
 
 let currentKey: string | null = "sk-or-test"

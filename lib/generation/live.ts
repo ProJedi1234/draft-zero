@@ -27,6 +27,7 @@ import {
   streamCompletion,
 } from "@/lib/generation/openrouter"
 import { reconcileCall, shouldReconcile } from "@/lib/generation/reconcile"
+import { scheduleSummary } from "@/lib/generation/summarize"
 import {
   invalidateAccountZdrPolicy,
   isDataPolicyRefusal,
@@ -693,6 +694,16 @@ async function finishRun(
     }
   }
   run.listeners.clear()
+
+  // Last, and deliberately after the writer has their prose: bringing the
+  // story's summary up to date is bookkeeping about a turn that is already
+  // over. Floated, never awaited — see lib/generation/summarize.ts.
+  //
+  // Only when a passage actually landed. A discarded run's story is being
+  // deleted, and a run that persisted nothing left the manuscript exactly as
+  // long as it was — so the window cannot have moved and the answer is already
+  // known without reading anything.
+  if (!run.discarded && entryId !== null) scheduleSummary(run.storyId)
 
   const timer = setTimeout(() => live.lingering.delete(run.runId), LINGER_MS)
   // A lingering run must not hold the process open — tests and graceful

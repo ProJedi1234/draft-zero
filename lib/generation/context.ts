@@ -177,6 +177,33 @@ function trimLore(
 }
 
 /**
+ * The manuscript exactly as the prompt renders it, plus where each passage ends
+ * in it.
+ *
+ * Exported because the summarizer has to answer "which prose has fallen out of
+ * the window" in the same coordinates composeContext trims in, and the only way
+ * to guarantee that is to join the passages the same way — once, here. A second
+ * join elsewhere would agree until the day a marker or a separator changed, and
+ * then disagree silently.
+ *
+ * `ends[i]` is the offset just past passage i, so a passage's own span is
+ * `[ends[i-1] + separator, ends[i]]` and `ends[i]` is a legal cut point.
+ */
+export function manuscriptWithOffsets(entries: StoryEntry[]): {
+  text: string
+  ends: number[]
+} {
+  const ends: number[] = []
+  let text = ""
+  for (const entry of entries) {
+    if (text !== "") text += PARAGRAPH_SEPARATOR
+    text += markPlayerTurn(entry)
+    ends.push(text.length)
+  }
+  return { text, ends }
+}
+
+/**
  * Assemble the context for one generation, trimmed to fit a token budget.
  *
  * Allocation, in priority order: the system prompt, memory and author's note
@@ -269,9 +296,7 @@ export function composeContext(input: {
 
   // Markers are applied before budgeting, so `fit` counts the same chars the
   // budget spends and the two cannot disagree about what a turn costs.
-  const fullStoryText = story.entries
-    .map(markPlayerTurn)
-    .join(PARAGRAPH_SEPARATOR)
+  const fullStoryText = manuscriptWithOffsets(story.entries).text
   context.storyText = trimStoryText(
     fullStoryText,
     remaining - loreUsed,

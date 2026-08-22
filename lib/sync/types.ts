@@ -87,6 +87,8 @@ export type SyncWireEvent =
       runId: string
       status: RunEndStatus
     }
+  /** The summarizer gave up on this story. See BusEvent's note on why it toasts. */
+  | { type: "summary-stopped"; storyId: string }
 
 /**
  * A run in flight right now, as the library sees it. Not a database row —
