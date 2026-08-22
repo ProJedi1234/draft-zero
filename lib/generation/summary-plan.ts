@@ -30,8 +30,20 @@ const WORDS_PER_TOKEN = 0.75
 const TARGET_MIN_WORDS = 150
 const TARGET_MAX_WORDS = 600
 
-/** How many words this story's recap should aim for. */
-export function summaryWordTarget(contextWindow: number): number {
+/**
+ * How many words this story's recap should aim for.
+ *
+ * `override` is the writer's fixed choice from Settings; null means scale with
+ * the window, which is the default and the better rule — a number that suits a
+ * 128k window is most of an 8k one. An override is taken as given rather than
+ * clamped to the share above: it is a deliberate instruction, and clamping it
+ * would silently ignore what was asked for.
+ */
+export function summaryWordTarget(
+  contextWindow: number,
+  override: number | null = null
+): number {
+  if (override !== null) return Math.max(1, Math.round(override))
   return Math.min(
     TARGET_MAX_WORDS,
     Math.max(

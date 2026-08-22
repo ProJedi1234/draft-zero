@@ -353,6 +353,9 @@ export function toAppSettings(row: AppSettingsRow): AppSettings {
       thinking: row.summaryThinking,
       providerTag: row.summaryProviderTag,
       zdr: row.summaryZdr,
+      temperature: row.summaryTemperature,
+      targetWords: row.summaryTargetWords,
+      maxTokens: row.summaryMaxTokens,
     },
     requireZdr: row.requireZdr,
   }

@@ -328,6 +328,11 @@ export async function getAppSettings(): Promise<AppSettings> {
       summaryThinking: "off" as const,
       summaryProviderTag: null,
       summaryZdr: false,
+      summaryTemperature: 0.3,
+      // Null on purpose — see the column comments: the derived rules are the
+      // defaults, and a concrete number is the override.
+      summaryTargetWords: null,
+      summaryMaxTokens: null,
       requireZdr: false,
       defaultTemperature: DEFAULT_GENERATION_SETTINGS.temperature,
       defaultTopP: DEFAULT_GENERATION_SETTINGS.topP,

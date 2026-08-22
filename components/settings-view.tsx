@@ -192,6 +192,7 @@ function SettingsView({
             models={models}
             summarizer={settings.summarizer}
             requireZdr={requireZdr}
+            defaultContextWindow={settings.defaultGeneration.contextWindow}
           />
 
           <Card size="sm">

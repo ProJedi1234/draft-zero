@@ -480,6 +480,25 @@ export const appSettings = pgTable("app_settings", {
   // A floor it adds to, never an escape from one: the STORY's policy still
   // binds, since it is the story's prose being sent. See summarizeOnce.
   summaryZdr: boolean("summary_zdr").notNull().default(false),
+  // Sampling for the summarizer. Low by default because faithful compression
+  // is not a creative task, but exposed like every other sampling value in the
+  // app rather than pinned in code.
+  summaryTemperature: doublePrecision("summary_temperature")
+    .notNull()
+    .default(0.3),
+  // How long the recap should aim to be, in WORDS, or NULL to scale with the
+  // story's own context window. Words rather than tokens because that is what
+  // the summarizer is actually told, and a model follows a word count far
+  // better than a token count.
+  //
+  // NULL is the better default and is worth keeping reachable: a fixed number
+  // that suits a 128k window is most of an 8k one. It is the fixed value that
+  // is the override here, not the other way round.
+  summaryTargetWords: integer("summary_target_words"),
+  // Hard output cap, or NULL to derive it from the target with enough slack
+  // that an overshoot is not cut off mid-sentence. Distinct from the target: a
+  // target is a request the model may miss, this is where the provider stops.
+  summaryMaxTokens: integer("summary_max_tokens"),
   // The app-wide zero-data-retention floor. ORed into every story and profile
   // at read time rather than written into them, so switching it off restores
   // what each of them says for itself instead of leaving a fan-out behind.

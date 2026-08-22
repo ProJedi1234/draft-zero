@@ -43,7 +43,7 @@ import type {
   SettledCallStatus,
   Story,
   StoryRecap,
-  SummarizerIdentity,
+  SummarizerSettings,
   ThinkingLevel,
 } from "@/lib/types"
 
@@ -64,7 +64,7 @@ export interface SummaryIo {
   listLore(storyId: string): Promise<LorebookEntry[]>
   resolveRecap(storyId: string): Promise<StoryRecap | null>
   /** App-wide settings — read for the summarizer's bundle and nothing else. */
-  settings(): Promise<{ summarizer: SummarizerIdentity }>
+  settings(): Promise<{ summarizer: SummarizerSettings }>
   /** Null when OpenRouter is unconfigured — the offline mock path. */
   apiKey(): string | null
   complete(opts: {
@@ -123,16 +123,13 @@ export const liveIo: SummaryIo = {
 }
 
 /**
- * Sampling, which stays fixed even when the model does not.
+ * Slack over the word target when Settings has not pinned a hard cap.
  *
- * Low temperature because faithful compression is not a creative task, and both
- * penalties are pinned to zero on purpose: a summary has to repeat the names,
- * places and debts that matter, and a frequency penalty punishes exactly that.
- * These are properties of the JOB rather than of the model, which is why
- * Settings offers the model and not these.
+ * The target is a request the model may miss; this is where the provider stops
+ * mid-word. Three times leaves room for an overshoot to finish its sentence,
+ * which matters because an overshoot is normal — the recap runs long on the
+ * turn new material arrives and is compressed back on the next one.
  */
-const SUMMARIZER_TEMPERATURE = 0.3
-/** Generous against the word target — the target is a request, not a limit. */
 const SUMMARIZER_MAX_TOKEN_FACTOR = 3
 /** How long one refine may take before it is abandoned as hung. */
 const SUMMARIZE_TIMEOUT_MS = 60_000
@@ -242,9 +239,15 @@ async function summarizeOnce(storyId: string, io: SummaryIo): Promise<void> {
   })
   if (plan === null) return
 
-  const targetWords = summaryWordTarget(story.settings.contextWindow)
   const { summarizer } = await io.settings()
   const modelId = summarizer.modelId ?? DEFAULT_SUMMARIZER_MODEL_ID
+  const targetWords = summaryWordTarget(
+    story.settings.contextWindow,
+    summarizer.targetWords
+  )
+  const maxTokens =
+    summarizer.maxTokens ??
+    Math.round(targetWords * SUMMARIZER_MAX_TOKEN_FACTOR)
   const callId = crypto.randomUUID()
   const requestKind: GenerationRequestKind = "summarize"
   // Opened before the request for the same reason a generation's row is: a call
@@ -275,8 +278,8 @@ async function summarizeOnce(storyId: string, io: SummaryIo): Promise<void> {
       modelId,
       thinking: summarizer.thinking,
       providerTag: summarizer.providerTag,
-      temperature: SUMMARIZER_TEMPERATURE,
-      maxTokens: Math.round(targetWords * SUMMARIZER_MAX_TOKEN_FACTOR),
+      temperature: summarizer.temperature,
+      maxTokens,
       // Both, ORed. The summarizer states its own policy, but the STORY's is
       // the one that cannot be escaped: it is the story's prose on the wire,
       // and a manuscript that requires zero retention does not stop requiring

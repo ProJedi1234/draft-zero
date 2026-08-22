@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 
-import type { Story, StoryEntry, SummarizerIdentity } from "@/lib/types"
+import type { Story, StoryEntry, SummarizerSettings } from "@/lib/types"
 
 mock.module("server-only", () => ({}))
 
@@ -108,12 +108,16 @@ type CompleteResult = {
 
 let currentStory: Story | null = makeStory()
 let apiKey: string | null = "test-key"
-let summarizer: SummarizerIdentity = {
+const BASE_SUMMARIZER: SummarizerSettings = {
   modelId: null,
   thinking: "off",
   providerTag: null,
   zdr: false,
+  temperature: 0.3,
+  targetWords: null,
+  maxTokens: null,
 }
+let summarizer: SummarizerSettings = BASE_SUMMARIZER
 let completeImpl: () => Promise<CompleteResult> = async () => ({
   text: "You crossed the Graywater and lost the needle.",
   generationId: "gen-1",
@@ -160,12 +164,7 @@ beforeEach(() => {
   completeCalls.length = 0
   currentStory = makeStory()
   apiKey = "test-key"
-  summarizer = {
-    modelId: null,
-    thinking: "off",
-    providerTag: null,
-    zdr: false,
-  }
+  summarizer = BASE_SUMMARIZER
   completeImpl = async () => ({
     text: "You crossed the Graywater and lost the needle.",
     generationId: "gen-1",
@@ -232,10 +231,10 @@ describe("the settings actually reach it", () => {
 
   test("a pinned provider and thinking level reach the request and the ledger", async () => {
     summarizer = {
+      ...BASE_SUMMARIZER,
       modelId: "meta/llama-4",
       thinking: "medium",
       providerTag: "together",
-      zdr: false,
     }
     await run()
     expect(completeCalls[0]!.providerTag).toBe("together")
@@ -265,6 +264,37 @@ describe("the settings actually reach it", () => {
     // setting being changed afterwards.
     expect(inserted[0]!.genModelId).toBe("openai/gpt-5-mini")
     expect(started[0]!.modelId).toBe("openai/gpt-5-mini")
+  })
+})
+
+describe("the length and sampling knobs", () => {
+  test("length scales with the story's window when nothing is pinned", async () => {
+    // 2048 sits at the floor; the cap is the target times the slack factor.
+    currentStory = makeStory({
+      settings: { ...makeStory().settings, contextWindow: 2048 },
+    })
+    await run()
+    expect(completeCalls[0]!.user).toContain("about 150 words")
+    expect(completeCalls[0]!.maxTokens).toBe(450)
+  })
+
+  test("a pinned target overrides the window, and drags the cap with it", async () => {
+    summarizer = { ...BASE_SUMMARIZER, targetWords: 400 }
+    await run()
+    expect(completeCalls[0]!.user).toContain("about 400 words")
+    expect(completeCalls[0]!.maxTokens).toBe(1200)
+  })
+
+  test("a pinned cap is used as given, target or no target", async () => {
+    summarizer = { ...BASE_SUMMARIZER, targetWords: 400, maxTokens: 700 }
+    await run()
+    expect(completeCalls[0]!.maxTokens).toBe(700)
+  })
+
+  test("temperature comes from Settings", async () => {
+    summarizer = { ...BASE_SUMMARIZER, temperature: 0.9 }
+    await run()
+    expect(completeCalls[0]!.temperature).toBe(0.9)
   })
 })
 

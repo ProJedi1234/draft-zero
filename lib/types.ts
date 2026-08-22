@@ -413,12 +413,24 @@ export interface GenerationSettings extends GenerationDefaults {
 }
 
 /**
- * The summarizer's bundle. GenerationIdentity with a nullable model, because
- * "not chosen" is a real state here and is not the same as any particular
- * model: it follows the app's built-in default as that changes.
+ * Everything the summarizer runs under.
+ *
+ * The model half is GenerationIdentity with a nullable model, because "not
+ * chosen" is a real state here and is not the same as any particular model: it
+ * follows the app's built-in default as that changes.
+ *
+ * The two nullable numbers work the same way. NULL is not "unset pending a
+ * value" but a live rule — scale with the story's window, and leave slack over
+ * the target — and it is deliberately the DEFAULT rather than the override,
+ * because a fixed number that suits a 128k window is most of an 8k one.
  */
-export type SummarizerIdentity = Omit<GenerationIdentity, "modelId"> & {
+export type SummarizerSettings = Omit<GenerationIdentity, "modelId"> & {
   modelId: string | null
+  temperature: number
+  /** Words the recap should aim for, or null to scale with the story's window. */
+  targetWords: number | null
+  /** Hard output cap, or null to derive it from the target. */
+  maxTokens: number | null
 }
 
 /** The model half of a bundle — what a profile always states for itself. */
@@ -646,7 +658,7 @@ export interface AppSettings {
    * writer picked to write their book. `modelId` is null until the picker is
    * opened, meaning "the built-in default", which keeps improving.
    */
-  summarizer: SummarizerIdentity
+  summarizer: SummarizerSettings
   /**
    * Zero data retention for the whole app: every story, every profile, every
    * generation.
