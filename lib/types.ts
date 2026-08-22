@@ -482,6 +482,16 @@ export interface Story {
   memory: string
   /** Author's note: injected near the most recent words. */
   authorsNote: string
+  /**
+   * The rolling recap of prose that has fallen out of the context window, or ""
+   * when nothing has (a short story) or nothing has been written yet.
+   *
+   * Resolved at read time from `story_recaps` — the story holds no summary
+   * column, because which version is in force is a question about which
+   * passages are still live, not a fact any one row can store. See
+   * resolveStoryRecap.
+   */
+  summary: string
   /** Per-story narrator prompt override; null uses DEFAULT_SYSTEM_PROMPT. */
   systemPrompt: string | null
   /** LorebookEntry ids currently "triggered" for this story (mocked). */
@@ -509,6 +519,24 @@ export interface HistoryState {
   canRedo: boolean
   undoSummary: string | null
   redoSummary: string | null
+}
+
+/**
+ * One stored version of a story's rolling summary.
+ *
+ * `throughEntryId` is what makes a version resolvable or not: it names the last
+ * passage the recap covers, and a version whose passage has been rewound away
+ * simply stops being eligible. Nothing here is ever mutated.
+ */
+export interface StoryRecap {
+  id: string
+  text: string
+  /** The last passage this version covers. */
+  throughEntryId: string
+  /** That passage's position — the coverage key the resolver orders by. */
+  throughPosition: number
+  /** ISO-8601. */
+  createdAt: string
 }
 
 /** Story metadata without entries — sidebar/library surface. */

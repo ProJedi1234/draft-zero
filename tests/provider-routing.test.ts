@@ -210,10 +210,12 @@ describe("run loop provider resolution", () => {
         systemPrompt: "narrate",
         memory: "",
         lore: [],
+        summary: "",
         storyText: "",
         authorsNote: "",
         seed: 0,
         approxTokens: 8,
+        trim: { windowStart: 0, quantum: 2048 },
         fit: {
           loreMatched: 0,
           loreStableMatched: 0,

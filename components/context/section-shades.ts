@@ -3,7 +3,7 @@ import type { ContextSectionId } from "@/lib/generation/types"
 /**
  * The bar's one visual channel, and the only place it is defined.
  *
- * Ink at five weights rather than five hues, because this app's palette is
+ * Ink at six weights rather than six hues, because this app's palette is
  * deliberately monochrome — hierarchy comes from type and spacing, and a
  * rainbow here would be the loudest thing on any screen it appeared on. A
  * lightness ramp would be the wrong encoding for nominal categories, but these
@@ -20,7 +20,8 @@ import type { ContextSectionId } from "@/lib/generation/types"
 export const SECTION_SHADES: Record<ContextSectionId, string> = {
   system: "bg-foreground/30",
   memory: "bg-foreground/45",
-  lore: "bg-foreground/60",
-  story: "bg-foreground/75",
+  lore: "bg-foreground/55",
+  summary: "bg-foreground/70",
+  story: "bg-foreground/82",
   authorsNote: "bg-foreground/95",
 }
