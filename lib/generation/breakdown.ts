@@ -23,6 +23,7 @@ export const CONTEXT_SECTION_LABELS: Record<ContextSectionId, string> = {
   system: "Instructions",
   memory: "Memory",
   lore: "Lorebook",
+  summary: "Story so far",
   story: "Story",
   authorsNote: "Author's note",
 }
@@ -32,6 +33,7 @@ export const CONTEXT_SECTION_ORDER: readonly ContextSectionId[] = [
   "system",
   "memory",
   "lore",
+  "summary",
   "story",
   "authorsNote",
 ]
@@ -228,6 +230,8 @@ function sectionNote(id: ContextSectionId, ctx: ComposedContext): string {
       return "Sent whole, ahead of everything else."
     case "authorsNote":
       return "Sent whole, just before the most recent paragraph."
+    case "summary":
+      return "A recap of the prose that no longer fits, sent whole ahead of it."
     case "lore": {
       const kept = ctx.lore.length
       const matched = ctx.fit.loreMatched

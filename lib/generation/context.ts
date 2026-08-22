@@ -23,7 +23,7 @@ const CHARS_PER_TOKEN = 4
 const PARAGRAPH_SEPARATOR = "\n\n"
 /**
  * How far the story window's leading edge moves at a time, as a fraction of the
- * prose budget, and the absolute bounds on that.
+ * whole character budget, and the absolute bounds on that.
  *
  * Trimming to the exact budget would move that edge on EVERY turn once the
  * window is full: one passage in at the tail, one paragraph out at the head, a
@@ -35,32 +35,49 @@ const PARAGRAPH_SEPARATOR = "\n\n"
  * The cost is real and bounded: up to one quantum of the window sits unused
  * between jumps. That is why the quantum is a FRACTION of the budget rather
  * than a fixed number of characters — a constant generous enough to be worth
- * having at a 128k window would eat a quarter of an 8k one. An eighth caps the
- * waste at 12.5% wherever the writer puts the slider, and still buys a head
- * that only moves every several turns.
+ * having at a 128k window would eat a quarter of an 8k one.
+ *
+ * The fraction is of the WHOLE budget — contextWindow × 4 — and deliberately
+ * not of the prose budget that is left after overhead. That distinction is what
+ * makes the quantization work at all. The leftover shrinks and grows every turn
+ * as lore matches come and go and as the summary is rewritten; a quantum
+ * derived from it would therefore be a different number on those turns, and
+ * "the largest multiple of the quantum" would name a different byte offset. The
+ * anchor would rebase, the manuscript head would change, and the caching this
+ * exists to buy would be defeated by its own arithmetic. The whole budget is a
+ * function of one setting the writer moves deliberately, so the anchor only
+ * moves when the story grows past it.
  *
  * The ceiling keeps the jumps from becoming enormous (and the waste absolute
  * rather than proportional) on a very large window; the floor keeps the
  * quantum from shrinking to nothing at the bottom of the ladder, where it would
  * degenerate back into exact trimming.
  */
-const STORY_TRIM_QUANTUM_DIVISOR = 8
+const STORY_TRIM_QUANTUM_DIVISOR = 16
 const STORY_TRIM_QUANTUM_MIN = 512
 const STORY_TRIM_QUANTUM_MAX = 8000
 
-/** The quantum for a given prose budget. See the constants above. */
-function trimQuantum(budget: number): number {
+/** The quantum for a given whole character budget. See the constants above. */
+function trimQuantum(charBudget: number): number {
   return Math.min(
     STORY_TRIM_QUANTUM_MAX,
     Math.max(
       STORY_TRIM_QUANTUM_MIN,
-      Math.floor(budget / STORY_TRIM_QUANTUM_DIVISOR)
+      Math.floor(charBudget / STORY_TRIM_QUANTUM_DIVISOR)
     )
   )
 }
 /** Stands in for the story text when there is none, so the turn is never empty. */
 const EMPTY_STORY_MARKER =
   "(This story has no text yet. Write its opening paragraph.)"
+/**
+ * The same slot when the story is not empty at all — the window is simply too
+ * small for any of it to fit. Saying "no text yet" beside a summary of what has
+ * already happened is a contradiction the model has to resolve, and it resolves
+ * it by starting over.
+ */
+const TRIMMED_TO_NOTHING_MARKER =
+  "(None of the recent passages fit. Continue the story from the summary above.)"
 /** Nothing offered, nothing kept — the shape composeContext starts from. */
 const EMPTY_FIT: ContextFit = {
   loreMatched: 0,
@@ -81,7 +98,7 @@ const EMPTY_FIT: ContextFit = {
  * whole point: the most recent prose is what the model needs to continue, so it
  * is the last thing we give up.
  */
-function trimStoryText(text: string, budget: number): string {
+function trimStoryText(text: string, budget: number, quantum: number): string {
   if (budget <= 0) return ""
   if (text.length <= budget) return text
 
@@ -95,7 +112,6 @@ function trimStoryText(text: string, budget: number): string {
   // quantum pins the window to a fixed character offset instead: the prose
   // before it is append-only, so that offset names the same byte on every turn
   // and only jumps once the story has grown a whole quantum past it.
-  const quantum = trimQuantum(budget)
   const earliestStart = text.length - budget
   const start =
     budget >= quantum
@@ -219,16 +235,23 @@ export function composeContext(input: {
     systemPrompt: resolveSystemPrompt(story.systemPrompt),
     memory: story.memory,
     lore: [],
+    // Set BEFORE the probe below, which is the entire mechanism by which the
+    // summary is paid for: the probe measures the untrimmable overhead, so a
+    // summary counted there is deducted from what prose may spend, exactly the
+    // way memory and the author's note already are. Nothing else has to know.
+    summary: story.summary,
     storyText: "",
     authorsNote: story.authorsNote,
     seed: story.entries.length + variant,
     approxTokens: 0,
     fit: EMPTY_FIT,
+    trim: { windowStart: 0, quantum: 0 },
   }
 
   // Probe: the same context with nothing budgeted into it yet. Its length is
   // the overhead we cannot trim away.
   const charBudget = contextWindow * CHARS_PER_TOKEN
+  const quantum = trimQuantum(charBudget)
   const fixedChars = context.systemPrompt.length + renderPrompt(context).length
   const remaining = Math.max(0, charBudget - fixedChars)
 
@@ -249,7 +272,11 @@ export function composeContext(input: {
   const fullStoryText = story.entries
     .map(markPlayerTurn)
     .join(PARAGRAPH_SEPARATOR)
-  context.storyText = trimStoryText(fullStoryText, remaining - loreUsed)
+  context.storyText = trimStoryText(
+    fullStoryText,
+    remaining - loreUsed,
+    quantum
+  )
 
   // Reconcile. The probe renders the *empty* story shape (two blocks) while a
   // real story renders three, so the estimate is off by a couple of separator
@@ -275,6 +302,18 @@ export function composeContext(input: {
 
   // Last, because the reconcile loop above is still allowed to drop paragraphs:
   // what the writer is owed is what SURVIVED, measured against what was offered.
+  // Recorded rather than left to be recomputed. Deciding what to summarize
+  // means knowing exactly where this turn's window began, and re-deriving it
+  // elsewhere would mean a second copy of the arithmetic above — including the
+  // paragraph-boundary cut and the reconcile loop, both of which move the start
+  // past the quantized offset. Two copies would eventually disagree, and the
+  // disagreement would be silent in both directions: a permanent gap in the
+  // summary, or a call fired every turn for prose already covered.
+  context.trim = {
+    windowStart: fullStoryText.length - context.storyText.length,
+    quantum,
+  }
+
   context.fit = {
     loreMatched: activeLore.length,
     loreStableMatched: stableLore.length,
@@ -301,9 +340,12 @@ function measure(ctx: ComposedContext): number {
  * finished string for bracket labels, so a block shape that changes here
  * changes the breakdown with it and nothing has to be kept in sync.
  *
- * The order — memory, stable lore, story head, volatile lore, author's note,
- * final paragraph — is chosen so that everything a turn cannot change sits in
- * front of everything it can. See composeContext for the zones, and
+ * The order — memory, stable lore, summary, story head, volatile lore, author's
+ * note, final paragraph — is chosen so that everything a turn cannot change
+ * sits in front of everything it can. The summary sits immediately before the
+ * manuscript because that is where it belongs chronologically: it is the part
+ * of the story the window can no longer show, and the prose picks up where it
+ * leaves off. See composeContext for the zones, and
  * promptSegments for what an upstream cache is asked to keep.
  */
 export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
@@ -321,6 +363,11 @@ export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
       loreId: entry.id,
       text: `[Lore: ${entry.name}]\n${entry.content.trim()}`,
     })
+  }
+
+  const summary = ctx.summary.trim()
+  if (summary !== "") {
+    blocks.push({ section: "summary", text: `[Story so far]\n${summary}` })
   }
 
   const volatileLore = ctx.lore.filter((entry) => !entry.stable)
@@ -343,7 +390,11 @@ export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
     // sections and nothing else treats them as a document to format — which is
     // where the screenplays came from. Say plainly that the story is empty and
     // what to do about it. The author's note still applies to the opening.
-    blocks.push({ section: "story", text: `[Story]\n${EMPTY_STORY_MARKER}` })
+    // Which of the two is true is exactly the question of whether anything has
+    // already happened, and the summary is the only thing here that knows.
+    const marker =
+      summary === "" ? EMPTY_STORY_MARKER : TRIMMED_TO_NOTHING_MARKER
+    blocks.push({ section: "story", text: `[Story]\n${marker}` })
     blocks.push(...volatileBlocks)
     if (authorsNoteBlock) blocks.push(authorsNoteBlock)
   } else {
@@ -379,11 +430,19 @@ export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
  * into content parts without changing a byte of what the model reads, and it is
  * asserted in the tests rather than assumed.
  *
- * Two cacheable segments, which is the shape the caching actually wants: the
- * head (memory + stable lore) changes only when the writer edits it, and the
- * manuscript head changes only when the trim anchor jumps a whole quantum. The
- * tail — volatile lore, the author's note, the newest paragraph — is expected
- * to differ every turn and is deliberately left unmarked.
+ * Three cacheable segments, which is the shape the caching actually wants: the
+ * head (memory + stable lore) changes only when the writer edits it, the
+ * summary changes only when it is rewritten, and the manuscript head changes
+ * only when the trim anchor jumps a whole quantum. The tail — volatile lore,
+ * the author's note, the newest paragraph — is expected to differ every turn
+ * and is deliberately left unmarked.
+ *
+ * The summary gets a boundary of its own rather than riding in the head,
+ * because the two turn over on different schedules and a cache is a prefix
+ * match: folded together, a rewritten summary would invalidate memory and
+ * stable lore along with it, every time. Split, the rewrite invalidates the
+ * summary and the manuscript — and it happens on the turn the anchor jumps,
+ * which was going to invalidate the manuscript anyway.
  */
 export interface PromptSegment {
   text: string
@@ -393,35 +452,40 @@ export interface PromptSegment {
 
 export function promptSegments(ctx: ComposedContext): PromptSegment[] {
   const blocks = promptBlocks(ctx)
-  // The first story block is the manuscript head; everything before it is the
-  // stable head, everything after it is the volatile tail.
+  const summaryStart = blocks.findIndex((block) => block.section === "summary")
   const storyStart = blocks.findIndex((block) => block.section === "story")
-  const head = storyStart === -1 ? blocks : blocks.slice(0, storyStart)
+
+  // Cut points, in wire order, skipping whichever sections this context has
+  // nothing for. `headEnd` is wherever the head stops being the head.
+  const headEnd =
+    summaryStart !== -1
+      ? summaryStart
+      : storyStart !== -1
+        ? storyStart
+        : blocks.length
+  const head = blocks.slice(0, headEnd)
+  const summary = summaryStart === -1 ? [] : [blocks[summaryStart]!]
   const manuscript = storyStart === -1 ? [] : [blocks[storyStart]!]
   const tail = storyStart === -1 ? [] : blocks.slice(storyStart + 1)
 
-  const segments: PromptSegment[] = []
   const join = (parts: PromptBlock[]) =>
     parts.map((block) => block.text).join(PARAGRAPH_SEPARATOR)
 
-  if (head.length > 0) {
-    // The separator that follows this segment belongs to it, so the pieces
-    // concatenate back to the prompt with nothing between them.
-    segments.push({
-      text: join(head) + (manuscript.length > 0 ? PARAGRAPH_SEPARATOR : ""),
-      cache: true,
-    })
-  }
-  if (manuscript.length > 0) {
-    segments.push({
-      text: join(manuscript) + (tail.length > 0 ? PARAGRAPH_SEPARATOR : ""),
-      cache: true,
-    })
-  }
-  if (tail.length > 0) {
-    segments.push({ text: join(tail), cache: false })
-  }
-  return segments
+  // Built back to front so each part knows whether anything follows it: the
+  // separator that follows a segment belongs to it, which is what lets the
+  // pieces concatenate back to the prompt with nothing in between.
+  const parts: { blocks: PromptBlock[]; cache: boolean }[] = [
+    { blocks: head, cache: true },
+    { blocks: summary, cache: true },
+    { blocks: manuscript, cache: true },
+    { blocks: tail, cache: false },
+  ].filter((part) => part.blocks.length > 0)
+
+  return parts.map((part, index) => ({
+    text:
+      join(part.blocks) + (index < parts.length - 1 ? PARAGRAPH_SEPARATOR : ""),
+    cache: part.cache,
+  }))
 }
 
 /** The exact prompt string a real provider would send. */

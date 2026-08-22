@@ -25,13 +25,13 @@ export interface ActiveLoreEntry {
 }
 
 /**
- * The five things a prompt is assembled from, in the order they are sent.
+ * The six things a prompt is assembled from, in the order they are sent.
  *
  * "system" never appears in renderPrompt — it rides the system message — but it
  * is part of what the budget pays for, so it is a section like any other.
  */
 export type ContextSectionId =
-  "system" | "memory" | "lore" | "story" | "authorsNote"
+  "system" | "memory" | "lore" | "summary" | "story" | "authorsNote"
 
 /** One labelled piece of the rendered user turn. See promptBlocks. */
 export interface PromptBlock {
@@ -71,6 +71,13 @@ export interface ComposedContext {
    */
   lore: ActiveLoreEntry[]
   /**
+   * The rolling recap of prose that has already fallen out of the window, or ""
+   * when none has. Untrimmable, like memory: it is charged as fixed overhead and
+   * kept whole, because its length is governed where it is WRITTEN — the
+   * summarizer is given a word target — rather than here.
+   */
+  summary: string
+  /**
    * Recent story prose window, trimmed from the tail to whatever the
    * contextWindow budget had left over (authors note NOT baked in — renderPrompt
    * injects it).
@@ -89,6 +96,14 @@ export interface ComposedContext {
   approxTokens: number
   /** What the budget could not fit — for the context viewer. */
   fit: ContextFit
+  /**
+   * Where this turn's prose window actually began, and the step the anchor
+   * moves in. Recorded by composeContext rather than recomputed, so the writer
+   * path and the summarizer can never disagree about which prose has fallen out
+   * of view. `windowStart` is an offset into the joined manuscript; 0 means
+   * nothing was trimmed and there is nothing to summarize.
+   */
+  trim: { windowStart: number; quantum: number }
 }
 
 export interface GenerationRequest {

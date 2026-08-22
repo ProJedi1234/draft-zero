@@ -23,6 +23,7 @@ import type {
   SettledCallStatus,
   Story,
   StoryEntry,
+  StoryRecap,
   StorySummary,
 } from "@/lib/types"
 
@@ -31,6 +32,7 @@ import type {
   LorebookEntryRow,
   ModelProfileRow,
   StoryEntryRow,
+  StoryRecapRow,
   StoryRow,
 } from "./schema"
 
@@ -215,6 +217,16 @@ export function toLorebookEntry(row: LorebookEntryRow): LorebookEntry {
 }
 
 /** Sidebar/library shape — no entries, wordCount computed from the given rows. */
+export function toStoryRecap(row: StoryRecapRow): StoryRecap {
+  return {
+    id: row.id,
+    text: row.text,
+    throughEntryId: row.throughEntryId,
+    throughPosition: row.throughPosition,
+    createdAt: row.createdAt,
+  }
+}
+
 export function toStorySummary(
   row: StoryRow,
   entries: { text: string }[]
@@ -260,6 +272,8 @@ export function toStory(
   entryRows: StoryEntryRow[],
   lorebookRows: LorebookEntryRow[],
   history: HistoryState,
+  /** The resolved recap text, or "" when this story has none. */
+  summary: string,
   /**
    * What the settings resolve against: the global slider defaults a followed
    * profile's null fields fall back to, and the app-wide retention floor.
@@ -317,6 +331,7 @@ export function toStory(
     ),
     memory: row.memory,
     authorsNote: row.authorsNote,
+    summary,
     systemPrompt: row.systemPrompt,
     activeLorebookEntryIds: matches.map((match) => match.entry.id),
     canUndo: history.canUndo,

@@ -22,6 +22,7 @@ function storyOf(
     title: "Untitled Story",
     memory: "",
     authorsNote: "",
+    summary: "",
     systemPrompt: null,
     settings: { contextWindow: 8000 },
     entries: entries.map((entry, position) => ({

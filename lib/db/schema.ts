@@ -154,6 +154,62 @@ export const storyEntries = pgTable(
 )
 
 /**
+ * The rolling story summary — one row per version, append-only.
+ *
+ * A story that outgrows its context window loses its opening prose from every
+ * prompt; this is the recap that stands in for it. Rows are never updated and
+ * never deleted: writing a new version is an INSERT, which is what makes
+ * rewinding free. A rewind soft-deletes the passages an abandoned version was
+ * written against, so that version's `through_entry_id` stops resolving and the
+ * previous one takes over — with no model call, and with the undo restoring it
+ * just as automatically. That property is the entire reason this is a table and
+ * not a column on `stories`.
+ *
+ * Deliberately NOT joined to `generation_calls`: a recap is bookkeeping, not a
+ * passage, and its ledger row already stands on its own with a NULL
+ * story_entry_id.
+ */
+export const storyRecaps = pgTable(
+  "story_recaps",
+  {
+    id: text("id").primaryKey(),
+    storyId: text("story_id")
+      .notNull()
+      .references(() => stories.id, { onDelete: "cascade" }),
+    /**
+     * The last passage this version covers. The FK cascades because a deleted
+     * story's recaps are meaningless, but the resolution query cares about
+     * something the FK cannot express: whether that row is still LIVE. A
+     * soft-deleted or deactivated take leaves the FK intact and the recap
+     * unresolvable, which is exactly the behaviour rewind depends on.
+     */
+    throughEntryId: text("through_entry_id")
+      .notNull()
+      .references(() => storyEntries.id, { onDelete: "cascade" }),
+    /**
+     * That passage's position, denormalised so the resolver can order by
+     * coverage without joining twice. Ordering by coverage rather than by
+     * recency alone is insurance: the two agree while the recap only ever moves
+     * forward, and coverage is the one that stays right if that ever changes.
+     */
+    throughPosition: integer("through_position").notNull(),
+    text: text("text").notNull(),
+    /** What wrote it, frozen — same philosophy as story_entries.gen*. */
+    genModelId: text("gen_model_id"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    // Leading equality, then the two ORDER BY keys in the order the resolver
+    // asks for them, so the newest-and-widest row is the index's first hit.
+    index("story_recaps_story_coverage_idx").on(
+      table.storyId,
+      table.throughPosition,
+      table.createdAt
+    ),
+  ]
+)
+
+/**
  * The undo journal: one row per reversible thing the writer did.
  *
  * `text` rather than `jsonb` for the same reason as the lorebook's keys —
@@ -422,6 +478,8 @@ export const appSettings = pgTable("app_settings", {
 
 export type StoryRow = typeof stories.$inferSelect
 export type StoryEntryRow = typeof storyEntries.$inferSelect
+export type StoryRecapRow = typeof storyRecaps.$inferSelect
+export type NewStoryRecapRow = typeof storyRecaps.$inferInsert
 export type StoryOpRow = typeof storyOps.$inferSelect
 export type GenerationCallRow = typeof generationCalls.$inferSelect
 export type NewGenerationCallRow = typeof generationCalls.$inferInsert

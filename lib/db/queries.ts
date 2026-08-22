@@ -11,10 +11,11 @@ import type {
   ModelProfile,
   SettledCallStatus,
   Story,
+  StoryRecap,
   StorySummary,
 } from "@/lib/types"
 
-import { getDb } from "./client"
+import { getDb, type DrizzleDb } from "./client"
 import { readHistoryState } from "./journal"
 import type { EntryCost } from "./mappers"
 import {
@@ -23,6 +24,7 @@ import {
   toLorebookEntry,
   toModelProfile,
   toStory,
+  toStoryRecap,
   toStorySummary,
 } from "./mappers"
 import {
@@ -31,6 +33,7 @@ import {
   lorebookEntries,
   modelProfiles,
   storyEntries,
+  storyRecaps,
   stories,
 } from "./schema"
 
@@ -63,6 +66,56 @@ export async function listStories(): Promise<StorySummary[]> {
   )
 }
 
+/**
+ * The story's summary version currently in force, or null when it has none.
+ *
+ * Eligibility is the whole rule: a version is only a candidate while the
+ * passage it was written through is still LIVE — not soft-deleted, and still
+ * the active take of its slot. That is what makes rewinding free. A rewind
+ * soft-deletes its tail, so every version written against the abandoned branch
+ * drops out of this query and the one before it takes over; undoing the rewind
+ * restores those rows and the newer version comes straight back. No model call
+ * on either leg, and nothing to journal.
+ *
+ * Ordered by coverage first and recency second. While summarization only ever
+ * moves forward the two agree on every row, so the ordering is insurance rather
+ * than logic — but it is the half that stays correct if a version is ever
+ * written that covers less than one already stored, and ordering by recency
+ * alone would silently prefer it.
+ *
+ * Exported because the writer path needs it too: deciding whether to summarize
+ * starts with knowing how far the current version already reaches.
+ */
+export async function resolveStoryRecap(
+  storyId: string
+): Promise<StoryRecap | null> {
+  const row = await storyRecapQuery(await getDb(), storyId).then(
+    (rows) => rows[0]
+  )
+  return row ? toStoryRecap(row.recap) : null
+}
+
+/**
+ * The statement itself, split out so it can be rendered and asserted without a
+ * database. The liveness filter below is the whole feature and its absence
+ * would be silent — see tests/story-recap-resolution.test.ts.
+ */
+export function storyRecapQuery(db: DrizzleDb, storyId: string) {
+  return db
+    .select({ recap: storyRecaps })
+    .from(storyRecaps)
+    .innerJoin(storyEntries, eq(storyEntries.id, storyRecaps.throughEntryId))
+    .where(
+      and(
+        eq(storyRecaps.storyId, storyId),
+        isNull(storyEntries.deletedAt),
+        eq(storyEntries.isActive, true)
+      )
+    )
+    .orderBy(desc(storyRecaps.throughPosition), desc(storyRecaps.createdAt))
+    .limit(1)
+}
+
 /** Full story with entries, settings, computed wordCount + activeLorebookEntryIds. */
 export async function getStory(id: string): Promise<Story | null> {
   const db = await getDb()
@@ -75,59 +128,65 @@ export async function getStory(id: string): Promise<Story | null> {
 
   if (!storyRow) return null
 
-  const [profileRow, entryRows, lorebookRows, history, costRows, baseline] =
-    await Promise.all([
-      // Effective settings are resolved here, not stored: a followed story reads
-      // its profile every time, so an edit in Settings reaches every follower
-      // without touching a single story row. Skipped entirely for Custom.
-      storyRow.profileId === null
-        ? Promise.resolve(undefined)
-        : db
-            .select()
-            .from(modelProfiles)
-            .where(eq(modelProfiles.id, storyRow.profileId))
-            .limit(1)
-            .then((rows) => rows[0]),
-      // Every non-deleted row, active takes and alternatives alike. One flat
-      // query rather than a GROUP BY plus a join for the sibling counts: a
-      // manuscript is small and is already loaded whole on every request, so the
-      // extra inactive rows cost less than the second round trip would, and
-      // `toStory` gets everything it needs to fill in variantIndex/variantCount.
-      db
-        .select()
-        .from(storyEntries)
-        .where(
-          and(eq(storyEntries.storyId, id), isNull(storyEntries.deletedAt))
+  const [
+    profileRow,
+    entryRows,
+    lorebookRows,
+    history,
+    recap,
+    costRows,
+    baseline,
+  ] = await Promise.all([
+    // Effective settings are resolved here, not stored: a followed story reads
+    // its profile every time, so an edit in Settings reaches every follower
+    // without touching a single story row. Skipped entirely for Custom.
+    storyRow.profileId === null
+      ? Promise.resolve(undefined)
+      : db
+          .select()
+          .from(modelProfiles)
+          .where(eq(modelProfiles.id, storyRow.profileId))
+          .limit(1)
+          .then((rows) => rows[0]),
+    // Every non-deleted row, active takes and alternatives alike. One flat
+    // query rather than a GROUP BY plus a join for the sibling counts: a
+    // manuscript is small and is already loaded whole on every request, so the
+    // extra inactive rows cost less than the second round trip would, and
+    // `toStory` gets everything it needs to fill in variantIndex/variantCount.
+    db
+      .select()
+      .from(storyEntries)
+      .where(and(eq(storyEntries.storyId, id), isNull(storyEntries.deletedAt)))
+      .orderBy(asc(storyEntries.position), asc(storyEntries.variantIndex)),
+    db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
+    readHistoryState(db, id),
+    resolveStoryRecap(id),
+    // The story's spend, as a second small SELECT rather than a join onto the
+    // entries above. A join is the same rows, but a ledger that somehow held two
+    // calls for one take would silently DUPLICATE a passage in the manuscript —
+    // a bookkeeping oddity has no business being able to do that. Indexed on
+    // (story_id, created_at); in-flight calls are excluded because they have no
+    // cost yet and no take.
+    db
+      .select({
+        storyEntryId: generationCalls.storyEntryId,
+        costUsd: generationCalls.costUsd,
+        reasoningTokens: generationCalls.reasoningTokens,
+        status: generationCalls.status,
+      })
+      .from(generationCalls)
+      .where(
+        and(
+          eq(generationCalls.storyId, id),
+          isNotNull(generationCalls.storyEntryId),
+          ne(generationCalls.status, "streaming")
         )
-        .orderBy(asc(storyEntries.position), asc(storyEntries.variantIndex)),
-      db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
-      readHistoryState(db, id),
-      // The story's spend, as a second small SELECT rather than a join onto the
-      // entries above. A join is the same rows, but a ledger that somehow held two
-      // calls for one take would silently DUPLICATE a passage in the manuscript —
-      // a bookkeeping oddity has no business being able to do that. Indexed on
-      // (story_id, created_at); in-flight calls are excluded because they have no
-      // cost yet and no take.
-      db
-        .select({
-          storyEntryId: generationCalls.storyEntryId,
-          costUsd: generationCalls.costUsd,
-          reasoningTokens: generationCalls.reasoningTokens,
-          status: generationCalls.status,
-        })
-        .from(generationCalls)
-        .where(
-          and(
-            eq(generationCalls.storyId, id),
-            isNotNull(generationCalls.storyEntryId),
-            ne(generationCalls.status, "streaming")
-          )
-        ),
-      // Fetched for every story, followed or not: which of the two it is
-      // depends on profile_id, and branching here would cost a round trip the
-      // Promise.all is already paying for in parallel.
-      getGenerationBaseline(),
-    ])
+      ),
+    // Fetched for every story, followed or not: which of the two it is
+    // depends on profile_id, and branching here would cost a round trip the
+    // Promise.all is already paying for in parallel.
+    getGenerationBaseline(),
+  ])
 
   const costs = new Map<string, EntryCost>()
   for (const row of costRows) {
@@ -145,6 +204,7 @@ export async function getStory(id: string): Promise<Story | null> {
     entryRows,
     lorebookRows,
     history,
+    recap?.text ?? "",
     baseline,
     costs
   )
