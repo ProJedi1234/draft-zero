@@ -62,8 +62,8 @@ export function StoryCanvas({
   /** The oldest loaded position — the next page's cursor. */
   const olderCursorRef = React.useRef<number | null>(null)
   const olderLoadingRef = React.useRef(false)
-  /** Viewport metrics captured just before a prepend, for scroll anchoring. */
-  const anchorRef = React.useRef<{ height: number; top: number } | null>(null)
+  /** scrollHeight captured just before a prepend, for scroll anchoring. */
+  const anchorRef = React.useRef<{ height: number } | null>(null)
 
   // Live means the provider still owns the passage. `settling` is neither live
   // nor idle: the prose is finished and rendered from the local buffer while its
@@ -101,11 +101,13 @@ export function StoryCanvas({
       // scroll retries. A toast for "scrolling briefly didn't work" is noise.
       if (!res.ok) return
       const viewport = getViewport()
-      // Captured NOW, in the same task as the setState below — the layout
-      // effect reads it before paint, so the prepend never visibly jumps.
-      anchorRef.current = viewport
-        ? { height: viewport.scrollHeight, top: viewport.scrollTop }
-        : null
+      // Only the pre-prepend HEIGHT is captured — deliberately not scrollTop.
+      // The reader keeps scrolling between this resolve and React's commit
+      // (across a slow commit that gap is thousands of pixels), and restoring
+      // an absolute position would throw that scrolling away: a teleport back
+      // down the page, on every prepend. The layout effect instead adjusts
+      // RELATIVELY, from wherever the reader actually is at commit.
+      anchorRef.current = viewport ? { height: viewport.scrollHeight } : null
       olderCursorRef.current = res.data.windowStartPosition ?? cursor
       setHasMoreOlder(res.data.hasMore)
       setOlder((prev) => [
@@ -121,15 +123,20 @@ export function StoryCanvas({
 
   // Scroll anchoring for the prepend: keep the passage under the reader's
   // eyes where it is by growing scrollTop by exactly what the content above
-  // it grew. Runs before paint; the pin-to-bottom observer cannot fight it,
-  // because reaching the sentinel required scrolling up, which unsticks it.
+  // it grew — relative to wherever the reader is NOW, so scrolling done while
+  // the page was in flight survives. Runs before paint; the pin-to-bottom
+  // observer cannot fight it, because reaching the sentinel required
+  // scrolling up, which unsticks it. The manuscript div carries
+  // [overflow-anchor:none], so this is the ONLY compensation — a browser's
+  // native scroll anchoring adjusting alongside it would double-count.
   useIsomorphicLayoutEffect(() => {
     const anchor = anchorRef.current
     if (!anchor) return
     anchorRef.current = null
     const viewport = getViewport()
     if (!viewport) return
-    viewport.scrollTop = anchor.top + (viewport.scrollHeight - anchor.height)
+    const grown = viewport.scrollHeight - anchor.height
+    if (grown > 0) viewport.scrollTop += grown
   }, [older, getViewport])
 
   // The trigger: a sentinel above the first passage, watched against the
@@ -302,7 +309,7 @@ export function StoryCanvas({
         // BOTH axes (Base UI sets overflow:scroll inline), so any single
         // unbreakable token — a pasted URL, a long imported genre — turns the
         // manuscript into a horizontally pannable page on touch.
-        className="mx-auto w-full max-w-2xl px-6 pt-12 pb-[calc(var(--composer-h,11rem)+2rem)] break-words"
+        className="mx-auto w-full max-w-2xl px-6 pt-12 pb-[calc(var(--composer-h,11rem)+2rem)] break-words [overflow-anchor:none]"
       >
         <span role="status" aria-live="polite" className="sr-only">
           {announcement}
