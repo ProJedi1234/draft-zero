@@ -76,7 +76,7 @@ function DialogContent({
         )}
         {...props}
       >
-        {children}
+        {sheet ? <DialogSheetScroll>{children}</DialogSheetScroll> : children}
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
@@ -102,9 +102,35 @@ function DialogContent({
 }
 
 /**
- * The scrolling middle of a dialog. On a phone it takes whatever height is left
- * between a pinned header and footer; from `sm` up the caller caps it with its
- * own `sm:max-h-*` and the dialog stays a centred card.
+ * On a phone the header, the form and the buttons scroll as one column. Pinning
+ * the buttons to the bottom edge cost the form a third of a keyboard-shortened
+ * screen, and what they were pinned over was the field being typed into.
+ *
+ * It wraps rather than the popup scrolling itself because the close button is
+ * positioned against the popup: inside the scroller it would leave with the
+ * content, and it is the way out of a full-screen sheet. `contents` from `sm`
+ * up so the dialog stays the card it already was, laid out by the popup's grid.
+ */
+function DialogSheetScroll({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-sheet-scroll"
+      className={cn(
+        "flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto sm:contents",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+/**
+ * The scrolling middle of a dialog, from `sm` up, where the caller caps it with
+ * its own `sm:max-h-*`. On a phone it has no height to fill, so it sizes to its
+ * content and `DialogSheetScroll` above it does the scrolling instead.
  */
 function DialogBody({
   className,
@@ -113,7 +139,7 @@ function DialogBody({
   return (
     <ScrollArea
       data-slot="dialog-body"
-      className={cn("pr-3 max-sm:min-h-0 max-sm:flex-1", className)}
+      className={cn("pr-3", className)}
       {...props}
     />
   )

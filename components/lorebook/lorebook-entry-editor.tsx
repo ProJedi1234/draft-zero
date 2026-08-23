@@ -270,6 +270,13 @@ export function LorebookEntryEditor({
             placeholder="Add key..."
             className="h-8 w-28"
             aria-label="Add trigger key"
+            // A key is matched against the story text literally, so a keyboard
+            // that fixes spelling or capitalises the first word breaks the
+            // match. `done` because Enter here commits the key, not the form.
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            enterKeyHint="done"
             onChange={(e) => setKeyInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === ",") {

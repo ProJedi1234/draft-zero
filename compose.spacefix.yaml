@@ -1,0 +1,93 @@
+# compose.spacefix.yaml — the lorebook-space-fix branch, up on its own so the
+# phone sheet can be tested on a real device: the scrolling column, the pinned
+# close button, and the keyboard the textareas now ask for.
+#
+#   docker compose -f compose.spacefix.yaml up -d --build
+#   docker compose -f compose.spacefix.yaml down -v
+#
+# Its own project name, volume and ports. 5445/3014 looked free in the notes and
+# was not — `draft-zero-sidebarclick` holds it — so this takes the next pair
+# after a `docker ps -a` at up time rather than at authoring time.
+#
+# 3015 binds to 0.0.0.0 so the demo is reachable from a phone or an iPad.
+name: draft-zero-spacefix
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: draft_zero
+      POSTGRES_PASSWORD: draft_zero
+      POSTGRES_DB: draft_zero
+    ports:
+      - "127.0.0.1:5446:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U draft_zero -d draft_zero"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: ["bun", "run", "db:migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # `db:seed` is DESTRUCTIVE — it wipes every table before inserting the
+  # fixtures. Safe only because the DATABASE_URL below names this stack's own
+  # postgres service, backed by this file's own named volume, created empty by
+  # `up`. Not devpg (5432), not the base stack (5433).
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: ["bun", "run", "db:seed"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+      # Empty on purpose: this branch changes dialog layout and keyboard
+      # attributes, both computed without a provider. An empty key drops
+      # generation to the offline mock, so nothing here is billed.
+      OPENROUTER_API_KEY: ""
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "0.0.0.0:3015:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:
