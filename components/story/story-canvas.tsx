@@ -75,7 +75,13 @@ export function StoryCanvas({
   const olderSentinelRef = React.useRef<HTMLDivElement>(null)
   /** The oldest loaded position — the next page's cursor. */
   const olderCursorRef = React.useRef<number | null>(null)
-  const olderLoadingRef = React.useRef(false)
+  /** A fetch on the wire. Separate from the buffer: fetch-ahead fills the
+      buffer long before anyone asks to land it. */
+  const inFlightRef = React.useRef(false)
+  /** Whether pages beyond the buffered one exist — the prefetch stop. */
+  const hasMoreRef = React.useRef<boolean | null>(null)
+  /** The reader is at the edge and wants the next page as soon as it exists. */
+  const landWantedRef = React.useRef(false)
   /** scrollHeight captured just before a prepend, for scroll anchoring. */
   const anchorRef = React.useRef<{ height: number } | null>(null)
   /** A resolved page waiting for the scroller to come to rest. */
@@ -113,6 +119,12 @@ export function StoryCanvas({
     []
   )
 
+  // Paging is a two-stage pipeline: a background FETCH keeps the next page
+  // buffered ahead of need, and a rest-gated LANDING applies it. The split is
+  // what makes the edge feel immediate — by the time the reader arrives, the
+  // network round trip has already happened, and the only remaining costs are
+  // the rest gate and the commit.
+  //
   // A prepend only ever lands while the scroller is AT REST. Safari (the
   // finger-driven Safaris especially) runs momentum and rubber-band scrolling
   // as an animation that overrides programmatic scrollTop writes — so a
@@ -120,11 +132,12 @@ export function StoryCanvas({
   // dumped at an uncompensated position: the "scroll up and get thrown back"
   // bug. Deferring the WHOLE application (prepend + compensation together)
   // until the viewport has been quiet for a beat sidesteps the entire class:
-  // at-rest writes are honored everywhere, and the sentinel's rootMargin
-  // means the page is usually ready to land in the pause between flicks.
-  // Self-rescheduling closure reaches itself through a ref: the timer may
+  // at-rest writes are honored everywhere.
+  //
+  // Self-rescheduling closures reach themselves through refs: the timer may
   // outlive the render that armed it.
   const flushRef = React.useRef<(() => void) | null>(null)
+  const fetchRef = React.useRef<(() => Promise<void>) | null>(null)
   const flushPendingPage = React.useCallback(() => {
     const page = pendingPageRef.current
     if (!page) return
@@ -138,6 +151,7 @@ export function StoryCanvas({
       return
     }
     pendingPageRef.current = null
+    landWantedRef.current = false
     const viewport = getViewport()
     // Only the pre-prepend HEIGHT is captured — deliberately not scrollTop.
     // The layout effect adjusts RELATIVELY from wherever the reader is at
@@ -145,6 +159,7 @@ export function StoryCanvas({
     anchorRef.current = viewport ? { height: viewport.scrollHeight } : null
     if (page.windowStartPosition !== null)
       olderCursorRef.current = page.windowStartPosition
+    hasMoreRef.current = page.hasMore
     setHasMoreOlder(page.hasMore)
     setOlder((prev) => [
       ...page.entries.filter(
@@ -152,33 +167,44 @@ export function StoryCanvas({
       ),
       ...prev,
     ])
-    // The fetch lock opens only now: a page in the buffer is a page in
-    // flight, or the sentinel would stack fetches behind it.
-    olderLoadingRef.current = false
+    // Refill the buffer immediately: the next page rides the network while
+    // the reader is still reading this one. One page ahead, never more — the
+    // buffer IS the bound, so an idle story never streams itself in.
+    if (page.hasMore) void fetchRef.current?.()
   }, [getViewport])
   useIsomorphicLayoutEffect(() => {
     flushRef.current = flushPendingPage
   }, [flushPendingPage])
 
-  const loadOlder = React.useCallback(async () => {
-    if (olderLoadingRef.current) return
+  const fetchNextPage = React.useCallback(async () => {
+    if (inFlightRef.current || pendingPageRef.current !== null) return
+    if (hasMoreRef.current === false) return
     const cursor = olderCursorRef.current ?? story.windowStartPosition
     if (cursor === undefined || cursor === null) return
-    olderLoadingRef.current = true
+    inFlightRef.current = true
     const res = await loadOlderEntries(story.id, cursor)
+    inFlightRef.current = false
     // Silent failure: the sentinel is still there and the next notch of
     // scroll retries. A toast for "scrolling briefly didn't work" is noise.
-    if (!res.ok) {
-      olderLoadingRef.current = false
-      return
-    }
+    if (!res.ok) return
     pendingPageRef.current = {
       entries: res.data.entries,
       windowStartPosition: res.data.windowStartPosition,
       hasMore: res.data.hasMore,
     }
-    flushPendingPage()
+    if (landWantedRef.current) flushPendingPage()
   }, [story.id, story.windowStartPosition, flushPendingPage])
+  useIsomorphicLayoutEffect(() => {
+    fetchRef.current = fetchNextPage
+  }, [fetchNextPage])
+
+  // What the sentinel asks for: land the buffered page if there is one,
+  // otherwise fetch — and land it the moment it arrives.
+  const requestLand = React.useCallback(() => {
+    landWantedRef.current = true
+    if (pendingPageRef.current !== null) flushPendingPage()
+    else void fetchNextPage()
+  }, [flushPendingPage, fetchNextPage])
 
   // The at-rest gate's clock, plus cleanup for a flush left scheduled.
   React.useEffect(() => {
@@ -220,13 +246,13 @@ export function StoryCanvas({
     if (!sentinel || !moreAbove) return
     const observer = new IntersectionObserver(
       (observed) => {
-        if (observed.some((entry) => entry.isIntersecting)) void loadOlder()
+        if (observed.some((entry) => entry.isIntersecting)) requestLand()
       },
       { root: getViewport(), rootMargin: "1200px 0px 0px 0px" }
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [moreAbove, loadOlder, getViewport])
+  }, [moreAbove, requestLand, getViewport])
 
   // Foreign edits reach the tail through router.refresh(), but a paged-in
   // passage lives in state — so when the story moves, re-read the range this

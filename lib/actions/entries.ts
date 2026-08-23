@@ -387,8 +387,11 @@ export async function rewindToEntry(
 // generates nothing, so there is no second version of the story to reconcile,
 // and the cut is a single journal op the writer can take back.
 
-/** How many passages one scroll-up fetch brings in. */
-const OLDER_PAGE_SIZE = 50
+/** How many passages one scroll-up fetch brings in. Sized for the COMMIT,
+ * not the wire: mounting a page of passages is the expensive half of a
+ * landing, and the fetch-ahead pipeline in the canvas keeps the next page
+ * buffered, so smaller pages cost nothing in throughput. */
+const OLDER_PAGE_SIZE = 25
 
 /**
  * One page of older passages for the canvas, walking backward from the
