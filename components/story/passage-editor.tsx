@@ -6,15 +6,20 @@ import { toast } from "sonner"
 
 import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import { updateActionEntry, updateEntryText } from "@/lib/actions/entries"
-import type { StoryEntry } from "@/lib/types"
+import type { ActionKind, StoryEntry } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { KindSwitcher, kindMeta } from "@/components/story/kind-switcher"
 
 /** Unsaved editor text, per passage, for the length of the browser session. */
 const DRAFT_STORAGE_PREFIX = "draft-zero:passage-draft:"
 
-/** Which buffer the draft belongs to: the prose, or a player turn's input. */
-type SavedDraft = { prose: boolean; value: string }
+/**
+ * Which buffer the draft belongs to: the prose, or a player turn's input. An
+ * input draft also carries the armed kind, because a swap with no keystroke
+ * after it is still an unsaved change and an unmount must not eat it.
+ */
+type SavedDraft = { prose: boolean; value: string; kind?: ActionKind }
 
 function readDraft(entryId: string): SavedDraft | null {
   if (typeof window === "undefined") return null
@@ -80,6 +85,18 @@ export function PassageEditor({
   const [value, setValue] = React.useState(
     restored?.value ?? (action ? action.inputText : entry.text)
   )
+
+  // A turn's kind is as editable as its words: the writer meant to speak and
+  // typed a Do, and re-typing the sentence into the composer is the only fix
+  // otherwise. Seeded like the buffer and never resynced.
+  const [kind, setKind] = React.useState<ActionKind>(
+    restored?.kind ?? action?.kind ?? "do"
+  )
+
+  // Same reason as the composer's: a keyboard swap moves nothing and speaks
+  // nothing, and this region stays empty until the first one so it isn't read
+  // out on mount.
+  const [announceKind, setAnnounceKind] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const markdownShortcuts = useMarkdownShortcuts()
@@ -100,15 +117,21 @@ export function PassageEditor({
   // per keystroke, kept across unmount, and removed the moment the buffer
   // matches the row again — only a save or an explicit cancel discards it.
   const pristine = editingProse ? entry.text : (action?.inputText ?? "")
+  const kindPristine = editingProse || kind === action?.kind
   React.useEffect(() => {
     const key = DRAFT_STORAGE_PREFIX + entry.id
-    if (value === pristine) window.sessionStorage.removeItem(key)
+    if (value === pristine && kindPristine)
+      window.sessionStorage.removeItem(key)
     else
       window.sessionStorage.setItem(
         key,
-        JSON.stringify({ prose: editingProse, value } satisfies SavedDraft)
+        JSON.stringify({
+          prose: editingProse,
+          value,
+          kind,
+        } satisfies SavedDraft)
       )
-  }, [editingProse, entry.id, pristine, value])
+  }, [editingProse, entry.id, kind, kindPristine, pristine, value])
 
   function discardDraft() {
     window.sessionStorage.removeItem(DRAFT_STORAGE_PREFIX + entry.id)
@@ -130,7 +153,7 @@ export function PassageEditor({
       // hand-fixed sentence survives and nothing is left to re-translate it.
       const res =
         action !== null && !editingProse
-          ? await updateActionEntry(storyId, entry.id, value)
+          ? await updateActionEntry(storyId, entry.id, value, kind)
           : await updateEntryText(storyId, entry.id, value)
       if (!res.ok) {
         toast.error(res.error)
@@ -141,8 +164,36 @@ export function PassageEditor({
     })
   }
 
+  function swapKind() {
+    setAnnounceKind(true)
+    setKind((current) => (current === "do" ? "say" : "do"))
+  }
+
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (markdownShortcuts(event)) return
+
+    // The composer's bindings, with the composer's trade: unmodified Tab is
+    // consumed, so there is no forward focus escape to the buttons below, and
+    // Cmd/Ctrl+/ is the second way in for anyone whose Tab is spoken for.
+    if (editingInput) {
+      if (
+        event.key === "Tab" &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.ctrlKey
+      ) {
+        event.preventDefault()
+        swapKind()
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === "/") {
+        event.preventDefault()
+        swapKind()
+        return
+      }
+    }
+
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault()
       save()
@@ -162,6 +213,7 @@ export function PassageEditor({
   }
 
   const editingInput = action !== null && !editingProse
+  const active = kindMeta(kind)
 
   return (
     <div>
@@ -174,7 +226,7 @@ export function PassageEditor({
         disabled={isPending}
         aria-label={
           editingInput
-            ? `Edit what you typed for this ${action.kind === "say" ? "Say" : "Do"}`
+            ? `Edit what you typed for this ${active.label}`
             : "Edit passage"
         }
         // Precautionary, and untested against the bug: this editor's labels
@@ -187,20 +239,32 @@ export function PassageEditor({
         spellCheck
         className="min-h-0 border-0 bg-transparent p-0 font-serif text-[1.0625rem] leading-8 text-foreground shadow-none disabled:opacity-100 md:text-[1.0625rem]"
       />
+      <span role="status" aria-live="polite" className="sr-only">
+        {announceKind ? `${active.label} — ${active.placeholder}` : ""}
+      </span>
       <div className="mt-3 flex items-center justify-end gap-1.5">
         {editingInput && (
-          // Quiet on purpose: it is the rare repair, not the normal edit. It
-          // disappears once taken because the buffer has already been replaced
-          // and there is nothing to switch back to — Esc and reopen for that.
-          <Button
-            variant="ghost"
-            size="xs"
-            className="mr-auto text-muted-foreground"
-            onClick={switchToProse}
-            disabled={isPending}
-          >
-            Edit prose instead
-          </Button>
+          <div className="mr-auto flex items-center gap-1.5">
+            <KindSwitcher
+              value={kind}
+              onChange={setKind}
+              disabled={isPending}
+              size="xs"
+            />
+            {/* Quiet on purpose: it is the rare repair, not the normal edit. It
+                disappears once taken because the buffer has already been
+                replaced and there is nothing to switch back to — Esc and reopen
+                for that. */}
+            <Button
+              variant="ghost"
+              size="xs"
+              className="text-muted-foreground"
+              onClick={switchToProse}
+              disabled={isPending}
+            >
+              Edit prose instead
+            </Button>
+          </div>
         )}
         <Button
           variant="ghost"

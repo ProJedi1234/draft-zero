@@ -86,22 +86,29 @@ export async function appendActionEntry(
  * directly (updateEntryText) would break that pair, leaving an inputText that
  * no longer explains the passage sitting beside it.
  *
- * The kind is read from the row rather than taken from the caller: it was
- * chosen when the turn was written and an edit is not a place to silently turn
- * a Do into a Say. A row without one is not a player turn at all — a generated
- * passage, or a user passage from before this feature — and there is nothing to
- * re-translate, so those go through updateEntryText.
+ * The kind comes from the caller: the editor carries the same Say/Do switcher
+ * the composer does, so an edit can re-voice the turn as well as reword it, and
+ * the row's stored kind is only the value that switcher opened on. A row
+ * without one is not a player turn at all — a generated passage, or a user
+ * passage from before this feature — and there is nothing to re-translate, so
+ * those go through updateEntryText.
  */
 export async function updateActionEntry(
   storyId: string,
   entryId: string,
-  rawText: string
+  rawText: string,
+  kind: ActionKind
 ): Promise<ActionResult> {
   // Same threat model as deleteEntry: only a device that isn't mirroring the
   // run has this control lit, and its mid-run edit records an op the run's own
   // recordOp then can't fold the turn into.
   const running = refuseDuringRun(storyId)
   if (running) return running
+  // Guarded here rather than trusted from the client: the kind decides the
+  // translation, and an unknown one would write prose translateAction never
+  // voiced beside a column nothing else in the app knows how to read.
+  if (kind !== "say" && kind !== "do")
+    return { ok: false, error: "Unknown action kind." }
   const raw = rawText.trim()
   if (raw === "") return { ok: false, error: "A passage can't be empty." }
 
@@ -109,9 +116,10 @@ export async function updateActionEntry(
   const now = new Date().toISOString()
 
   const result = await db.transaction(async (tx): Promise<ActionResult> => {
-    // Inside the transaction, and the whole prose: the kind decides how to
-    // translate, and the rest is the `before` undo has to put back. Reading it
-    // outside would let another tab's edit land in between and be swallowed.
+    // Inside the transaction, and the whole prose: it is the `before` undo has
+    // to put back, old kind included, so a re-voiced turn undoes to the kind it
+    // was. Reading it outside would let another tab's edit land in between and
+    // be swallowed.
     const existing = await tx
       .select({
         text: storyEntries.text,
@@ -129,7 +137,7 @@ export async function updateActionEntry(
     if (existing.actionKind === null)
       return { ok: false, error: "This passage isn't a Say or Do." }
 
-    const translated = translateAction(existing.actionKind, raw)
+    const translated = translateAction(kind, raw)
     if (translated.trim() === "")
       return { ok: false, error: "A passage can't be empty." }
 
@@ -138,7 +146,7 @@ export async function updateActionEntry(
     // prove it landed the same way every other mutator here does.
     const updated = await tx
       .update(storyEntries)
-      .set({ text: translated, inputText: raw })
+      .set({ text: translated, actionKind: kind, inputText: raw })
       .where(
         and(eq(storyEntries.id, entryId), eq(storyEntries.storyId, storyId))
       )
@@ -150,12 +158,7 @@ export async function updateActionEntry(
       kind: "edit",
       entryId,
       before: proseOf(existing),
-      // Kind carried through unchanged: this path re-translates, never re-voices.
-      after: {
-        text: translated,
-        actionKind: existing.actionKind,
-        inputText: raw,
-      },
+      after: { text: translated, actionKind: kind, inputText: raw },
     })
     await touchStoryRow(tx, storyId, now)
 
