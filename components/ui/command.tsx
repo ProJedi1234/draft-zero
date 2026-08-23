@@ -69,8 +69,12 @@ function CommandInput({
       <InputGroup className="border-transparent border-b-input bg-transparent px-3">
         <CommandPrimitive.Input
           data-slot="command-input"
+          // text-base below md, like Input and Textarea: iOS auto-zooms the
+          // whole page when a focused field is under 16px, and this was the one
+          // search box in the app still at 14px. The zoom is what made the
+          // model picker feel like it hijacked the screen.
           className={cn(
-            "w-full px-2 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+            "w-full px-2 text-base outline-hidden disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
             className
           )}
           {...props}
