@@ -5,10 +5,7 @@ import { Pencil, RefreshCw, Square, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import type { ImageJob } from "@/hooks/use-image-generation"
-import {
-  deleteIllustration,
-  restoreIllustration,
-} from "@/lib/actions/images"
+import { deleteIllustration, restoreIllustration } from "@/lib/actions/images"
 import { aspectRatioValue, type StoryImage } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -113,23 +110,29 @@ export function ImageBlock({
     ? job.previewB64 && previewSrc(job.previewB64, job.mediaType)
     : image && `/api/images/${image.id}`
 
-  const actions = image && !job
-    ? [
-        { key: "retry", icon: RefreshCw, label: "Retry image", onClick: onRetry },
-        {
-          key: "edit",
-          icon: Pencil,
-          label: "Edit prompt in composer",
-          onClick: onEditPrompt,
-        },
-        {
-          key: "delete",
-          icon: Trash2,
-          label: "Delete illustration",
-          onClick: handleDelete,
-        },
-      ]
-    : []
+  const actions =
+    image && !job
+      ? [
+          {
+            key: "retry",
+            icon: RefreshCw,
+            label: "Retry image",
+            onClick: onRetry,
+          },
+          {
+            key: "edit",
+            icon: Pencil,
+            label: "Edit prompt in composer",
+            onClick: onEditPrompt,
+          },
+          {
+            key: "delete",
+            icon: Trash2,
+            label: "Delete illustration",
+            onClick: handleDelete,
+          },
+        ]
+      : []
 
   return (
     <div

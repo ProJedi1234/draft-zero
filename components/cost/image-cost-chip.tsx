@@ -27,8 +27,7 @@ export function ImageCostChip({ image }: { image: StoryImage }) {
   // Aborted and errored draws are the ones OpenRouter never prices — and under
   // all-or-nothing image billing they genuinely cost nothing, which is a
   // stronger statement than the text side can make about a stopped call.
-  const stopped =
-    image.callStatus === "aborted" || image.callStatus === "error"
+  const stopped = image.callStatus === "aborted" || image.callStatus === "error"
 
   const multiple = image.imageCount > 1
   // "+" whenever a settled draw in this slot went unpriced: the total is then a

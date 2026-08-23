@@ -1,6 +1,6 @@
 {
-  "id": "a1b785c7-8a6c-469c-ada3-4e32bd098a96",
-  "prevId": "42a498a5-43ac-4f72-9f18-6569f6bf34c0",
+  "id": "3aef8f47-302b-48c3-8c75-e83b098fbe36",
+  "prevId": "efafe96d-b02e-48d7-b5a0-e90f68b74b4d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -772,6 +772,19 @@
           "notNull": true,
           "default": true
         },
+        "tint_hue": {
+          "name": "tint_hue",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tint_strength": {
+          "name": "tint_strength",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "undo_cursor": {
           "name": "undo_cursor",
           "type": "integer",
@@ -955,6 +968,34 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "story_entries_story_live_idx": {
+          "name": "story_entries_story_live_idx",
+          "columns": [
+            {
+              "expression": "story_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "variant_index",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"deleted_at\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}

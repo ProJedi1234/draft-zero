@@ -20,6 +20,7 @@ function contextOf(extra: Partial<ComposedContext> = {}): ComposedContext {
     systemPrompt: "",
     memory: "",
     lore: [],
+    summary: "",
     storyText: "",
     authorsNote: "",
     seed: 0,
@@ -30,6 +31,7 @@ function contextOf(extra: Partial<ComposedContext> = {}): ComposedContext {
       storyChars: 0,
       storyCharsKept: 0,
     },
+    trim: { windowStart: 0, quantum: 1 },
     ...extra,
   }
 }
@@ -37,14 +39,20 @@ function contextOf(extra: Partial<ComposedContext> = {}): ComposedContext {
 describe("renderDerivationPrompt", () => {
   test("depicts the last paragraph, not the whole window", () => {
     const rendered = renderDerivationPrompt(
-      contextOf({ storyText: "First beat.\n\nSecond beat.\n\nThe arrived moment." })
+      contextOf({
+        storyText: "First beat.\n\nSecond beat.\n\nThe arrived moment.",
+      })
     )
     expect(rendered).toContain("The moment to depict:\nThe arrived moment.")
-    expect(rendered).toContain("Story so far, for context:\nFirst beat.\n\nSecond beat.")
+    expect(rendered).toContain(
+      "Story so far, for context:\nFirst beat.\n\nSecond beat."
+    )
   })
 
   test("a single-paragraph window is all moment and carries no context block", () => {
-    const rendered = renderDerivationPrompt(contextOf({ storyText: "Only this." }))
+    const rendered = renderDerivationPrompt(
+      contextOf({ storyText: "Only this." })
+    )
     expect(rendered).toContain("The moment to depict:\nOnly this.")
     expect(rendered).not.toContain("Story so far")
   })

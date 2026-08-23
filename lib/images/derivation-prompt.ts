@@ -150,9 +150,7 @@ export function renderDerivationPrompt(context: ComposedContext): string {
     parts.push(`Story so far, for context:\n${story.slice(0, boundary)}`)
   }
   const moment =
-    boundary === -1
-      ? story
-      : story.slice(boundary + PARAGRAPH_SEPARATOR.length)
+    boundary === -1 ? story : story.slice(boundary + PARAGRAPH_SEPARATOR.length)
   parts.push(`The moment to depict:\n${moment}`)
   parts.push("Write the image prompt for this moment.")
   return parts.join("\n\n")

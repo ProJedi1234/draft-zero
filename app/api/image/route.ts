@@ -49,11 +49,15 @@ export async function POST(req: Request): Promise<Response> {
     )
   }
   if (!IMAGE_ASPECT_RATIOS.includes(aspectRatio)) {
-    return Response.json({ error: "Unsupported aspect ratio." }, { status: 400 })
+    return Response.json(
+      { error: "Unsupported aspect ratio." },
+      { status: 400 }
+    )
   }
 
   const story = await getStory(storyId)
-  if (!story) return Response.json({ error: "Story not found." }, { status: 404 })
+  if (!story)
+    return Response.json({ error: "Story not found." }, { status: 404 })
 
   const modelId = await resolveImageModelId(story.imageModelId)
   const key = resolveOpenRouterKey()

@@ -162,7 +162,10 @@ export async function createIllustration(input: {
   // switcher pointing at a take that does not exist.
   return {
     ok: true,
-    data: toStoryImage(row, { index: row.imageIndex, count: row.imageIndex + 1 }),
+    data: toStoryImage(row, {
+      index: row.imageIndex,
+      count: row.imageIndex + 1,
+    }),
   }
 }
 

@@ -33,14 +33,16 @@ interface RawImageModel {
 
 function toDomain(raw: RawImageModel): OpenRouterImageModel | null {
   if (typeof raw.id !== "string" || raw.id === "") return null
-  const name = typeof raw.name === "string" && raw.name !== "" ? raw.name : raw.id
+  const name =
+    typeof raw.name === "string" && raw.name !== "" ? raw.name : raw.id
   // Same "Provider: Model" convention the text catalog uses, with the id's
   // author as the fallback for entries named without the colon.
   const [provider, ...rest] = name.split(": ")
   return {
     id: raw.id,
     name: rest.length > 0 ? rest.join(": ") : name,
-    provider: rest.length > 0 ? provider : raw.id.split("/")[0].replace(/^~/, ""),
+    provider:
+      rest.length > 0 ? provider : raw.id.split("/")[0].replace(/^~/, ""),
   }
 }
 

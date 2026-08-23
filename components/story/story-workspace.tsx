@@ -246,8 +246,7 @@ function StoryEditor({
   const derivation = useImagePromptDerivation(story.id)
   // Remembered across sends, like the armed mode: a writer working in portrait
   // is working in portrait until they say otherwise.
-  const [aspectRatio, setAspectRatio] =
-    React.useState<ImageAspectRatio>("16:9")
+  const [aspectRatio, setAspectRatio] = React.useState<ImageAspectRatio>("16:9")
 
   const generation = useGeneration(story, {
     // The composer clears the moment a move dispatches, so until the server has

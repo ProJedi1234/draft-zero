@@ -34,7 +34,8 @@ export async function GET(
       // The mock's output is ours, but a real provider's is not, and an image
       // route that can execute script in the app's origin is a hole regardless
       // of who is filling it today.
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      "Content-Security-Policy":
+        "default-src 'none'; style-src 'unsafe-inline'; sandbox",
     },
   })
 }

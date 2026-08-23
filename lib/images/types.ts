@@ -69,7 +69,5 @@ export type ImageGenerationEvent =
 
 export interface ImageGenerationProvider {
   /** Yields events until `completed`, or stops promptly on signal abort. */
-  generate(
-    request: ImageGenerationRequest
-  ): AsyncIterable<ImageGenerationEvent>
+  generate(request: ImageGenerationRequest): AsyncIterable<ImageGenerationEvent>
 }

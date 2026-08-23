@@ -933,10 +933,7 @@ describe("the run registry and loop", () => {
     currentKey = null
     const storyId = nextStoryId()
     // Few words → few chunks; the mock's real pacing is the point, not speed.
-    const sub = attach(
-      storyId,
-      launch(storyId, { settings: settings() })
-    )
+    const sub = attach(storyId, launch(storyId, { settings: settings() }))
     const end = await sub.ended
 
     expect(end.status).toBe("ok")
