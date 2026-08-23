@@ -8,8 +8,10 @@ import {
   desc,
   eq,
   gte,
+  inArray,
   isNotNull,
   isNull,
+  lt,
   ne,
   sql,
 } from "drizzle-orm"
@@ -22,6 +24,7 @@ import type {
   ModelProfile,
   SettledCallStatus,
   Story,
+  StoryEntry,
   StoryRecap,
   StorySummary,
 } from "@/lib/types"
@@ -40,6 +43,7 @@ import {
   toLorebookEntry,
   toModelProfile,
   toStory,
+  toStoryEntry,
   toStoryRecap,
   toStorySummary,
 } from "./mappers"
@@ -185,6 +189,141 @@ type TailProbe = {
   tail_marked: number
 }
 
+/**
+ * Slot metadata for every retried slot of the story, aggregated so the
+ * inactive takes' text never leaves the database. Story-wide rather than
+ * filtered to a window: retried slots are rare, the group index covers this,
+ * and the same map serves the tail read and pages of older passages alike.
+ */
+async function readSlotMeta(
+  db: DrizzleDb,
+  storyId: string
+): Promise<Map<string, SlotMeta>> {
+  const groupRows = await db
+    .select({
+      groupId: storyEntries.variantGroupId,
+      indexes: sql<
+        number[]
+      >`array_agg(${storyEntries.variantIndex} order by ${storyEntries.variantIndex})`,
+      activeIndex: sql<
+        number | null
+      >`max(${storyEntries.variantIndex}) filter (where ${storyEntries.isActive})`,
+      namedProfiles: sql<number>`count(distinct ${storyEntries.genProfileName})::int`,
+      hasUnnamed: sql<boolean>`bool_or(${storyEntries.genProfileName} is null)`,
+    })
+    .from(storyEntries)
+    .where(
+      and(eq(storyEntries.storyId, storyId), isNull(storyEntries.deletedAt))
+    )
+    .groupBy(storyEntries.variantGroupId)
+    .having(sql`count(*) > 1`)
+
+  const slots = new Map<string, SlotMeta>()
+  for (const group of groupRows) {
+    // A slot whose active take is deleted has no live passage to describe.
+    if (group.activeIndex === null) continue
+    slots.set(group.groupId, {
+      index: group.indexes.indexOf(group.activeIndex),
+      count: group.indexes.length,
+      // Same semantics as slotProfilesMixed: a null profile name is its own
+      // value, so it counts once beside the distinct named ones.
+      profilesMixed: group.namedProfiles + (group.hasUnnamed ? 1 : 0) > 1,
+    })
+  }
+  return slots
+}
+
+/** One page of older passages, walking backward from a window cursor. */
+export type OlderEntriesPage = {
+  /** Active takes, position ASC, variant metadata and costs filled. */
+  entries: StoryEntry[]
+  /** The new cursor: the first returned entry's position, for the next page. */
+  windowStartPosition: number | null
+  /** Whether more live entries exist before this page. */
+  hasMore: boolean
+}
+
+/**
+ * The `limit` live active entries immediately before `beforePosition`, in
+ * manuscript order — the canvas' scroll-up read. Shaped exactly like the
+ * tail's entries (same mapper, same slot metadata, same ledger lookup) so a
+ * paged-in passage is indistinguishable from one that arrived with the story.
+ */
+export async function listOlderEntries(
+  storyId: string,
+  beforePosition: number,
+  limit: number
+): Promise<OlderEntriesPage> {
+  const db = await getDb()
+  const [rowsDesc, slots] = await Promise.all([
+    db
+      .select()
+      .from(storyEntries)
+      .where(
+        and(
+          eq(storyEntries.storyId, storyId),
+          isNull(storyEntries.deletedAt),
+          eq(storyEntries.isActive, true),
+          lt(storyEntries.position, beforePosition)
+        )
+      )
+      .orderBy(desc(storyEntries.position))
+      // One past the page answers hasMore without a second count query.
+      .limit(limit + 1),
+    readSlotMeta(db, storyId),
+  ])
+
+  const hasMore = rowsDesc.length > limit
+  const rows = rowsDesc.slice(0, limit).reverse()
+
+  const costRows =
+    rows.length === 0
+      ? []
+      : await db
+          .select({
+            storyEntryId: generationCalls.storyEntryId,
+            costUsd: generationCalls.costUsd,
+            reasoningTokens: generationCalls.reasoningTokens,
+            status: generationCalls.status,
+          })
+          .from(generationCalls)
+          .where(
+            and(
+              eq(generationCalls.storyId, storyId),
+              inArray(
+                generationCalls.storyEntryId,
+                rows.map((row) => row.id)
+              ),
+              ne(generationCalls.status, "streaming")
+            )
+          )
+  const costs = new Map<string, EntryCost>()
+  for (const row of costRows) {
+    if (row.storyEntryId === null) continue
+    costs.set(row.storyEntryId, {
+      costUsd: row.costUsd,
+      reasoningTokens: row.reasoningTokens,
+      status: row.status as SettledCallStatus,
+    })
+  }
+
+  return {
+    entries: rows.map((row) =>
+      toStoryEntry(
+        row,
+        slots.get(row.variantGroupId) ?? {
+          index: 0,
+          count: 1,
+          profilesMixed: false,
+        },
+        costs.get(row.id) ?? null
+      )
+    ),
+    windowStartPosition: rows[0]?.position ?? null,
+    hasMore,
+  }
+}
+
 async function readManuscriptTail(
   db: DrizzleDb,
   id: string,
@@ -240,7 +379,7 @@ async function readManuscriptTail(
   `)
   const stats = probe.rows[0] as unknown as TailProbe
 
-  const [rows, groupRows] = await Promise.all([
+  const [rows, slots] = await Promise.all([
     stats.window_start === null
       ? Promise.resolve([])
       : db
@@ -255,40 +394,8 @@ async function readManuscriptTail(
             )
           )
           .orderBy(asc(storyEntries.position)),
-    // Slot metadata for every retried slot of the story, aggregated so the
-    // inactive takes' text never leaves the database. Story-wide rather than
-    // filtered to the tail: retried slots are rare, the group index covers
-    // this, and the same map then serves pages of older passages too.
-    db
-      .select({
-        groupId: storyEntries.variantGroupId,
-        indexes: sql<
-          number[]
-        >`array_agg(${storyEntries.variantIndex} order by ${storyEntries.variantIndex})`,
-        activeIndex: sql<
-          number | null
-        >`max(${storyEntries.variantIndex}) filter (where ${storyEntries.isActive})`,
-        namedProfiles: sql<number>`count(distinct ${storyEntries.genProfileName})::int`,
-        hasUnnamed: sql<boolean>`bool_or(${storyEntries.genProfileName} is null)`,
-      })
-      .from(storyEntries)
-      .where(and(eq(storyEntries.storyId, id), isNull(storyEntries.deletedAt)))
-      .groupBy(storyEntries.variantGroupId)
-      .having(sql`count(*) > 1`),
+    readSlotMeta(db, id),
   ])
-
-  const slots = new Map<string, SlotMeta>()
-  for (const group of groupRows) {
-    // A slot whose active take is deleted has no live passage to describe.
-    if (group.activeIndex === null) continue
-    slots.set(group.groupId, {
-      index: group.indexes.indexOf(group.activeIndex),
-      count: group.indexes.length,
-      // Same semantics as slotProfilesMixed: a null profile name is its own
-      // value, so it counts once beside the distinct named ones.
-      profilesMixed: group.namedProfiles + (group.hasUnnamed ? 1 : 0) > 1,
-    })
-  }
 
   const entriesBefore = stats.total_count - stats.tail_count
   const charsBefore = stats.total_marked - stats.tail_marked

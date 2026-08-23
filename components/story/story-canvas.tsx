@@ -2,7 +2,9 @@
 
 import * as React from "react"
 
-import type { Story } from "@/lib/types"
+import { loadOlderEntries } from "@/lib/actions/entries"
+import { mergeWindowedEntries } from "@/lib/story-window"
+import type { Story, StoryEntry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { formatDateShort } from "@/lib/format"
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +50,21 @@ export function StoryCanvas({
   // Sticky by default; flipped off the moment the reader scrolls away.
   const stickToBottomRef = React.useRef(true)
 
+  // Older passages paged in on scroll-up. The server ships only a tail of a
+  // long manuscript (Story.hasMoreBefore); the rest arrives here in pages,
+  // held in state that survives router.refresh() — this component lives in
+  // the story-keyed editor subtree, so an RSC refresh re-renders it without
+  // remounting, and a story switch resets everything.
+  const [older, setOlder] = React.useState<StoryEntry[]>([])
+  // Null defers to the fresh server answer; set once the first page reports.
+  const [hasMoreOlder, setHasMoreOlder] = React.useState<boolean | null>(null)
+  const olderSentinelRef = React.useRef<HTMLDivElement>(null)
+  /** The oldest loaded position — the next page's cursor. */
+  const olderCursorRef = React.useRef<number | null>(null)
+  const olderLoadingRef = React.useRef(false)
+  /** Viewport metrics captured just before a prepend, for scroll anchoring. */
+  const anchorRef = React.useRef<{ height: number; top: number } | null>(null)
+
   // Live means the provider still owns the passage. `settling` is neither live
   // nor idle: the prose is finished and rendered from the local buffer while its
   // row is in flight, so the block stays but the caret and the Stop affordance
@@ -56,7 +73,12 @@ export function StoryCanvas({
     status === "pending" || status === "thinking" || status === "streaming"
   const showTail = live || streamingText !== ""
   const removing = new Set(removingEntryIds)
-  const entries = story.entries.filter((entry) => !removing.has(entry.id))
+  // Paged-in prose first, then the server tail; the tail's copy wins any
+  // overlap — the window can slide back across passages already paged in.
+  const entries = mergeWindowedEntries(older, story.entries).filter(
+    (entry) => !removing.has(entry.id)
+  )
+  const moreAbove = hasMoreOlder ?? story.hasMoreBefore ?? false
   const hasContent =
     entries.length > 0 || optimisticUserText !== null || showTail
 
@@ -67,6 +89,88 @@ export function StoryCanvas({
       ) ?? null,
     []
   )
+
+  const loadOlder = React.useCallback(async () => {
+    if (olderLoadingRef.current) return
+    const cursor = olderCursorRef.current ?? story.windowStartPosition
+    if (cursor === undefined || cursor === null) return
+    olderLoadingRef.current = true
+    try {
+      const res = await loadOlderEntries(story.id, cursor)
+      // Silent failure: the sentinel is still there and the next notch of
+      // scroll retries. A toast for "scrolling briefly didn't work" is noise.
+      if (!res.ok) return
+      const viewport = getViewport()
+      // Captured NOW, in the same task as the setState below — the layout
+      // effect reads it before paint, so the prepend never visibly jumps.
+      anchorRef.current = viewport
+        ? { height: viewport.scrollHeight, top: viewport.scrollTop }
+        : null
+      olderCursorRef.current = res.data.windowStartPosition ?? cursor
+      setHasMoreOlder(res.data.hasMore)
+      setOlder((prev) => [
+        ...res.data.entries.filter(
+          (entry) => !prev.some((held) => held.id === entry.id)
+        ),
+        ...prev,
+      ])
+    } finally {
+      olderLoadingRef.current = false
+    }
+  }, [story.id, story.windowStartPosition, getViewport])
+
+  // Scroll anchoring for the prepend: keep the passage under the reader's
+  // eyes where it is by growing scrollTop by exactly what the content above
+  // it grew. Runs before paint; the pin-to-bottom observer cannot fight it,
+  // because reaching the sentinel required scrolling up, which unsticks it.
+  useIsomorphicLayoutEffect(() => {
+    const anchor = anchorRef.current
+    if (!anchor) return
+    anchorRef.current = null
+    const viewport = getViewport()
+    if (!viewport) return
+    viewport.scrollTop = anchor.top + (viewport.scrollHeight - anchor.height)
+  }, [older, getViewport])
+
+  // The trigger: a sentinel above the first passage, watched against the
+  // scroll viewport. rootMargin starts the fetch a screen early so the reader
+  // scrolls into prose, not into a gap.
+  React.useEffect(() => {
+    const sentinel = olderSentinelRef.current
+    if (!sentinel || !moreAbove) return
+    const observer = new IntersectionObserver(
+      (observed) => {
+        if (observed.some((entry) => entry.isIntersecting)) void loadOlder()
+      },
+      { root: getViewport(), rootMargin: "600px 0px 0px 0px" }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [moreAbove, loadOlder, getViewport])
+
+  // Foreign edits reach the tail through router.refresh(), but a paged-in
+  // passage lives in state — so when the story moves, re-read the range this
+  // canvas holds in one call and replace it. On failure the stale prose
+  // stands; it is almost always identical.
+  const heldCount = older.length
+  React.useEffect(() => {
+    if (heldCount === 0) return
+    if (story.windowStartPosition === undefined) return
+    let cancelled = false
+    const cursor = story.windowStartPosition
+    void loadOlderEntries(story.id, cursor, heldCount).then((res) => {
+      if (cancelled || !res.ok) return
+      olderCursorRef.current = res.data.windowStartPosition ?? cursor
+      setHasMoreOlder(res.data.hasMore)
+      setOlder(res.data.entries)
+    })
+    return () => {
+      cancelled = true
+    }
+    // Deliberately NOT keyed on heldCount: it re-fires only when the story
+    // itself moves, not when a page arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story.id, story.updatedAt])
 
   // Open at the end of the prose — where the writer actually is — and only ever
   // let a real scroll gesture flip the sticky flag. Seeding the flag from the
@@ -233,6 +337,13 @@ export function StoryCanvas({
         ) : (
           <>
             <div className="space-y-1">
+              {/* Watched by the IntersectionObserver above. Rendered only
+                  while older passages exist, so a finished manuscript top is
+                  just the top. aria-hidden: it is scroll plumbing, not
+                  content. */}
+              {moreAbove && (
+                <div ref={olderSentinelRef} aria-hidden className="h-px" />
+              )}
               {/* `followingCount` is measured against the FILTERED list — the
                   one being rendered — so Retry always sits on the block the
                   reader can actually see at the end of the manuscript, and a

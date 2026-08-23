@@ -4,6 +4,7 @@ import { and, eq, gt, isNull } from "drizzle-orm"
 
 import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
+import { listOlderEntries, type OlderEntriesPage } from "@/lib/db/queries"
 import { appendEntryCore, touchStoryRow } from "@/lib/db/entry-writes"
 import { recordOp } from "@/lib/db/journal"
 import { storyEntries } from "@/lib/db/schema"
@@ -385,3 +386,30 @@ export async function rewindToEntry(
 // rewindToEntry above truncates too, and is deliberately not that feature: it
 // generates nothing, so there is no second version of the story to reconcile,
 // and the cut is a single journal op the writer can take back.
+
+/** How many passages one scroll-up fetch brings in. */
+const OLDER_PAGE_SIZE = 50
+
+/**
+ * One page of older passages for the canvas, walking backward from the
+ * loaded window's start. A pure read: no revalidate, no journal — paging
+ * through the manuscript is not a change to it.
+ */
+export async function loadOlderEntries(
+  storyId: string,
+  beforePosition: number,
+  limit?: number
+): Promise<ActionResult<OlderEntriesPage>> {
+  try {
+    const page = await listOlderEntries(
+      storyId,
+      beforePosition,
+      // Clamped: `limit` is client input, and the one caller that passes it
+      // (the staleness refetch) asks for exactly what it already holds.
+      Math.max(1, Math.min(limit ?? OLDER_PAGE_SIZE, 500))
+    )
+    return { ok: true, data: page }
+  } catch {
+    return { ok: false, error: "Could not load earlier passages." }
+  }
+}
