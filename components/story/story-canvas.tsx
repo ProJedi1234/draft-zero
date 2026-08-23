@@ -28,6 +28,14 @@ const STICK_THRESHOLD_PX = 120
  */
 const SCROLL_REST_MS = 120
 
+/**
+ * How recently a touch must have moved for the scroller to count as
+ * finger-driven. Touch momentum on iOS is an animation that owns the scroll
+ * position; wheel and trackpad momentum on macOS arrive as plain events, and
+ * a programmatic write between events holds.
+ */
+const TOUCH_ACTIVE_MS = 700
+
 // Landing at the live edge must happen before the browser paints, otherwise the
 // canvas flashes the top of the manuscript on every story open.
 const useIsomorphicLayoutEffect =
@@ -93,6 +101,18 @@ export function StoryCanvas({
   const flushTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Last scroll event on the viewport, for the at-rest gate below. */
   const lastScrollAtRef = React.useRef(0)
+  /** Last touchmove — while recent, landings take the at-rest path. */
+  const lastTouchAtRef = React.useRef(0)
+  /** Set when a compensation write is observed being swallowed: this engine
+      animates scroll positions over our writes, so stop racing it and take
+      the at-rest path for every later landing this mount. */
+  const engineSwallowsRef = React.useRef(false)
+  /** What the last compensation wrote, for the swallow check one frame on. */
+  const compensationRef = React.useRef<{
+    expected: number
+    grown: number
+    retried: boolean
+  } | null>(null)
 
   // Live means the provider still owns the passage. `settling` is neither live
   // nor idle: the prose is finished and rendered from the local buffer while its
@@ -141,8 +161,16 @@ export function StoryCanvas({
   const flushPendingPage = React.useCallback(() => {
     const page = pendingPageRef.current
     if (!page) return
+    // Wheel-driven scrolling lands immediately: macOS momentum is plain
+    // events, and the compensation write between two of them holds, so the
+    // reader never waits out their own glide. The at-rest wait remains for
+    // finger-driven scrolling — iOS momentum is an animation that overrides
+    // writes — and for any engine the swallow check below has caught lying.
+    const touchDriven =
+      Date.now() - lastTouchAtRef.current < TOUCH_ACTIVE_MS ||
+      engineSwallowsRef.current
     const sinceScroll = Date.now() - lastScrollAtRef.current
-    if (sinceScroll < SCROLL_REST_MS) {
+    if (touchDriven && sinceScroll < SCROLL_REST_MS) {
       if (flushTimerRef.current !== null) clearTimeout(flushTimerRef.current)
       flushTimerRef.current = setTimeout(
         () => flushRef.current?.(),
@@ -213,9 +241,14 @@ export function StoryCanvas({
     const onScroll = () => {
       lastScrollAtRef.current = Date.now()
     }
+    const onTouchMove = () => {
+      lastTouchAtRef.current = Date.now()
+    }
     viewport.addEventListener("scroll", onScroll, { passive: true })
+    viewport.addEventListener("touchmove", onTouchMove, { passive: true })
     return () => {
       viewport.removeEventListener("scroll", onScroll)
+      viewport.removeEventListener("touchmove", onTouchMove)
       if (flushTimerRef.current !== null) clearTimeout(flushTimerRef.current)
     }
   }, [getViewport, story.id])
@@ -235,7 +268,44 @@ export function StoryCanvas({
     const viewport = getViewport()
     if (!viewport) return
     const grown = viewport.scrollHeight - anchor.height
-    if (grown > 0) viewport.scrollTop += grown
+    if (grown > 0) {
+      viewport.scrollTop += grown
+      // The swallow check: an engine that animates scrolling can revert this
+      // write on the next frame. A revert is unmistakable — the position
+      // snaps back by about `grown`, far beyond any one frame of scrolling —
+      // so re-apply once, and if that is also thrown away, remember that
+      // this engine cannot be raced and let every later landing wait for
+      // rest instead.
+      compensationRef.current = {
+        expected: viewport.scrollTop,
+        grown,
+        retried: false,
+      }
+      const verify = () => {
+        const check = compensationRef.current
+        if (!check) return
+        const vp = getViewport()
+        if (!vp) return
+        const shortfall = check.expected - vp.scrollTop
+        if (shortfall < Math.max(500, check.grown / 2)) {
+          compensationRef.current = null
+          return
+        }
+        if (check.retried) {
+          compensationRef.current = null
+          engineSwallowsRef.current = true
+          return
+        }
+        vp.scrollTop += check.grown
+        compensationRef.current = {
+          expected: vp.scrollTop,
+          grown: check.grown,
+          retried: true,
+        }
+        requestAnimationFrame(verify)
+      }
+      requestAnimationFrame(verify)
+    }
   }, [older, getViewport])
 
   // The trigger: a sentinel above the first passage, watched against the
