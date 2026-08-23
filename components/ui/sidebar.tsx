@@ -568,12 +568,17 @@ function SidebarMenuButton({
     isActive?: boolean
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
-  const { isMobile, state } = useSidebar()
+  const { isMobile, state, setOpenMobile } = useSidebar()
   const comp = useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(
       {
         className: cn(sidebarMenuButtonVariants({ variant, size }), className),
+        // Every button in this menu is a link, so a tap is always a departure.
+        // The pathname watch in SidebarProvider covers most of them, but
+        // tapping the row you are already on changes no pathname — and on a
+        // full-screen sidebar that left no way out but the close button.
+        onClick: () => setOpenMobile(false),
       },
       props
     ),
