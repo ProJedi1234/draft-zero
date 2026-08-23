@@ -63,23 +63,22 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Production build, deliberately: this branch is about load and scroll
+  # performance, and the dev server's compile-on-demand and unminified React
+  # dwarf the costs being measured. No source mount — rebuild to update.
   app:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile.prod
     restart: unless-stopped
     environment:
       # Structural branch: windowed loading and canvas paging are exercised
       # entirely by the offline mock, so no key and nothing billed.
       OPENROUTER_API_KEY: ""
       DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
-      WATCHPACK_POLLING: "true"
     ports:
       - "0.0.0.0:3016:3000"
     volumes:
-      - .:/app
-      - /app/.next
-      - /app/node_modules
       - /etc/localtime:/etc/localtime:ro
     depends_on:
       postgres:

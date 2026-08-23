@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { Loader2 } from "lucide-react"
 
 import { loadOlderEntries } from "@/lib/actions/entries"
 import { mergeWindowedEntries } from "@/lib/story-window"
@@ -212,7 +213,7 @@ export function StoryCanvas({
   }, [older, getViewport])
 
   // The trigger: a sentinel above the first passage, watched against the
-  // scroll viewport. rootMargin starts the fetch a screen early so the reader
+  // scroll viewport. rootMargin starts the fetch early so the reader
   // scrolls into prose, not into a gap.
   React.useEffect(() => {
     const sentinel = olderSentinelRef.current
@@ -221,7 +222,7 @@ export function StoryCanvas({
       (observed) => {
         if (observed.some((entry) => entry.isIntersecting)) void loadOlder()
       },
-      { root: getViewport(), rootMargin: "600px 0px 0px 0px" }
+      { root: getViewport(), rootMargin: "1200px 0px 0px 0px" }
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
@@ -399,30 +400,50 @@ export function StoryCanvas({
         <span role="status" aria-live="polite" className="sr-only">
           {announcement}
         </span>
-        {/* An imported scenario's "genre" is often its whole tag list, and the
-            badge is whitespace-nowrap by design — so it must be allowed to
-            shrink and ellipsise here, or it sets the width of the canvas. */}
-        <div className="mb-2 flex min-w-0 items-center gap-2">
-          <Badge
-            variant="outline"
-            className="min-w-0 shrink truncate"
-            title={story.genre}
+        {/* The title page renders only once the manuscript's TRUE beginning
+            is loaded. On a windowed story the top of the loaded prose is not
+            the top of the story, and a title sitting above it says "this is
+            where it starts" — the one thing that edge must never claim. Until
+            then the same slot holds a quiet loading mark, so reaching it
+            reads as "still fetching", not "you have arrived". The swap
+            happens in the same commit as the final page landing, so the
+            anchoring effect's height delta covers it and the view stays put. */}
+        {moreAbove ? (
+          <div
+            aria-hidden
+            className="flex justify-center py-10 text-muted-foreground"
           >
-            {story.genre}
-          </Badge>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            Started {formatDateShort(story.createdAt)}
-          </span>
-        </div>
-        <h2 className="font-serif text-3xl font-semibold tracking-tight">
-          {story.title}
-        </h2>
-        {story.description && (
-          <p className="mt-2 font-serif text-base leading-7 text-muted-foreground italic">
-            {story.description}
-          </p>
+            <Loader2 className="size-4 animate-spin" />
+          </div>
+        ) : (
+          <>
+            {/* An imported scenario's "genre" is often its whole tag list, and
+                the badge is whitespace-nowrap by design — so it must be
+                allowed to shrink and ellipsise here, or it sets the width of
+                the canvas. */}
+            <div className="mb-2 flex min-w-0 items-center gap-2">
+              <Badge
+                variant="outline"
+                className="min-w-0 shrink truncate"
+                title={story.genre}
+              >
+                {story.genre}
+              </Badge>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                Started {formatDateShort(story.createdAt)}
+              </span>
+            </div>
+            <h2 className="font-serif text-3xl font-semibold tracking-tight">
+              {story.title}
+            </h2>
+            {story.description && (
+              <p className="mt-2 font-serif text-base leading-7 text-muted-foreground italic">
+                {story.description}
+              </p>
+            )}
+            <Separator className="mx-auto my-10 w-16" />
+          </>
         )}
-        <Separator className="mx-auto my-10 w-16" />
 
         {!hasContent ? (
           <CanvasEmptyState story={story} onSuggestion={onSuggestion} />
