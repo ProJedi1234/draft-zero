@@ -1,6 +1,6 @@
 "use server"
 
-import { getStory, listLorebookEntries } from "@/lib/db/queries"
+import { getStoryFull, listLorebookEntries } from "@/lib/db/queries"
 import { composeContext } from "@/lib/generation/context"
 import { listModelEndpoints } from "@/lib/generation/endpoints"
 import { listModels } from "@/lib/generation/models"
@@ -52,7 +52,9 @@ export async function loadEntryContext(
 ): Promise<ActionResult<EntryContext | null>> {
   try {
     const [story, lorebookEntries, models] = await Promise.all([
-      getStory(storyId),
+      // Full manuscript, deliberately: this viewer answers "what was this
+      // passage told", and the passage may sit anywhere in the story.
+      getStoryFull(storyId),
       listLorebookEntries(storyId),
       // Cached for an hour in-process, so this is nearly free — see models.ts.
       listModels(),

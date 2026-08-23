@@ -16,7 +16,7 @@ import "server-only"
 import { getDb } from "@/lib/db/client"
 import {
   getAppSettings,
-  getStory,
+  getStoryFull,
   listLorebookEntries,
   resolveStoryRecap,
 } from "@/lib/db/queries"
@@ -105,7 +105,10 @@ export interface SummaryIo {
 }
 
 export const liveIo: SummaryIo = {
-  getStory,
+  // The summarizer's whole job is the prose that has fallen OUT of the
+  // composition window, so it is one of the two readers that still loads the
+  // manuscript from byte 0.
+  getStory: getStoryFull,
   listLore: listLorebookEntries,
   resolveRecap: resolveStoryRecap,
   settings: getAppSettings,

@@ -18,7 +18,7 @@ import type {
  * converts into a character budget losslessly, with no fudge factor. Everything
  * below therefore budgets in characters and only converts once, at the top.
  */
-const CHARS_PER_TOKEN = 4
+export const CHARS_PER_TOKEN = 4
 /** Paragraphs are separated by a blank line everywhere in the app. */
 const PARAGRAPH_SEPARATOR = "\n\n"
 /**
