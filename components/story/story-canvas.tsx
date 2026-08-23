@@ -19,6 +19,14 @@ import type { GenerationStatus } from "@/hooks/use-generation"
 /** How close to the bottom the reader must be for streaming to keep scrolling. */
 const STICK_THRESHOLD_PX = 120
 
+/**
+ * How long the viewport must be scroll-quiet before a fetched page of older
+ * passages is allowed to land. Long enough to outlast the gap between two
+ * momentum scroll events, short enough that a page appears the moment a flick
+ * settles.
+ */
+const SCROLL_REST_MS = 120
+
 // Landing at the live edge must happen before the browser paints, otherwise the
 // canvas flashes the top of the manuscript on every story open.
 const useIsomorphicLayoutEffect =
@@ -64,6 +72,15 @@ export function StoryCanvas({
   const olderLoadingRef = React.useRef(false)
   /** scrollHeight captured just before a prepend, for scroll anchoring. */
   const anchorRef = React.useRef<{ height: number } | null>(null)
+  /** A resolved page waiting for the scroller to come to rest. */
+  const pendingPageRef = React.useRef<{
+    entries: StoryEntry[]
+    windowStartPosition: number | null
+    hasMore: boolean
+  } | null>(null)
+  const flushTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Last scroll event on the viewport, for the at-rest gate below. */
+  const lastScrollAtRef = React.useRef(0)
 
   // Live means the provider still owns the passage. `settling` is neither live
   // nor idle: the prose is finished and rendered from the local buffer while its
@@ -90,36 +107,86 @@ export function StoryCanvas({
     []
   )
 
+  // A prepend only ever lands while the scroller is AT REST. Safari (the
+  // finger-driven Safaris especially) runs momentum and rubber-band scrolling
+  // as an animation that overrides programmatic scrollTop writes — so a
+  // compensation applied mid-flick is silently swallowed and the reader is
+  // dumped at an uncompensated position: the "scroll up and get thrown back"
+  // bug. Deferring the WHOLE application (prepend + compensation together)
+  // until the viewport has been quiet for a beat sidesteps the entire class:
+  // at-rest writes are honored everywhere, and the sentinel's rootMargin
+  // means the page is usually ready to land in the pause between flicks.
+  // Self-rescheduling closure reaches itself through a ref: the timer may
+  // outlive the render that armed it.
+  const flushRef = React.useRef<(() => void) | null>(null)
+  const flushPendingPage = React.useCallback(() => {
+    const page = pendingPageRef.current
+    if (!page) return
+    const sinceScroll = Date.now() - lastScrollAtRef.current
+    if (sinceScroll < SCROLL_REST_MS) {
+      if (flushTimerRef.current !== null) clearTimeout(flushTimerRef.current)
+      flushTimerRef.current = setTimeout(
+        () => flushRef.current?.(),
+        SCROLL_REST_MS - sinceScroll + 10
+      )
+      return
+    }
+    pendingPageRef.current = null
+    const viewport = getViewport()
+    // Only the pre-prepend HEIGHT is captured — deliberately not scrollTop.
+    // The layout effect adjusts RELATIVELY from wherever the reader is at
+    // commit, so nothing they did in the meantime is thrown away.
+    anchorRef.current = viewport ? { height: viewport.scrollHeight } : null
+    if (page.windowStartPosition !== null)
+      olderCursorRef.current = page.windowStartPosition
+    setHasMoreOlder(page.hasMore)
+    setOlder((prev) => [
+      ...page.entries.filter(
+        (entry) => !prev.some((held) => held.id === entry.id)
+      ),
+      ...prev,
+    ])
+    // The fetch lock opens only now: a page in the buffer is a page in
+    // flight, or the sentinel would stack fetches behind it.
+    olderLoadingRef.current = false
+  }, [getViewport])
+  useIsomorphicLayoutEffect(() => {
+    flushRef.current = flushPendingPage
+  }, [flushPendingPage])
+
   const loadOlder = React.useCallback(async () => {
     if (olderLoadingRef.current) return
     const cursor = olderCursorRef.current ?? story.windowStartPosition
     if (cursor === undefined || cursor === null) return
     olderLoadingRef.current = true
-    try {
-      const res = await loadOlderEntries(story.id, cursor)
-      // Silent failure: the sentinel is still there and the next notch of
-      // scroll retries. A toast for "scrolling briefly didn't work" is noise.
-      if (!res.ok) return
-      const viewport = getViewport()
-      // Only the pre-prepend HEIGHT is captured — deliberately not scrollTop.
-      // The reader keeps scrolling between this resolve and React's commit
-      // (across a slow commit that gap is thousands of pixels), and restoring
-      // an absolute position would throw that scrolling away: a teleport back
-      // down the page, on every prepend. The layout effect instead adjusts
-      // RELATIVELY, from wherever the reader actually is at commit.
-      anchorRef.current = viewport ? { height: viewport.scrollHeight } : null
-      olderCursorRef.current = res.data.windowStartPosition ?? cursor
-      setHasMoreOlder(res.data.hasMore)
-      setOlder((prev) => [
-        ...res.data.entries.filter(
-          (entry) => !prev.some((held) => held.id === entry.id)
-        ),
-        ...prev,
-      ])
-    } finally {
+    const res = await loadOlderEntries(story.id, cursor)
+    // Silent failure: the sentinel is still there and the next notch of
+    // scroll retries. A toast for "scrolling briefly didn't work" is noise.
+    if (!res.ok) {
       olderLoadingRef.current = false
+      return
     }
-  }, [story.id, story.windowStartPosition, getViewport])
+    pendingPageRef.current = {
+      entries: res.data.entries,
+      windowStartPosition: res.data.windowStartPosition,
+      hasMore: res.data.hasMore,
+    }
+    flushPendingPage()
+  }, [story.id, story.windowStartPosition, flushPendingPage])
+
+  // The at-rest gate's clock, plus cleanup for a flush left scheduled.
+  React.useEffect(() => {
+    const viewport = getViewport()
+    if (!viewport) return
+    const onScroll = () => {
+      lastScrollAtRef.current = Date.now()
+    }
+    viewport.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      viewport.removeEventListener("scroll", onScroll)
+      if (flushTimerRef.current !== null) clearTimeout(flushTimerRef.current)
+    }
+  }, [getViewport, story.id])
 
   // Scroll anchoring for the prepend: keep the passage under the reader's
   // eyes where it is by growing scrollTop by exactly what the content above
