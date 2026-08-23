@@ -229,7 +229,7 @@ export function toStoryRecap(row: StoryRecapRow): StoryRecap {
 
 export function toStorySummary(
   row: StoryRow,
-  entries: { text: string }[]
+  wordCount?: number
 ): StorySummary {
   return {
     id: row.id,
@@ -238,7 +238,7 @@ export function toStorySummary(
     genre: row.genre,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    wordCount: countEntryWords(entries),
+    wordCount,
   }
 }
 
