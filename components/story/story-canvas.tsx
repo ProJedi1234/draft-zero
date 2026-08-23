@@ -57,6 +57,11 @@ export function StoryCanvas({
   const contentRef = React.useRef<HTMLDivElement>(null)
   // Sticky by default; flipped off the moment the reader scrolls away.
   const stickToBottomRef = React.useRef(true)
+  // The initial landing at the live edge happens ONCE per story mount. The
+  // landing effect below can legitimately re-run without a remount — dev Fast
+  // Refresh re-runs every effect on a hot update — and re-pinning then throws
+  // a reader who has scrolled up back to the bottom of the manuscript.
+  const landedRef = React.useRef(false)
 
   // Older passages paged in on scroll-up. The server ships only a tail of a
   // long manuscript (Story.hasMoreBefore); the rest arrives here in pages,
@@ -224,20 +229,28 @@ export function StoryCanvas({
 
   // Foreign edits reach the tail through router.refresh(), but a paged-in
   // passage lives in state — so when the story moves, re-read the range this
-  // canvas holds in one call and replace it. On failure the stale prose
+  // canvas holds and MERGE fresh copies over the held ones, by id. Never a
+  // replacement: pages can land while this request is in flight, and an
+  // effect re-run (dev Fast Refresh re-runs them all) must not be able to
+  // shrink the loaded window, move the paging cursor, or shift the view —
+  // exactly what a count-sized replacement did. Rows deleted on another
+  // device keep a stale copy here until the next story switch; that is the
+  // cheapest honest answer for a read this rare. On failure the held prose
   // stands; it is almost always identical.
   const heldCount = older.length
   React.useEffect(() => {
     if (heldCount === 0) return
     if (story.windowStartPosition === undefined) return
     let cancelled = false
-    const cursor = story.windowStartPosition
-    void loadOlderEntries(story.id, cursor, heldCount).then((res) => {
-      if (cancelled || !res.ok) return
-      olderCursorRef.current = res.data.windowStartPosition ?? cursor
-      setHasMoreOlder(res.data.hasMore)
-      setOlder(res.data.entries)
-    })
+    void loadOlderEntries(story.id, story.windowStartPosition, heldCount).then(
+      (res) => {
+        if (cancelled || !res.ok) return
+        const fresh = new Map(
+          res.data.entries.map((entry) => [entry.id, entry])
+        )
+        setOlder((prev) => prev.map((entry) => fresh.get(entry.id) ?? entry))
+      }
+    )
     return () => {
       cancelled = true
     }
@@ -258,7 +271,6 @@ export function StoryCanvas({
     const content = contentRef.current
     if (!content) return
 
-    stickToBottomRef.current = true
     let mounted = true
     let frame: number | null = null
 
@@ -282,8 +294,14 @@ export function StoryCanvas({
     }
 
     // The very first landing is synchronous: deferring it to a frame would let
-    // the browser paint the top of the manuscript first.
-    pinNow()
+    // the browser paint the top of the manuscript first. Once per story mount
+    // (see landedRef) — a re-run of this effect re-attaches the observers and
+    // listeners below but must not move a reader who has walked away.
+    if (!landedRef.current) {
+      landedRef.current = true
+      stickToBottomRef.current = true
+      pinNow()
+    }
 
     // The landing height is wrong for longer than a frame: web fonts swap in
     // over the fallback metrics, and --composer-h (the canvas' bottom padding)
