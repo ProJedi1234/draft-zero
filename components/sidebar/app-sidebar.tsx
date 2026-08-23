@@ -2,11 +2,12 @@
 
 import * as React from "react"
 import { usePathname } from "next/navigation"
-import { Feather, Search } from "lucide-react"
+import { Feather, Search, X } from "lucide-react"
 
 import type { StorySummary } from "@/lib/types"
 import type { ActiveRun } from "@/lib/sync/types"
 import { useRunStatus } from "@/hooks/use-run-status"
+import { Button } from "@/components/ui/button"
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +15,7 @@ import {
   SidebarHeader,
   SidebarInput,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { NavWorkspace } from "@/components/sidebar/nav-workspace"
 import { StoryList } from "@/components/sidebar/story-list"
@@ -38,6 +40,10 @@ export function AppSidebar({
     ? (pathname.split("/")[2] ?? null)
     : null
   const runStatus = useRunStatus(activeRuns, openStoryId)
+  // Full-bleed on a phone, so there is no dimmed page left to tap. Picking a
+  // story still dismisses it; this is the way out for someone who opened it and
+  // changed their mind.
+  const { isMobile, setOpenMobile } = useSidebar()
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -47,6 +53,17 @@ export function AppSidebar({
           <span className="text-xs font-semibold tracking-widest uppercase">
             Draft Zero
           </span>
+          {isMobile ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Close sidebar"
+              className="-my-1 ml-auto"
+              onClick={() => setOpenMobile(false)}
+            >
+              <X />
+            </Button>
+          ) : null}
         </div>
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />

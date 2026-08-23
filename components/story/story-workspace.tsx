@@ -130,9 +130,14 @@ export function StoryWorkspace({
       </div>
 
       <Sheet open={mobileInspectorOpen} onOpenChange={setMobileInspectorOpen}>
+        {/* Full-bleed on a phone, 20rem from sm up; see SheetContent. The
+            inspector is the densest surface in the app — three segments, a
+            status strip, and two comboboxes — and it was being read through a
+            three-quarter-width slot with the manuscript still showing. */}
         <SheetContent
           side="right"
-          className="w-80 gap-0 pt-[env(safe-area-inset-top)] lg:hidden"
+          className="gap-0 pt-[env(safe-area-inset-top)] lg:hidden"
+          style={{ "--sheet-width": "20rem" } as React.CSSProperties}
         >
           <SheetHeader className="border-b p-4">
             <SheetTitle className="text-sm">Inspector</SheetTitle>

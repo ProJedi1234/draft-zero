@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { usePathname } from "next/navigation"
 import { mergeProps } from "@base-ui/react/merge-props"
 import { useRender } from "@base-ui/react/use-render"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -92,6 +93,20 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(() => {
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
   }, [isMobile, setOpen, setOpenMobile])
+
+  // Navigating is what the mobile sidebar is for, so arriving somewhere new is
+  // its cue to leave. Hung off the pathname rather than off each link: rows are
+  // added in several files and one of them will always forget to close it, and
+  // a route change from anywhere else (a redirect, a story that was just
+  // deleted) deserves the same dismissal.
+  const pathname = usePathname()
+  const [lastPathname, setLastPathname] = React.useState(pathname)
+  if (pathname !== lastPathname) {
+    // Adjusted during render rather than in an effect: the sheet would
+    // otherwise still be covering the new page for one committed frame.
+    setLastPathname(pathname)
+    setOpenMobile(false)
+  }
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
@@ -206,10 +221,12 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          className="bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          // Full-bleed on a phone and this wide from sm up; see SheetContent.
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+              "--sheet-width": SIDEBAR_WIDTH_MOBILE,
             } as React.CSSProperties
           }
           side={side}
@@ -551,12 +568,17 @@ function SidebarMenuButton({
     isActive?: boolean
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
-  const { isMobile, state } = useSidebar()
+  const { isMobile, state, setOpenMobile } = useSidebar()
   const comp = useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(
       {
         className: cn(sidebarMenuButtonVariants({ variant, size }), className),
+        // Every button in this menu is a link, so a tap is always a departure.
+        // The pathname watch in SidebarProvider covers most of them, but
+        // tapping the row you are already on changes no pathname — and on a
+        // full-screen sidebar that left no way out but the close button.
+        onClick: () => setOpenMobile(false),
       },
       props
     ),
