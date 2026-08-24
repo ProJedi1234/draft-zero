@@ -117,7 +117,13 @@ function SidebarSplitTrigger({
   const [focusModeWas, setFocusModeWas] = React.useState(focusMode)
   if (focusMode !== focusModeWas) {
     setFocusModeWas(focusMode)
-    if (focusMode) setMenuOpen(false)
+    if (focusMode) {
+      setMenuOpen(false)
+      // ⌘. between the click and the close animation finishing would otherwise
+      // leave the queue armed, and the callback is a toggle: it would land
+      // after the fold and take focus mode straight back off.
+      setFocusQueued(false)
+    }
   }
 
   return (
