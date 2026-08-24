@@ -11,7 +11,6 @@ import type {
   StoryCostProfile,
 } from "@/lib/types"
 import { runHandoff } from "@/lib/sync/client"
-import { cn } from "@/lib/utils"
 import {
   useGeneration,
   type GenerationController,
@@ -112,7 +111,6 @@ export function StoryWorkspace({
         onOpenMobileInspector={() => setMobileInspectorOpen(true)}
         focusMode={focusMode}
         onEnterFocusMode={toggleFocusMode}
-        className={cn(focusMode && "hidden")}
       />
       {/* Only reachable while focus mode is on, so the toggle IS the exit. */}
       {focusMode && <FocusExitButton onExit={toggleFocusMode} />}
@@ -138,7 +136,7 @@ export function StoryWorkspace({
           requireZdr={requireZdr}
           tab={inspectorTab}
           onTabChange={setInspectorTab}
-          className={cn("hidden", inspectorOpen && !focusMode && "lg:flex")}
+          collapsed={!inspectorOpen || focusMode}
         />
       </div>
 

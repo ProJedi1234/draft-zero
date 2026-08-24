@@ -37,7 +37,7 @@ export function InspectorPanel({
   requireZdr,
   tab,
   onTabChange,
-  className,
+  collapsed,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
@@ -51,26 +51,38 @@ export function InspectorPanel({
   /** Owned by the workspace: a writer preference, not a property of the story. */
   tab: InspectorTab
   onTabChange: (tab: InspectorTab) => void
-  className?: string
+  /** Hidden by a width collapse, on the sidebar's timing. */
+  collapsed: boolean
 }) {
   return (
     <aside
       aria-label="Inspector"
+      // A clipped panel is still laid out, so without this its comboboxes stay
+      // in the tab order and Tab from the composer lands inside nothing.
+      inert={collapsed}
       className={cn(
-        "w-80 shrink-0 flex-col overflow-hidden border-l bg-background",
-        className
+        "hidden w-80 shrink-0 flex-col overflow-hidden border-l bg-background transition-[width,opacity] duration-200 ease-linear lg:flex",
+        // The reduced-motion block in globals.css is scoped to the run mark;
+        // nothing there covers a transition added later.
+        "motion-reduce:transition-none",
+        collapsed && "w-0 opacity-0"
       )}
     >
-      <InspectorContent
-        story={story}
-        lorebookEntries={lorebookEntries}
-        models={models}
-        profiles={profiles}
-        defaultProfileId={defaultProfileId}
-        requireZdr={requireZdr}
-        tab={tab}
-        onTabChange={onTabChange}
-      />
+      {/* The shell is what narrows; the sections keep their full width and slide
+          out behind its clip. Reflowing three segments and a status strip down
+          to nothing over 200ms is the ugly version of this animation. */}
+      <div className="flex h-full w-80 min-w-80 flex-col">
+        <InspectorContent
+          story={story}
+          lorebookEntries={lorebookEntries}
+          models={models}
+          profiles={profiles}
+          defaultProfileId={defaultProfileId}
+          requireZdr={requireZdr}
+          tab={tab}
+          onTabChange={onTabChange}
+        />
+      </div>
     </aside>
   )
 }

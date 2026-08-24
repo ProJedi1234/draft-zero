@@ -166,17 +166,15 @@ export function StoryHeader({
   onOpenMobileInspector,
   focusMode,
   onEnterFocusMode,
-  className,
 }: {
   story: Story
   costProfile: StoryCostProfile
   inspectorOpen: boolean
   onToggleInspector: () => void
   onOpenMobileInspector: () => void
-  /** Only to close the portalled menu when the header goes away; the class below still does the hiding. */
+  /** Folds the bar to nothing, and closes the portalled menu on the way. */
   focusMode: boolean
   onEnterFocusMode: () => void
-  className?: string
 }) {
   const inspectorLabel = inspectorOpen ? "Hide inspector" : "Show inspector"
   const span = useGeneratedSpan(story)
@@ -184,9 +182,18 @@ export function StoryHeader({
 
   return (
     <header
+      // Mounted but folded: unmounting would drop the save chip's subscription
+      // and the details dialog every time the writer takes a quiet hour.
+      // `inert` is what keeps the folded row out of the tab order — clipped is
+      // not hidden — and it also holds slice 4's assumption that the focus-mode
+      // menu item cannot be reached from inside focus mode.
+      inert={focusMode}
       className={cn(
-        "flex h-14 shrink-0 items-center gap-2 border-b px-4",
-        className
+        "flex shrink-0 items-center gap-2 overflow-hidden border-b px-4 transition-[height,opacity] duration-200 ease-linear",
+        // The reduced-motion block in globals.css is scoped to the run mark;
+        // nothing there covers a transition added later.
+        "motion-reduce:transition-none",
+        focusMode ? "h-0 opacity-0" : "h-14"
       )}
     >
       <SidebarSplitTrigger
