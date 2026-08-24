@@ -500,7 +500,28 @@ export interface Story {
   updatedAt: string
   /** Precomputed for static scaffolding — display as-is, do not recompute. */
   wordCount: number
+  /**
+   * The manuscript, or a tail window of it. When windowed, the fields below
+   * describe what precedes entries[0]; all absent (or 0/false) means the whole
+   * manuscript is here, which is what every fixture and mock builds.
+   */
   entries: StoryEntry[]
+  /** Live active entries before entries[0]. Preserves composeContext's seed. */
+  entriesBefore?: number
+  /**
+   * Manuscript chars (UTF-16 units, as manuscriptWithOffsets joins them —
+   * markers and separators included, plus the separator that precedes
+   * entries[0]) before the window. Preserves the trim anchor: the quantized
+   * window start is an absolute offset, and absolute offsets survive windowing
+   * as long as the length of what was dropped is known.
+   */
+  charsBefore?: number
+  /** True when older live entries exist beyond this window. */
+  hasMoreBefore?: boolean
+  /** entries[0]'s slot position — the cursor for paging older passages in. */
+  windowStartPosition?: number
+  /** min/max createdAt over ALL live generated entries, windowed or not. */
+  generatedSpan?: { firstIso: string; lastIso: string } | null
   /**
    * The profile this story follows, or null for Custom. When set, `settings`
    * below is the profile's; the story's own columns stay untouched underneath,

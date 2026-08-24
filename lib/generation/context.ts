@@ -98,9 +98,22 @@ const EMPTY_FIT: ContextFit = {
  * whole point: the most recent prose is what the model needs to continue, so it
  * is the last thing we give up.
  */
-function trimStoryText(text: string, budget: number, quantum: number): string {
+function trimStoryText(
+  text: string,
+  budget: number,
+  quantum: number,
+  /**
+   * Chars of manuscript that precede `text` when it is a tail window rather
+   * than the whole manuscript (see Story.charsBefore). The arithmetic below is
+   * all in absolute offsets, so a tail plus this length reproduces the full
+   * composition byte for byte — the anchor needs to know how long the dropped
+   * prefix was, never what it said.
+   */
+  precedingChars = 0
+): string {
   if (budget <= 0) return ""
-  if (text.length <= budget) return text
+  const totalLength = precedingChars + text.length
+  if (totalLength <= budget) return text
 
   // The window's START is what gets quantized, as an absolute offset from the
   // beginning of the manuscript — NOT the length that is kept.
@@ -112,7 +125,7 @@ function trimStoryText(text: string, budget: number, quantum: number): string {
   // quantum pins the window to a fixed character offset instead: the prose
   // before it is append-only, so that offset names the same byte on every turn
   // and only jumps once the story has grown a whole quantum past it.
-  const earliestStart = text.length - budget
+  const earliestStart = totalLength - budget
   const start =
     budget >= quantum
       ? Math.ceil(earliestStart / quantum) * quantum
@@ -120,7 +133,14 @@ function trimStoryText(text: string, budget: number, quantum: number): string {
         // up would land past the end of the story and empty the window.
         earliestStart
 
-  const window = text.slice(start)
+  // A start inside the dropped prefix means the tail is smaller than the
+  // budget — only reachable when the inspector's meter previews a window
+  // larger than the one the tail was sized for. Keep the whole tail: an
+  // approximation for the preview, corrected when the committed setting
+  // re-sizes the tail on the next read.
+  if (start < precedingChars) return text
+
+  const window = text.slice(start - precedingChars)
   const boundary = window.indexOf(PARAGRAPH_SEPARATOR)
   if (boundary === -1) return window
   return window.slice(boundary + PARAGRAPH_SEPARATOR.length)
@@ -269,7 +289,10 @@ export function composeContext(input: {
     summary: story.summary,
     storyText: "",
     authorsNote: story.authorsNote,
-    seed: story.entries.length + variant,
+    // entriesBefore keeps the seed identical whether the manuscript arrived
+    // whole or as a tail window — it counts the live entries the window
+    // dropped, so the sum is always the full live count.
+    seed: (story.entriesBefore ?? 0) + story.entries.length + variant,
     approxTokens: 0,
     fit: EMPTY_FIT,
     trim: { windowStart: 0, quantum: 0 },
@@ -295,12 +318,19 @@ export function composeContext(input: {
   const loreUsed = stableFit.used + volatileFit.used
 
   // Markers are applied before budgeting, so `fit` counts the same chars the
-  // budget spends and the two cannot disagree about what a turn costs.
-  const fullStoryText = manuscriptWithOffsets(story.entries).text
+  // budget spends and the two cannot disagree about what a turn costs. When
+  // the story arrived as a tail window, charsBefore stands in for the dropped
+  // prefix: every offset below stays absolute, so the result is byte-identical
+  // to composing over the whole manuscript (see
+  // tests/context-window-equivalence.test.ts).
+  const precedingChars = story.charsBefore ?? 0
+  const tailStoryText = manuscriptWithOffsets(story.entries).text
+  const fullStoryLength = precedingChars + tailStoryText.length
   context.storyText = trimStoryText(
-    fullStoryText,
+    tailStoryText,
     remaining - loreUsed,
-    quantum
+    quantum,
+    precedingChars
   )
 
   // Reconcile. The probe renders the *empty* story shape (two blocks) while a
@@ -335,14 +365,19 @@ export function composeContext(input: {
   // disagreement would be silent in both directions: a permanent gap in the
   // summary, or a call fired every turn for prose already covered.
   context.trim = {
-    windowStart: fullStoryText.length - context.storyText.length,
+    windowStart: fullStoryLength - context.storyText.length,
     quantum,
   }
 
   context.fit = {
     loreMatched: activeLore.length,
     loreStableMatched: stableLore.length,
-    storyChars: fullStoryText.trim().length,
+    // For a windowed story the prefix's own leading whitespace is unknowable
+    // from here; the un-windowed path is exact, and the figure is display-only.
+    storyChars:
+      precedingChars === 0
+        ? tailStoryText.trim().length
+        : precedingChars + tailStoryText.trimEnd().length,
     // Trimmed at both ends for the same reason renderPrompt trims: the leading
     // separator a mid-paragraph cut leaves behind is not prose that fit.
     storyCharsKept: context.storyText.trim().length,
