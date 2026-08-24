@@ -586,7 +586,8 @@ export interface StorySummary {
   genre: string
   createdAt: string
   updatedAt: string
-  wordCount: number
+  /** Only the library grid pays for this; the sidebar list omits it. */
+  wordCount?: number
 }
 
 /**

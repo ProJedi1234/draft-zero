@@ -1,7 +1,17 @@
 // lib/db/queries.ts — Read layer. Server-only: imported by server components
 // and server actions. Every call reads fresh from Postgres (no caching layer).
 
-import { and, asc, count, desc, eq, isNotNull, isNull, ne } from "drizzle-orm"
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  isNotNull,
+  isNull,
+  ne,
+  sql,
+} from "drizzle-orm"
 
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type {
@@ -37,33 +47,52 @@ import {
   stories,
 } from "./schema"
 
-/** All stories, ordered updated_at DESC. wordCount computed per story. */
+/** All stories, ordered updated_at DESC. No word counts — the sidebar never
+ * shows them, and this runs on every request via the root layout. */
 export async function listStories(): Promise<StorySummary[]> {
   const db = await getDb()
-  const [storyRows, entryRows] = await Promise.all([
-    db.select().from(stories).orderBy(desc(stories.updatedAt)),
-    // Only the rows that are actually in the manuscript count towards the
-    // library's word count. Soft-deleted passages and the inactive takes of a
-    // retried slot are still on disk and would otherwise inflate the number
-    // with prose the writer cannot see.
-    db
-      .select({ storyId: storyEntries.storyId, text: storyEntries.text })
-      .from(storyEntries)
-      .where(
-        and(isNull(storyEntries.deletedAt), eq(storyEntries.isActive, true))
-      ),
-  ])
+  const storyRows = await db
+    .select()
+    .from(stories)
+    .orderBy(desc(stories.updatedAt))
+  return storyRows.map((row) => toStorySummary(row))
+}
 
-  const textsByStory = new Map<string, { text: string }[]>()
-  for (const entry of entryRows) {
-    const bucket = textsByStory.get(entry.storyId)
-    if (bucket) bucket.push({ text: entry.text })
-    else textsByStory.set(entry.storyId, [{ text: entry.text }])
-  }
+/**
+ * Word count in SQL, matching countWords in mappers.ts (trim, split on
+ * whitespace, blank is 0). Postgres `\s` is POSIX [[:space:]] where JS \s is
+ * Unicode whitespace — close enough for a display-only figure.
+ */
+const entryWordCount = sql<string>`
+  coalesce(sum(case
+    when btrim(${storyEntries.text}) = '' then 0
+    else array_length(regexp_split_to_array(btrim(${storyEntries.text}), '\\s+'), 1)
+  end), 0)`
 
-  return storyRows.map((row) =>
-    toStorySummary(row, textsByStory.get(row.id) ?? [])
-  )
+/**
+ * The library grid's variant of listStories: the same rows plus a per-story
+ * word count aggregated in Postgres. Only the rows actually in the manuscript
+ * count — soft-deleted passages and the inactive takes of a retried slot are
+ * still on disk and would otherwise inflate the number with prose the writer
+ * cannot see. Aggregated here rather than in JS so the entry text never
+ * leaves the database.
+ */
+export async function listStoriesWithCounts(): Promise<StorySummary[]> {
+  const db = await getDb()
+  const rows = await db
+    .select({ story: stories, wordCount: entryWordCount })
+    .from(stories)
+    .leftJoin(
+      storyEntries,
+      and(
+        eq(storyEntries.storyId, stories.id),
+        isNull(storyEntries.deletedAt),
+        eq(storyEntries.isActive, true)
+      )
+    )
+    .groupBy(stories.id)
+    .orderBy(desc(stories.updatedAt))
+  return rows.map((row) => toStorySummary(row.story, Number(row.wordCount)))
 }
 
 /**

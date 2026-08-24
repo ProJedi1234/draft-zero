@@ -11,7 +11,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import { listStories } from "@/lib/db/queries"
+import { listStoriesWithCounts } from "@/lib/db/queries"
 import { formatRelativeDate } from "@/lib/format"
 
 /**
@@ -32,7 +32,7 @@ import { formatRelativeDate } from "@/lib/format"
  */
 export default async function Page() {
   // Server order is updatedAt DESC — the most recently touched story first.
-  const stories = await listStories()
+  const stories = await listStoriesWithCounts()
 
   if (stories.length === 0) {
     return (
@@ -97,8 +97,8 @@ export default async function Page() {
                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                   {story.genre ? `${story.genre} · ` : ""}
                   {formatRelativeDate(story.updatedAt)}
-                  {story.wordCount > 0
-                    ? ` · ${story.wordCount.toLocaleString()} words`
+                  {(story.wordCount ?? 0) > 0
+                    ? ` · ${story.wordCount?.toLocaleString()} words`
                     : ""}
                 </span>
               </Link>
