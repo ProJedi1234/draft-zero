@@ -1,0 +1,90 @@
+# compose.memwindow.yaml — the windowed-manuscript branch stack, up on its own
+# so long-story paging can be exercised beside whatever else runs on this box.
+#
+#   docker compose -f compose.memwindow.yaml up -d --build
+#   docker compose -f compose.memwindow.yaml down -v
+#
+# Its own project name, volume and ports. `docker ps -a` is the register; at
+# the time of writing 3005/3015 and 5432/5437/5446 were live and the pairs up
+# to draft-zero-summary (5444/3013) were allocated. Check at `up` time.
+#
+# 3016 binds to 0.0.0.0 so the demo is reachable from a phone or an iPad.
+name: draft-zero-memwindow
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: draft_zero
+      POSTGRES_PASSWORD: draft_zero
+      POSTGRES_DB: draft_zero
+    ports:
+      - "127.0.0.1:5447:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U draft_zero -d draft_zero"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: ["bun", "run", "db:migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The demonstration data. `db:seed` is DESTRUCTIVE — safe here and nowhere
+  # else: the DATABASE_URL names this stack's own postgres service, backed by
+  # this file's own named volume, created empty by `up`. Not devpg (5432).
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: ["bun", "run", "db:seed"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Production build, deliberately: this branch is about load and scroll
+  # performance, and the dev server's compile-on-demand and unminified React
+  # dwarf the costs being measured. No source mount — rebuild to update.
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      # Structural branch: windowed loading and canvas paging are exercised
+      # entirely by the offline mock, so no key and nothing billed.
+      OPENROUTER_API_KEY: ""
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+    ports:
+      - "0.0.0.0:3016:3000"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:

@@ -1,8 +1,11 @@
 "use client"
 
 import * as React from "react"
+import { Loader2 } from "lucide-react"
 
-import type { Story } from "@/lib/types"
+import { loadOlderEntries } from "@/lib/actions/entries"
+import { mergeWindowedEntries } from "@/lib/story-window"
+import type { Story, StoryEntry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { formatDateShort } from "@/lib/format"
 import { Badge } from "@/components/ui/badge"
@@ -16,6 +19,14 @@ import type { GenerationStatus } from "@/hooks/use-generation"
 
 /** How close to the bottom the reader must be for streaming to keep scrolling. */
 const STICK_THRESHOLD_PX = 120
+
+/**
+ * How long the viewport must be scroll-quiet before a fetched page of older
+ * passages is allowed to land. Long enough to outlast the gap between two
+ * momentum scroll events, short enough that a page appears the moment a flick
+ * settles.
+ */
+const SCROLL_REST_MS = 120
 
 // Landing at the live edge must happen before the browser paints, otherwise the
 // canvas flashes the top of the manuscript on every story open.
@@ -47,6 +58,41 @@ export function StoryCanvas({
   const contentRef = React.useRef<HTMLDivElement>(null)
   // Sticky by default; flipped off the moment the reader scrolls away.
   const stickToBottomRef = React.useRef(true)
+  // The initial landing at the live edge happens ONCE per story mount. The
+  // landing effect below can legitimately re-run without a remount — dev Fast
+  // Refresh re-runs every effect on a hot update — and re-pinning then throws
+  // a reader who has scrolled up back to the bottom of the manuscript.
+  const landedRef = React.useRef(false)
+
+  // Older passages paged in on scroll-up. The server ships only a tail of a
+  // long manuscript (Story.hasMoreBefore); the rest arrives here in pages,
+  // held in state that survives router.refresh() — this component lives in
+  // the story-keyed editor subtree, so an RSC refresh re-renders it without
+  // remounting, and a story switch resets everything.
+  const [older, setOlder] = React.useState<StoryEntry[]>([])
+  // Null defers to the fresh server answer; set once the first page reports.
+  const [hasMoreOlder, setHasMoreOlder] = React.useState<boolean | null>(null)
+  const olderSentinelRef = React.useRef<HTMLDivElement>(null)
+  /** The oldest loaded position — the next page's cursor. */
+  const olderCursorRef = React.useRef<number | null>(null)
+  /** A fetch on the wire. Separate from the buffer: fetch-ahead fills the
+      buffer long before anyone asks to land it. */
+  const inFlightRef = React.useRef(false)
+  /** Whether pages beyond the buffered one exist — the prefetch stop. */
+  const hasMoreRef = React.useRef<boolean | null>(null)
+  /** The reader is at the edge and wants the next page as soon as it exists. */
+  const landWantedRef = React.useRef(false)
+  /** scrollHeight captured just before a prepend, for scroll anchoring. */
+  const anchorRef = React.useRef<{ height: number } | null>(null)
+  /** A resolved page waiting for the scroller to come to rest. */
+  const pendingPageRef = React.useRef<{
+    entries: StoryEntry[]
+    windowStartPosition: number | null
+    hasMore: boolean
+  } | null>(null)
+  const flushTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Last scroll event on the viewport, for the at-rest gate below. */
+  const lastScrollAtRef = React.useRef(0)
 
   // Live means the provider still owns the passage. `settling` is neither live
   // nor idle: the prose is finished and rendered from the local buffer while its
@@ -56,7 +102,12 @@ export function StoryCanvas({
     status === "pending" || status === "thinking" || status === "streaming"
   const showTail = live || streamingText !== ""
   const removing = new Set(removingEntryIds)
-  const entries = story.entries.filter((entry) => !removing.has(entry.id))
+  // Paged-in prose first, then the server tail; the tail's copy wins any
+  // overlap — the window can slide back across passages already paged in.
+  const entries = mergeWindowedEntries(older, story.entries).filter(
+    (entry) => !removing.has(entry.id)
+  )
+  const moreAbove = hasMoreOlder ?? story.hasMoreBefore ?? false
   const hasContent =
     entries.length > 0 || optimisticUserText !== null || showTail
 
@@ -67,6 +118,173 @@ export function StoryCanvas({
       ) ?? null,
     []
   )
+
+  // Paging is a two-stage pipeline: a background FETCH keeps the next page
+  // buffered ahead of need, and a rest-gated LANDING applies it. The split is
+  // what makes the edge feel immediate — by the time the reader arrives, the
+  // network round trip has already happened, and the only remaining costs are
+  // the rest gate and the commit.
+  //
+  // A prepend only ever lands while the scroller is AT REST. Safari (the
+  // finger-driven Safaris especially) runs momentum and rubber-band scrolling
+  // as an animation that overrides programmatic scrollTop writes — so a
+  // compensation applied mid-flick is silently swallowed and the reader is
+  // dumped at an uncompensated position: the "scroll up and get thrown back"
+  // bug. Deferring the WHOLE application (prepend + compensation together)
+  // until the viewport has been quiet for a beat sidesteps the entire class:
+  // at-rest writes are honored everywhere.
+  //
+  // Self-rescheduling closures reach themselves through refs: the timer may
+  // outlive the render that armed it.
+  const flushRef = React.useRef<(() => void) | null>(null)
+  const fetchRef = React.useRef<(() => Promise<void>) | null>(null)
+  const flushPendingPage = React.useCallback(() => {
+    const page = pendingPageRef.current
+    if (!page) return
+    const sinceScroll = Date.now() - lastScrollAtRef.current
+    if (sinceScroll < SCROLL_REST_MS) {
+      if (flushTimerRef.current !== null) clearTimeout(flushTimerRef.current)
+      flushTimerRef.current = setTimeout(
+        () => flushRef.current?.(),
+        SCROLL_REST_MS - sinceScroll + 10
+      )
+      return
+    }
+    pendingPageRef.current = null
+    landWantedRef.current = false
+    const viewport = getViewport()
+    // Only the pre-prepend HEIGHT is captured — deliberately not scrollTop.
+    // The layout effect adjusts RELATIVELY from wherever the reader is at
+    // commit, so nothing they did in the meantime is thrown away.
+    anchorRef.current = viewport ? { height: viewport.scrollHeight } : null
+    if (page.windowStartPosition !== null)
+      olderCursorRef.current = page.windowStartPosition
+    hasMoreRef.current = page.hasMore
+    setHasMoreOlder(page.hasMore)
+    setOlder((prev) => [
+      ...page.entries.filter(
+        (entry) => !prev.some((held) => held.id === entry.id)
+      ),
+      ...prev,
+    ])
+    // Refill the buffer immediately: the next page rides the network while
+    // the reader is still reading this one. One page ahead, never more — the
+    // buffer IS the bound, so an idle story never streams itself in.
+    if (page.hasMore) void fetchRef.current?.()
+  }, [getViewport])
+  useIsomorphicLayoutEffect(() => {
+    flushRef.current = flushPendingPage
+  }, [flushPendingPage])
+
+  const fetchNextPage = React.useCallback(async () => {
+    if (inFlightRef.current || pendingPageRef.current !== null) return
+    if (hasMoreRef.current === false) return
+    const cursor = olderCursorRef.current ?? story.windowStartPosition
+    if (cursor === undefined || cursor === null) return
+    inFlightRef.current = true
+    const res = await loadOlderEntries(story.id, cursor)
+    inFlightRef.current = false
+    // Silent failure: the sentinel is still there and the next notch of
+    // scroll retries. A toast for "scrolling briefly didn't work" is noise.
+    if (!res.ok) return
+    pendingPageRef.current = {
+      entries: res.data.entries,
+      windowStartPosition: res.data.windowStartPosition,
+      hasMore: res.data.hasMore,
+    }
+    if (landWantedRef.current) flushPendingPage()
+  }, [story.id, story.windowStartPosition, flushPendingPage])
+  useIsomorphicLayoutEffect(() => {
+    fetchRef.current = fetchNextPage
+  }, [fetchNextPage])
+
+  // What the sentinel asks for: land the buffered page if there is one,
+  // otherwise fetch — and land it the moment it arrives.
+  const requestLand = React.useCallback(() => {
+    landWantedRef.current = true
+    if (pendingPageRef.current !== null) flushPendingPage()
+    else void fetchNextPage()
+  }, [flushPendingPage, fetchNextPage])
+
+  // The at-rest gate's clock, plus cleanup for a flush left scheduled.
+  React.useEffect(() => {
+    const viewport = getViewport()
+    if (!viewport) return
+    const onScroll = () => {
+      lastScrollAtRef.current = Date.now()
+    }
+    viewport.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      viewport.removeEventListener("scroll", onScroll)
+      if (flushTimerRef.current !== null) clearTimeout(flushTimerRef.current)
+    }
+  }, [getViewport, story.id])
+
+  // Scroll anchoring for the prepend: keep the passage under the reader's
+  // eyes where it is by growing scrollTop by exactly what the content above
+  // it grew — relative to wherever the reader is NOW, so scrolling done while
+  // the page was in flight survives. Runs before paint; the pin-to-bottom
+  // observer cannot fight it, because reaching the sentinel required
+  // scrolling up, which unsticks it. The manuscript div carries
+  // [overflow-anchor:none], so this is the ONLY compensation — a browser's
+  // native scroll anchoring adjusting alongside it would double-count.
+  useIsomorphicLayoutEffect(() => {
+    const anchor = anchorRef.current
+    if (!anchor) return
+    anchorRef.current = null
+    const viewport = getViewport()
+    if (!viewport) return
+    const grown = viewport.scrollHeight - anchor.height
+    if (grown > 0) viewport.scrollTop += grown
+  }, [older, getViewport])
+
+  // The trigger: a sentinel above the first passage, watched against the
+  // scroll viewport. rootMargin starts the fetch early so the reader
+  // scrolls into prose, not into a gap.
+  React.useEffect(() => {
+    const sentinel = olderSentinelRef.current
+    if (!sentinel || !moreAbove) return
+    const observer = new IntersectionObserver(
+      (observed) => {
+        if (observed.some((entry) => entry.isIntersecting)) requestLand()
+      },
+      { root: getViewport(), rootMargin: "1200px 0px 0px 0px" }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [moreAbove, requestLand, getViewport])
+
+  // Foreign edits reach the tail through router.refresh(), but a paged-in
+  // passage lives in state — so when the story moves, re-read the range this
+  // canvas holds and MERGE fresh copies over the held ones, by id. Never a
+  // replacement: pages can land while this request is in flight, and an
+  // effect re-run (dev Fast Refresh re-runs them all) must not be able to
+  // shrink the loaded window, move the paging cursor, or shift the view —
+  // exactly what a count-sized replacement did. Rows deleted on another
+  // device keep a stale copy here until the next story switch; that is the
+  // cheapest honest answer for a read this rare. On failure the held prose
+  // stands; it is almost always identical.
+  const heldCount = older.length
+  React.useEffect(() => {
+    if (heldCount === 0) return
+    if (story.windowStartPosition === undefined) return
+    let cancelled = false
+    void loadOlderEntries(story.id, story.windowStartPosition, heldCount).then(
+      (res) => {
+        if (cancelled || !res.ok) return
+        const fresh = new Map(
+          res.data.entries.map((entry) => [entry.id, entry])
+        )
+        setOlder((prev) => prev.map((entry) => fresh.get(entry.id) ?? entry))
+      }
+    )
+    return () => {
+      cancelled = true
+    }
+    // Deliberately NOT keyed on heldCount: it re-fires only when the story
+    // itself moves, not when a page arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story.id, story.updatedAt])
 
   // Open at the end of the prose — where the writer actually is — and only ever
   // let a real scroll gesture flip the sticky flag. Seeding the flag from the
@@ -80,7 +298,6 @@ export function StoryCanvas({
     const content = contentRef.current
     if (!content) return
 
-    stickToBottomRef.current = true
     let mounted = true
     let frame: number | null = null
 
@@ -104,8 +321,14 @@ export function StoryCanvas({
     }
 
     // The very first landing is synchronous: deferring it to a frame would let
-    // the browser paint the top of the manuscript first.
-    pinNow()
+    // the browser paint the top of the manuscript first. Once per story mount
+    // (see landedRef) — a re-run of this effect re-attaches the observers and
+    // listeners below but must not move a reader who has walked away.
+    if (!landedRef.current) {
+      landedRef.current = true
+      stickToBottomRef.current = true
+      pinNow()
+    }
 
     // The landing height is wrong for longer than a frame: web fonts swap in
     // over the fallback metrics, and --composer-h (the canvas' bottom padding)
@@ -198,41 +421,68 @@ export function StoryCanvas({
         // BOTH axes (Base UI sets overflow:scroll inline), so any single
         // unbreakable token — a pasted URL, a long imported genre — turns the
         // manuscript into a horizontally pannable page on touch.
-        className="mx-auto w-full max-w-2xl px-6 pt-12 pb-[calc(var(--composer-h,11rem)+2rem)] break-words"
+        className="mx-auto w-full max-w-2xl px-6 pt-12 pb-[calc(var(--composer-h,11rem)+2rem)] break-words [overflow-anchor:none]"
       >
         <span role="status" aria-live="polite" className="sr-only">
           {announcement}
         </span>
-        {/* An imported scenario's "genre" is often its whole tag list, and the
-            badge is whitespace-nowrap by design — so it must be allowed to
-            shrink and ellipsise here, or it sets the width of the canvas. */}
-        <div className="mb-2 flex min-w-0 items-center gap-2">
-          <Badge
-            variant="outline"
-            className="min-w-0 shrink truncate"
-            title={story.genre}
+        {/* The title page renders only once the manuscript's TRUE beginning
+            is loaded. On a windowed story the top of the loaded prose is not
+            the top of the story, and a title sitting above it says "this is
+            where it starts" — the one thing that edge must never claim. Until
+            then the same slot holds a quiet loading mark, so reaching it
+            reads as "still fetching", not "you have arrived". The swap
+            happens in the same commit as the final page landing, so the
+            anchoring effect's height delta covers it and the view stays put. */}
+        {moreAbove ? (
+          <div
+            aria-hidden
+            className="flex justify-center py-10 text-muted-foreground"
           >
-            {story.genre}
-          </Badge>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            Started {formatDateShort(story.createdAt)}
-          </span>
-        </div>
-        <h2 className="font-serif text-3xl font-semibold tracking-tight">
-          {story.title}
-        </h2>
-        {story.description && (
-          <p className="mt-2 font-serif text-base leading-7 text-muted-foreground italic">
-            {story.description}
-          </p>
+            <Loader2 className="size-4 animate-spin" />
+          </div>
+        ) : (
+          <>
+            {/* An imported scenario's "genre" is often its whole tag list, and
+                the badge is whitespace-nowrap by design — so it must be
+                allowed to shrink and ellipsise here, or it sets the width of
+                the canvas. */}
+            <div className="mb-2 flex min-w-0 items-center gap-2">
+              <Badge
+                variant="outline"
+                className="min-w-0 shrink truncate"
+                title={story.genre}
+              >
+                {story.genre}
+              </Badge>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                Started {formatDateShort(story.createdAt)}
+              </span>
+            </div>
+            <h2 className="font-serif text-3xl font-semibold tracking-tight">
+              {story.title}
+            </h2>
+            {story.description && (
+              <p className="mt-2 font-serif text-base leading-7 text-muted-foreground italic">
+                {story.description}
+              </p>
+            )}
+            <Separator className="mx-auto my-10 w-16" />
+          </>
         )}
-        <Separator className="mx-auto my-10 w-16" />
 
         {!hasContent ? (
           <CanvasEmptyState story={story} onSuggestion={onSuggestion} />
         ) : (
           <>
             <div className="space-y-1">
+              {/* Watched by the IntersectionObserver above. Rendered only
+                  while older passages exist, so a finished manuscript top is
+                  just the top. aria-hidden: it is scroll plumbing, not
+                  content. */}
+              {moreAbove && (
+                <div ref={olderSentinelRef} aria-hidden className="h-px" />
+              )}
               {/* `followingCount` is measured against the FILTERED list — the
                   one being rendered — so Retry always sits on the block the
                   reader can actually see at the end of the manuscript, and a
