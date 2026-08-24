@@ -196,8 +196,7 @@ export function StoryHeader({
       inert={focusMode}
       className={cn(
         "flex shrink-0 items-center gap-2 overflow-hidden border-b px-4 transition-[height,opacity] duration-200 ease-linear",
-        // The reduced-motion block in globals.css is scoped to the run mark;
-        // nothing there covers a transition added later.
+        // globals.css's reduced-motion block only covers the run mark.
         "motion-reduce:transition-none",
         focusMode ? "h-0 opacity-0" : "h-14"
       )}

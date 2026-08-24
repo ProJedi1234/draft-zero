@@ -62,8 +62,7 @@ export function InspectorPanel({
       inert={collapsed}
       className={cn(
         "hidden w-80 shrink-0 flex-col overflow-hidden border-l bg-background transition-[width,opacity] duration-200 ease-linear lg:flex",
-        // The reduced-motion block in globals.css is scoped to the run mark;
-        // nothing there covers a transition added later.
+        // globals.css's reduced-motion block only covers the run mark.
         "motion-reduce:transition-none",
         collapsed && "w-0 opacity-0"
       )}
