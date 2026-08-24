@@ -7,6 +7,7 @@ import {
   count,
   desc,
   eq,
+  gte,
   isNotNull,
   isNull,
   ne,
@@ -25,12 +26,17 @@ import type {
   StorySummary,
 } from "@/lib/types"
 
+import { CHARS_PER_TOKEN } from "@/lib/generation/context"
+import { resolveGenerationSettings } from "@/lib/generation/resolve"
+
 import { getDb, type DrizzleDb } from "./client"
 import { readHistoryState } from "./journal"
-import type { EntryCost } from "./mappers"
+import type { EntryCost, ManuscriptWindow, SlotMeta } from "./mappers"
 import {
+  deriveSlotMeta,
   toAppSettings,
   toGenerationDefaults,
+  toGenerationSettings,
   toLorebookEntry,
   toModelProfile,
   toStory,
@@ -145,8 +151,213 @@ export function storyRecapQuery(db: DrizzleDb, storyId: string) {
     .limit(1)
 }
 
-/** Full story with entries, settings, computed wordCount + activeLorebookEntryIds. */
-export async function getStory(id: string): Promise<Story | null> {
+/**
+ * Slack past the composition budget when sizing the manuscript tail. The trim
+ * anchor only ever moves FORWARD from `total - budget`, so budget chars of
+ * tail strictly cover the window; the slack absorbs a retry composing with one
+ * slot's prose filtered out and the paragraph-boundary cut, so neither ever
+ * lands before the tail.
+ */
+const TAIL_SLACK_CHARS = 16384
+/** The canvas floor: even a tiny context window still gets a real page. */
+const MIN_TAIL_ENTRIES = 50
+
+/**
+ * A windowed manuscript read: the tail of the story's ACTIVE rows, sized to
+ * cover the composition window (see charsBefore in lib/types.ts), plus the
+ * aggregates describing everything it dropped.
+ */
+type ManuscriptRead = {
+  rows: (typeof storyEntries.$inferSelect)[]
+  slots: Map<string, SlotMeta>
+  window: ManuscriptWindow | null
+}
+
+/** The one-row probe readManuscriptTail runs before fetching any text. */
+type TailProbe = {
+  total_count: number
+  total_marked: number
+  word_count: number
+  first_gen: string | null
+  last_gen: string | null
+  window_start: number | null
+  tail_count: number
+  tail_marked: number
+}
+
+async function readManuscriptTail(
+  db: DrizzleDb,
+  id: string,
+  contextWindow: number
+): Promise<ManuscriptRead> {
+  const need = contextWindow * CHARS_PER_TOKEN + TAIL_SLACK_CHARS
+
+  // `ml` is one live row's cost in the manuscript, measured in UTF-16 units
+  // the way JS .length measures them — char_length counts codepoints, so the
+  // astral-plane characters the second term counts are worth two each — plus
+  // the "> " player-turn marker and a "\n\n" separator share. These numbers
+  // become charsBefore, and charsBefore feeds the trim anchor: if they drift
+  // from manuscriptWithOffsets by a single unit, prompts change bytes and
+  // caches quietly stop hitting. The dev assertion below and
+  // tests/context-window-equivalence.test.ts are the tripwires.
+  //
+  // The probe reads no text out: it ranks live rows newest-first, keeps rows
+  // until their running length covers the composition budget (or the canvas
+  // floor), and returns only offsets and aggregates. The text of the kept rows
+  // arrives in the follow-up query.
+  const probe = await db.execute(sql`
+    with live as (
+      select "position", "source", "created_at", "text",
+        char_length("text")
+          + (char_length("text")
+             - char_length(regexp_replace("text", '[\\U00010000-\\U0010FFFF]', '', 'g')))
+          + (case when "action_kind" is not null then 2 else 0 end)
+          + 2 as ml
+      from "story_entries"
+      where "story_id" = ${id} and "deleted_at" is null and "is_active"
+    ),
+    ranked as (
+      select "position", ml,
+        sum(ml) over (order by "position" desc) as csum,
+        row_number() over (order by "position" desc) as rn
+      from live
+    ),
+    tail as (
+      select * from ranked where csum - ml < ${need} or rn <= ${MIN_TAIL_ENTRIES}
+    )
+    select
+      (select count(*)::int from live) as total_count,
+      (select coalesce(sum(ml), 0)::int from live) as total_marked,
+      (select coalesce(sum(case
+          when btrim("text") = '' then 0
+          else array_length(regexp_split_to_array(btrim("text"), '\\s+'), 1)
+        end), 0)::int from live) as word_count,
+      (select min("created_at") from live where "source" = 'generated') as first_gen,
+      (select max("created_at") from live where "source" = 'generated') as last_gen,
+      (select min("position")::int from tail) as window_start,
+      (select count(*)::int from tail) as tail_count,
+      (select coalesce(max(csum), 0)::int from tail) as tail_marked
+  `)
+  const stats = probe.rows[0] as unknown as TailProbe
+
+  const [rows, groupRows] = await Promise.all([
+    stats.window_start === null
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(storyEntries)
+          .where(
+            and(
+              eq(storyEntries.storyId, id),
+              isNull(storyEntries.deletedAt),
+              eq(storyEntries.isActive, true),
+              gte(storyEntries.position, stats.window_start)
+            )
+          )
+          .orderBy(asc(storyEntries.position)),
+    // Slot metadata for every retried slot of the story, aggregated so the
+    // inactive takes' text never leaves the database. Story-wide rather than
+    // filtered to the tail: retried slots are rare, the group index covers
+    // this, and the same map then serves pages of older passages too.
+    db
+      .select({
+        groupId: storyEntries.variantGroupId,
+        indexes: sql<
+          number[]
+        >`array_agg(${storyEntries.variantIndex} order by ${storyEntries.variantIndex})`,
+        activeIndex: sql<
+          number | null
+        >`max(${storyEntries.variantIndex}) filter (where ${storyEntries.isActive})`,
+        namedProfiles: sql<number>`count(distinct ${storyEntries.genProfileName})::int`,
+        hasUnnamed: sql<boolean>`bool_or(${storyEntries.genProfileName} is null)`,
+      })
+      .from(storyEntries)
+      .where(and(eq(storyEntries.storyId, id), isNull(storyEntries.deletedAt)))
+      .groupBy(storyEntries.variantGroupId)
+      .having(sql`count(*) > 1`),
+  ])
+
+  const slots = new Map<string, SlotMeta>()
+  for (const group of groupRows) {
+    // A slot whose active take is deleted has no live passage to describe.
+    if (group.activeIndex === null) continue
+    slots.set(group.groupId, {
+      index: group.indexes.indexOf(group.activeIndex),
+      count: group.indexes.length,
+      // Same semantics as slotProfilesMixed: a null profile name is its own
+      // value, so it counts once beside the distinct named ones.
+      profilesMixed: group.namedProfiles + (group.hasUnnamed ? 1 : 0) > 1,
+    })
+  }
+
+  const entriesBefore = stats.total_count - stats.tail_count
+  const charsBefore = stats.total_marked - stats.tail_marked
+
+  if (process.env.NODE_ENV !== "production") {
+    // The SQL length arithmetic above must agree with manuscriptWithOffsets'
+    // joining to the UTF-16 unit — see the ml comment. Cheap to check here,
+    // impossible to notice anywhere else.
+    let tailMarked = 0
+    for (const row of rows)
+      tailMarked += row.text.length + (row.actionKind !== null ? 2 : 0) + 2
+    const fullLength = stats.total_marked === 0 ? 0 : stats.total_marked - 2
+    const tailLength = rows.length === 0 ? 0 : tailMarked - 2
+    if (charsBefore + tailLength !== fullLength)
+      throw new Error(
+        `manuscript window arithmetic drifted: ${charsBefore} + ${tailLength} != ${fullLength} (story ${id})`
+      )
+  }
+
+  return {
+    rows,
+    slots,
+    window: {
+      entriesBefore,
+      charsBefore,
+      hasMoreBefore: entriesBefore > 0,
+      windowStartPosition: stats.window_start,
+      wordCount: stats.word_count,
+      generatedSpan:
+        stats.first_gen !== null && stats.last_gen !== null
+          ? { firstIso: stats.first_gen, lastIso: stats.last_gen }
+          : null,
+    },
+  }
+}
+
+/** Every non-deleted row, active takes and alternatives alike — the old shape. */
+async function readFullManuscript(
+  db: DrizzleDb,
+  id: string
+): Promise<ManuscriptRead> {
+  const allRows = await db
+    .select()
+    .from(storyEntries)
+    .where(and(eq(storyEntries.storyId, id), isNull(storyEntries.deletedAt)))
+    .orderBy(asc(storyEntries.position), asc(storyEntries.variantIndex))
+  return {
+    rows: allRows.filter((row) => row.isActive),
+    slots: deriveSlotMeta(allRows),
+    window: null,
+  }
+}
+
+/**
+ * Full story with settings, computed wordCount + activeLorebookEntryIds — and,
+ * by default, only a TAIL of the manuscript: enough entries to cover the
+ * composition window plus slack, and never fewer than MIN_TAIL_ENTRIES. The
+ * window fields on the result (entriesBefore/charsBefore, see lib/types.ts)
+ * are what keep composeContext byte-identical to the full read; the canvas
+ * pages older passages in on demand.
+ *
+ * `full: true` loads the whole manuscript — for the consumers whose job is the
+ * prose that has fallen OUT of the window (the summarizer) or an arbitrary
+ * prefix of it (the context viewer).
+ */
+export async function getStory(
+  id: string,
+  opts: { full?: boolean } = {}
+): Promise<Story | null> {
   const db = await getDb()
   const storyRow = await db
     .select()
@@ -157,15 +368,10 @@ export async function getStory(id: string): Promise<Story | null> {
 
   if (!storyRow) return null
 
-  const [
-    profileRow,
-    entryRows,
-    lorebookRows,
-    history,
-    recap,
-    costRows,
-    baseline,
-  ] = await Promise.all([
+  // Resolved BEFORE the manuscript read, because the tail is sized from the
+  // effective context window — which lives on the followed profile, not
+  // necessarily on the story row.
+  const [profileRow, baseline] = await Promise.all([
     // Effective settings are resolved here, not stored: a followed story reads
     // its profile every time, so an edit in Settings reaches every follower
     // without touching a single story row. Skipped entirely for Custom.
@@ -177,45 +383,44 @@ export async function getStory(id: string): Promise<Story | null> {
           .where(eq(modelProfiles.id, storyRow.profileId))
           .limit(1)
           .then((rows) => rows[0]),
-    // Every non-deleted row, active takes and alternatives alike. One flat
-    // query rather than a GROUP BY plus a join for the sibling counts: a
-    // manuscript is small and is already loaded whole on every request, so the
-    // extra inactive rows cost less than the second round trip would, and
-    // `toStory` gets everything it needs to fill in variantIndex/variantCount.
-    db
-      .select()
-      .from(storyEntries)
-      .where(and(eq(storyEntries.storyId, id), isNull(storyEntries.deletedAt)))
-      .orderBy(asc(storyEntries.position), asc(storyEntries.variantIndex)),
-    db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
-    readHistoryState(db, id),
-    resolveStoryRecap(id),
-    // The story's spend, as a second small SELECT rather than a join onto the
-    // entries above. A join is the same rows, but a ledger that somehow held two
-    // calls for one take would silently DUPLICATE a passage in the manuscript —
-    // a bookkeeping oddity has no business being able to do that. Indexed on
-    // (story_id, created_at); in-flight calls are excluded because they have no
-    // cost yet and no take.
-    db
-      .select({
-        storyEntryId: generationCalls.storyEntryId,
-        costUsd: generationCalls.costUsd,
-        reasoningTokens: generationCalls.reasoningTokens,
-        status: generationCalls.status,
-      })
-      .from(generationCalls)
-      .where(
-        and(
-          eq(generationCalls.storyId, id),
-          isNotNull(generationCalls.storyEntryId),
-          ne(generationCalls.status, "streaming")
-        )
-      ),
-    // Fetched for every story, followed or not: which of the two it is
-    // depends on profile_id, and branching here would cost a round trip the
-    // Promise.all is already paying for in parallel.
     getGenerationBaseline(),
   ])
+  const effective = resolveGenerationSettings(
+    toGenerationSettings(storyRow),
+    profileRow ? toModelProfile(profileRow) : null,
+    baseline
+  )
+
+  const [manuscript, lorebookRows, history, recap, costRows] =
+    await Promise.all([
+      opts.full
+        ? readFullManuscript(db, id)
+        : readManuscriptTail(db, id, effective.contextWindow),
+      db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
+      readHistoryState(db, id),
+      resolveStoryRecap(id),
+      // The story's spend, as a second small SELECT rather than a join onto the
+      // entries above. A join is the same rows, but a ledger that somehow held
+      // two calls for one take would silently DUPLICATE a passage in the
+      // manuscript — a bookkeeping oddity has no business being able to do
+      // that. Indexed on (story_id, created_at); in-flight calls are excluded
+      // because they have no cost yet and no take.
+      db
+        .select({
+          storyEntryId: generationCalls.storyEntryId,
+          costUsd: generationCalls.costUsd,
+          reasoningTokens: generationCalls.reasoningTokens,
+          status: generationCalls.status,
+        })
+        .from(generationCalls)
+        .where(
+          and(
+            eq(generationCalls.storyId, id),
+            isNotNull(generationCalls.storyEntryId),
+            ne(generationCalls.status, "streaming")
+          )
+        ),
+    ])
 
   const costs = new Map<string, EntryCost>()
   for (const row of costRows) {
@@ -230,13 +435,35 @@ export async function getStory(id: string): Promise<Story | null> {
   return toStory(
     storyRow,
     profileRow ?? null,
-    entryRows,
+    manuscript.rows,
+    manuscript.slots,
     lorebookRows,
     history,
     recap?.text ?? "",
     baseline,
-    costs
+    costs,
+    manuscript.window
   )
+}
+
+/**
+ * The whole manuscript, for the consumers that genuinely need prose from
+ * before the window: the summarizer and the per-entry context viewer.
+ */
+export function getStoryFull(id: string): Promise<Story | null> {
+  return getStory(id, { full: true })
+}
+
+/** Just the title, for generateMetadata — no reason to load a manuscript. */
+export async function getStoryTitle(id: string): Promise<string | null> {
+  const db = await getDb()
+  const row = await db
+    .select({ title: stories.title })
+    .from(stories)
+    .where(eq(stories.id, id))
+    .limit(1)
+    .then((rows) => rows[0])
+  return row?.title ?? null
 }
 
 /**

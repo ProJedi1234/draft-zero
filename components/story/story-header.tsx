@@ -63,6 +63,11 @@ function SaveStatusChip() {
  */
 function useGeneratedSpan(story: Story) {
   return React.useMemo(() => {
+    // The windowed read aggregates the span in SQL — the tail alone would
+    // date the story from wherever the window happens to start. The scan
+    // below survives as the fallback for stories built without the aggregate
+    // (mock data, fixtures).
+    if (story.generatedSpan !== undefined) return story.generatedSpan
     const dates = story.entries
       .filter((entry) => entry.source === "generated")
       .map((entry) => entry.createdAt)
@@ -74,7 +79,7 @@ function useGeneratedSpan(story: Story) {
       if (iso > lastIso) lastIso = iso
     }
     return { firstIso, lastIso }
-  }, [story.entries])
+  }, [story.generatedSpan, story.entries])
 }
 
 export function StoryHeader({

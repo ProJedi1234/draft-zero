@@ -6,6 +6,7 @@ import { getStoryCostProfile } from "@/lib/db/cost-queries"
 import {
   getAppSettings,
   getStory,
+  getStoryTitle,
   listLorebookEntries,
   listModelProfiles,
 } from "@/lib/db/queries"
@@ -22,10 +23,10 @@ export async function generateMetadata({
   params,
 }: StoryPageProps): Promise<Metadata> {
   const { storyId } = await params
-  const story = await getStory(storyId)
+  const title = await getStoryTitle(storyId)
 
   return {
-    title: story?.title ?? "Story",
+    title: title ?? "Story",
   }
 }
 

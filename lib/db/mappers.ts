@@ -243,14 +243,71 @@ export function toStorySummary(
 }
 
 /**
+ * Where the active take of a slot sits among its siblings — the per-slot facts
+ * toStoryEntry needs, without the sibling rows themselves. Derived in JS by
+ * deriveSlotMeta when the whole manuscript is in hand, or aggregated in SQL by
+ * the windowed read, which never loads the inactive takes' text at all.
+ */
+export type SlotMeta = {
+  /** 0-based position of the ACTIVE take, in variantIndex order. */
+  index: number
+  count: number
+  profilesMixed: boolean
+}
+
+/** A slot that has never been retried — every group absent from the meta map. */
+const SOLO_SLOT: SlotMeta = { index: 0, count: 1, profilesMixed: false }
+
+/**
+ * Slot metadata from a full row set — every non-deleted row of the story,
+ * ordered position ASC, variant_index ASC (the caller's ORDER BY is what
+ * guarantees the in-slot order the index is measured against).
+ */
+export function deriveSlotMeta(
+  entryRows: StoryEntryRow[]
+): Map<string, SlotMeta> {
+  const slots = new Map<string, StoryEntryRow[]>()
+  for (const entryRow of entryRows) {
+    const slot = slots.get(entryRow.variantGroupId)
+    if (slot) slot.push(entryRow)
+    else slots.set(entryRow.variantGroupId, [entryRow])
+  }
+
+  const meta = new Map<string, SlotMeta>()
+  for (const [groupId, slot] of slots) {
+    if (slot.length < 2) continue
+    const active = slot.find((entryRow) => entryRow.isActive)
+    if (!active) continue
+    meta.set(groupId, {
+      index: slot.indexOf(active),
+      count: slot.length,
+      profilesMixed: slotProfilesMixed(slot),
+    })
+  }
+  return meta
+}
+
+/**
+ * What the windowed read knows about the manuscript around the tail it loaded.
+ * Null means the rows ARE the whole manuscript and everything is derivable
+ * from them.
+ */
+export type ManuscriptWindow = {
+  entriesBefore: number
+  charsBefore: number
+  hasMoreBefore: boolean
+  windowStartPosition: number | null
+  wordCount: number
+  generatedSpan: { firstIso: string; lastIso: string } | null
+}
+
+/**
  * Full domain story.
  *
- * `entryRows` is EVERY non-deleted row of the story — the active takes and the
- * inactive alternatives alike — already ordered by position ASC, variant_index
- * ASC. The alternatives are here only so each active take can be told how many
- * siblings it has; they never reach the canvas. Everything derived below
- * (wordCount, lorebook triggers) is computed from the ACTIVE list alone, which
- * is what the manuscript actually says.
+ * `activeEntryRows` is the manuscript as rendered — the active take of every
+ * live slot, position ASC — or a tail window of it when `window` is set. The
+ * inactive alternatives never reach this function anymore: everything a take
+ * needs to know about its siblings arrives through `slots`.
  *
  * `lorebookRows` is this story's lorebook — active ids are recomputed by real
  * trigger matching against the recent story text.
@@ -269,7 +326,8 @@ export function toStorySummary(
 export function toStory(
   row: StoryRow,
   profileRow: ModelProfileRow | null,
-  entryRows: StoryEntryRow[],
+  activeEntryRows: StoryEntryRow[],
+  slots: ReadonlyMap<string, SlotMeta>,
   lorebookRows: LorebookEntryRow[],
   history: HistoryState,
   /** The resolved recap text, or "" when this story has none. */
@@ -279,31 +337,16 @@ export function toStory(
    * profile's null fields fall back to, and the app-wide retention floor.
    */
   baseline: GenerationBaseline,
-  costs: ReadonlyMap<string, EntryCost> = new Map()
+  costs: ReadonlyMap<string, EntryCost> = new Map(),
+  window: ManuscriptWindow | null = null
 ): Story {
-  // Slot membership, in variant_index order — the caller's ORDER BY already
-  // guarantees that order, so pushing in arrival order preserves it.
-  const slots = new Map<string, StoryEntryRow[]>()
-  for (const entryRow of entryRows) {
-    const slot = slots.get(entryRow.variantGroupId)
-    if (slot) slot.push(entryRow)
-    else slots.set(entryRow.variantGroupId, [entryRow])
-  }
-
-  const entries = entryRows
-    .filter((entryRow) => entryRow.isActive)
-    .map((entryRow) => {
-      const slot = slots.get(entryRow.variantGroupId) ?? [entryRow]
-      return toStoryEntry(
-        entryRow,
-        {
-          index: slot.indexOf(entryRow),
-          count: slot.length,
-          profilesMixed: slotProfilesMixed(slot),
-        },
-        costs.get(entryRow.id) ?? null
-      )
-    })
+  const entries = activeEntryRows.map((entryRow) =>
+    toStoryEntry(
+      entryRow,
+      slots.get(entryRow.variantGroupId) ?? SOLO_SLOT,
+      costs.get(entryRow.id) ?? null
+    )
+  )
   const lorebookEntries = lorebookRows.map(toLorebookEntry)
   const matches = matchActiveLorebookEntries(
     lorebookEntries,
@@ -321,8 +364,14 @@ export function toStory(
     genre: row.genre,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    wordCount: countEntryWords(entries),
+    // The aggregate when windowed — the tail alone would undercount.
+    wordCount: window ? window.wordCount : countEntryWords(entries),
     entries,
+    entriesBefore: window?.entriesBefore,
+    charsBefore: window?.charsBefore,
+    hasMoreBefore: window?.hasMoreBefore,
+    windowStartPosition: window?.windowStartPosition ?? undefined,
+    generatedSpan: window ? window.generatedSpan : undefined,
     profileId: profileRow ? row.profileId : null,
     settings: resolveGenerationSettings(
       toGenerationSettings(row),
