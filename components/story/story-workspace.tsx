@@ -379,6 +379,21 @@ function useFocusMode(onEnter: () => void): [boolean, () => void] {
     setFocusMode(!focusMode)
   }, [focusMode, onEnter, setOpenMobile, sidebarOpen, setSidebarOpen])
 
+  // Navigating away mid-focus (lorebook, settings) unmounts the workspace
+  // before the exit branch can run, and setOpen(false) already reached the
+  // sidebar cookie — restore here or the collapse persists as the writer's
+  // own choice.
+  const focusModeRef = React.useRef(focusMode)
+  React.useEffect(() => {
+    focusModeRef.current = focusMode
+  }, [focusMode])
+  React.useEffect(
+    () => () => {
+      if (focusModeRef.current) setSidebarOpen(restoreSidebarRef.current)
+    },
+    [setSidebarOpen]
+  )
+
   return [focusMode, toggle]
 }
 
