@@ -22,6 +22,7 @@ import {
   type InspectorTab,
 } from "@/components/inspector/inspector-panel"
 import { Composer } from "@/components/story/composer"
+import { FocusExitButton } from "@/components/story/focus-exit-button"
 import { RetryProfilesProvider } from "@/components/story/retry-profile-menu"
 import { StoryCanvas } from "@/components/story/story-canvas"
 import { StoryHeader } from "@/components/story/story-header"
@@ -102,7 +103,7 @@ export function StoryWorkspace({
   }, [story.id])
 
   return (
-    <div className="flex h-app min-w-0 flex-col">
+    <div className="relative flex h-app min-w-0 flex-col">
       <StoryHeader
         story={story}
         costProfile={costProfile}
@@ -111,6 +112,8 @@ export function StoryWorkspace({
         onOpenMobileInspector={() => setMobileInspectorOpen(true)}
         className={cn(focusMode && "hidden")}
       />
+      {/* Only reachable while focus mode is on, so the toggle IS the exit. */}
+      {focusMode && <FocusExitButton onExit={toggleFocusMode} />}
       <div className="flex min-h-0 flex-1">
         {/* Keyed here, not on the workspace: generation state and the
             uncontrolled-after-mount fields (§4.2) must reset per story. */}
