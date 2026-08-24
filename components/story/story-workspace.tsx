@@ -73,7 +73,11 @@ export function StoryWorkspace({
   const [inspectorTab, setInspectorTab] = useInspectorTab()
   const [mobileInspectorOpen, setMobileInspectorOpen] = React.useState(false)
   const [actionKind, setActionKind] = React.useState<ActionKind>("do")
-  const [focusMode, toggleFocusMode] = useFocusMode()
+  const closeMobileInspector = React.useCallback(
+    () => setMobileInspectorOpen(false),
+    []
+  )
+  const [focusMode, toggleFocusMode] = useFocusMode(closeMobileInspector)
   useFocusModeShortcut(toggleFocusMode)
 
   // The sync channel itself lives in the root layout (components/
@@ -346,10 +350,18 @@ function useHistoryShortcuts(generation: GenerationController) {
  * saved and handed back on exit. ⌘B still works inside focus mode, which is
  * the escape hatch for "I need one thing from the library"; the saved value
  * wins on exit either way.
+ *
+ * The two sheets are dismissed rather than remembered: below lg they are the
+ * rail and the inspector, and a sheet is somewhere the writer went, not a
+ * layout to hand back.
  */
-function useFocusMode(): [boolean, () => void] {
+function useFocusMode(onEnter: () => void): [boolean, () => void] {
   const [focusMode, setFocusMode] = React.useState(false)
-  const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar()
+  const {
+    open: sidebarOpen,
+    setOpen: setSidebarOpen,
+    setOpenMobile,
+  } = useSidebar()
   const restoreSidebarRef = React.useRef(sidebarOpen)
 
   const toggle = React.useCallback(() => {
@@ -358,9 +370,11 @@ function useFocusMode(): [boolean, () => void] {
     } else {
       restoreSidebarRef.current = sidebarOpen
       setSidebarOpen(false)
+      setOpenMobile(false)
+      onEnter()
     }
     setFocusMode(!focusMode)
-  }, [focusMode, sidebarOpen, setSidebarOpen])
+  }, [focusMode, onEnter, setOpenMobile, sidebarOpen, setSidebarOpen])
 
   return [focusMode, toggle]
 }
