@@ -159,6 +159,13 @@ export const storyEntries = pgTable(
       .on(table.storyId, table.position)
       .where(sql`"deleted_at" is null and "is_active"`),
     index("story_entries_group_idx").on(table.storyId, table.variantGroupId),
+    // The manuscript read: every live row of a story in manuscript order. The
+    // unique index above can't serve it — its partial predicate excludes the
+    // inactive takes that read also returns. Scanned backward, it is also the
+    // tail-window read (newest rows first).
+    index("story_entries_story_live_idx")
+      .on(table.storyId, table.position, table.variantIndex)
+      .where(sql`"deleted_at" is null`),
   ]
 )
 

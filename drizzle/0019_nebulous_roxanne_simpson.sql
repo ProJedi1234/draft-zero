@@ -1,0 +1,1 @@
+CREATE INDEX "story_entries_story_live_idx" ON "story_entries" USING btree ("story_id","position","variant_index") WHERE "deleted_at" is null;
