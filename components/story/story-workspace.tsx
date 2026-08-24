@@ -110,6 +110,8 @@ export function StoryWorkspace({
         inspectorOpen={inspectorOpen}
         onToggleInspector={() => setInspectorOpen(!inspectorOpen)}
         onOpenMobileInspector={() => setMobileInspectorOpen(true)}
+        focusMode={focusMode}
+        onEnterFocusMode={toggleFocusMode}
         className={cn(focusMode && "hidden")}
       />
       {/* Only reachable while focus mode is on, so the toggle IS the exit. */}
