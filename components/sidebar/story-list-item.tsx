@@ -25,6 +25,7 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import { DeleteStoryDialog } from "@/components/sidebar/delete-story-dialog"
@@ -114,6 +115,18 @@ export function StoryListItem({
   const [deleteOpen, setDeleteOpen] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
   const elapsed = useElapsed(run.state === "working" ? run.startedAt : null)
+
+  // The kebab menu is portalled and tracks its anchor, so a rail sliding
+  // offcanvas — ⌘B, the trigger, focus mode — leaves it behind, shifted back
+  // into the viewport as a modal menu over the manuscript. Adjusted during
+  // render rather than in an effect, like the mobile sheet's route close: the
+  // menu would otherwise be visibly orphaned for one committed frame.
+  const { state: sidebarState } = useSidebar()
+  const [lastSidebarState, setLastSidebarState] = React.useState(sidebarState)
+  if (sidebarState !== lastSidebarState) {
+    setLastSidebarState(sidebarState)
+    if (sidebarState === "collapsed") setMenuOpen(false)
+  }
 
   function handleMenuClosed(open: boolean) {
     if (open || queuedDialog === null) return

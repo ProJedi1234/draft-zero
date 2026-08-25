@@ -88,19 +88,26 @@ export function StoryHeader({
   inspectorOpen,
   onToggleInspector,
   onOpenMobileInspector,
+  className,
 }: {
   story: Story
   costProfile: StoryCostProfile
   inspectorOpen: boolean
   onToggleInspector: () => void
   onOpenMobileInspector: () => void
+  className?: string
 }) {
   const inspectorLabel = inspectorOpen ? "Hide inspector" : "Show inspector"
   const span = useGeneratedSpan(story)
   const [detailsOpen, setDetailsOpen] = React.useState(false)
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+    <header
+      className={cn(
+        "flex h-14 shrink-0 items-center gap-2 border-b px-4",
+        className
+      )}
+    >
       <SidebarTrigger />
       {/* The title is the door to the story's library metadata — the fields
           used to be in the inspector, and clicking the thing you want to edit

@@ -31,6 +31,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { useSidebar } from "@/components/ui/sidebar"
 
 /** Workspace preferences are the writer's, not the story's — they survive reloads. */
 const INSPECTOR_STORAGE_KEY = "draft-zero:inspector-open"
@@ -72,6 +73,12 @@ export function StoryWorkspace({
   const [inspectorTab, setInspectorTab] = useInspectorTab()
   const [mobileInspectorOpen, setMobileInspectorOpen] = React.useState(false)
   const [actionKind, setActionKind] = React.useState<ActionKind>("do")
+  const closeMobileInspector = React.useCallback(
+    () => setMobileInspectorOpen(false),
+    []
+  )
+  const [focusMode, toggleFocusMode] = useFocusMode(closeMobileInspector)
+  useFocusModeShortcut(toggleFocusMode)
 
   // The sync channel itself lives in the root layout (components/
   // sync-listener.tsx) so the library and settings pages hear `change` too;
@@ -102,6 +109,7 @@ export function StoryWorkspace({
         inspectorOpen={inspectorOpen}
         onToggleInspector={() => setInspectorOpen(!inspectorOpen)}
         onOpenMobileInspector={() => setMobileInspectorOpen(true)}
+        className={cn(focusMode && "hidden")}
       />
       <div className="flex min-h-0 flex-1">
         {/* Keyed here, not on the workspace: generation state and the
@@ -125,7 +133,7 @@ export function StoryWorkspace({
           requireZdr={requireZdr}
           tab={inspectorTab}
           onTabChange={setInspectorTab}
-          className={cn("hidden", inspectorOpen && "lg:flex")}
+          className={cn("hidden", inspectorOpen && !focusMode && "lg:flex")}
         />
       </div>
 
@@ -330,6 +338,68 @@ function useHistoryShortcuts(generation: GenerationController) {
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [canRedo, canUndo, redo, undo])
+}
+
+/**
+ * Focus mode: header, rail and inspector out of the way, manuscript alone.
+ *
+ * Deliberately not persisted — it is a posture for the next hour of writing,
+ * and coming back to a chrome-less app days later reads as a broken layout.
+ *
+ * The rail is app-global state we are borrowing, so its pre-focus value is
+ * saved and handed back on exit. ⌘B still works inside focus mode, which is
+ * the escape hatch for "I need one thing from the library"; the saved value
+ * wins on exit either way.
+ *
+ * The two sheets are dismissed rather than remembered: below lg they are the
+ * rail and the inspector, and a sheet is somewhere the writer went, not a
+ * layout to hand back.
+ */
+function useFocusMode(onEnter: () => void): [boolean, () => void] {
+  const [focusMode, setFocusMode] = React.useState(false)
+  const {
+    open: sidebarOpen,
+    setOpen: setSidebarOpen,
+    setOpenMobile,
+  } = useSidebar()
+  const restoreSidebarRef = React.useRef(sidebarOpen)
+
+  const toggle = React.useCallback(() => {
+    if (focusMode) {
+      setSidebarOpen(restoreSidebarRef.current)
+    } else {
+      restoreSidebarRef.current = sidebarOpen
+      setSidebarOpen(false)
+      setOpenMobile(false)
+      onEnter()
+    }
+    setFocusMode(!focusMode)
+  }, [focusMode, onEnter, setOpenMobile, sidebarOpen, setSidebarOpen])
+
+  return [focusMode, toggle]
+}
+
+/**
+ * ⌘. (Ctrl elsewhere) toggles focus mode.
+ *
+ * No typing guard, unlike useHistoryShortcuts: the writer is in the composer
+ * essentially always, and a modifier combo types nothing to reach past. ⌘B
+ * has claimed the rail from inside the textarea since the beginning.
+ */
+function useFocusModeShortcut(toggle: () => void) {
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) return
+      if (event.key !== ".") return
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return
+
+      event.preventDefault()
+      toggle()
+    }
+
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [toggle])
 }
 
 /** Inspector visibility, remembered across stories and reloads. */
