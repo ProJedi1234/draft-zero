@@ -11,7 +11,6 @@ import type {
   StoryCostProfile,
 } from "@/lib/types"
 import { runHandoff } from "@/lib/sync/client"
-import { cn } from "@/lib/utils"
 import {
   useGeneration,
   type GenerationController,
@@ -112,7 +111,6 @@ export function StoryWorkspace({
         onOpenMobileInspector={() => setMobileInspectorOpen(true)}
         focusMode={focusMode}
         onEnterFocusMode={toggleFocusMode}
-        className={cn(focusMode && "hidden")}
       />
       {/* Only reachable while focus mode is on, so the toggle IS the exit. */}
       {focusMode && <FocusExitButton onExit={toggleFocusMode} />}
@@ -138,7 +136,7 @@ export function StoryWorkspace({
           requireZdr={requireZdr}
           tab={inspectorTab}
           onTabChange={setInspectorTab}
-          className={cn("hidden", inspectorOpen && !focusMode && "lg:flex")}
+          collapsed={!inspectorOpen || focusMode}
         />
       </div>
 
@@ -380,6 +378,21 @@ function useFocusMode(onEnter: () => void): [boolean, () => void] {
     }
     setFocusMode(!focusMode)
   }, [focusMode, onEnter, setOpenMobile, sidebarOpen, setSidebarOpen])
+
+  // Navigating away mid-focus (lorebook, settings) unmounts the workspace
+  // before the exit branch can run, and setOpen(false) already reached the
+  // sidebar cookie — restore here or the collapse persists as the writer's
+  // own choice.
+  const focusModeRef = React.useRef(focusMode)
+  React.useEffect(() => {
+    focusModeRef.current = focusMode
+  }, [focusMode])
+  React.useEffect(
+    () => () => {
+      if (focusModeRef.current) setSidebarOpen(restoreSidebarRef.current)
+    },
+    [setSidebarOpen]
+  )
 
   return [focusMode, toggle]
 }
