@@ -3,9 +3,11 @@
 import * as React from "react"
 import Link from "next/link"
 import {
+  ChevronDown,
   CircleAlert,
   CircleCheck,
   Loader2,
+  Minimize2,
   NotebookText,
   PanelRight,
 } from "lucide-react"
@@ -17,6 +19,13 @@ import { useSaveStatus } from "@/hooks/use-autosave"
 import { CostChip } from "@/components/cost/cost-chip"
 import { StoryDetailsDialog } from "@/components/story/story-details-dialog"
 import { Button, buttonVariants } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import {
   Tooltip,
@@ -82,12 +91,81 @@ function useGeneratedSpan(story: Story) {
   }, [story.generatedSpan, story.entries])
 }
 
+/**
+ * The rail toggle, plus a caret for the things that move the whole workspace
+ * rather than the rail. The toggle itself is untouched — the caret is a second
+ * button beside it, not a mode on the first.
+ *
+ * Focus mode is queued to the menu's close rather than run from the click: the
+ * popup is portalled, so hiding the header out from under an open menu leaves
+ * it floating over the manuscript with nothing to anchor to.
+ */
+function SidebarSplitTrigger({
+  focusMode,
+  onEnterFocusMode,
+}: {
+  focusMode: boolean
+  onEnterFocusMode: () => void
+}) {
+  const [menuOpen, setMenuOpen] = React.useState(false)
+  const [focusQueued, setFocusQueued] = React.useState(false)
+
+  // The same orphan, reached the other way: ⌘. while the menu is open hides the
+  // header without ever closing the menu. Reset during the render that turns
+  // focus mode on rather than in an effect, so the menu is never committed
+  // open with its anchor already gone.
+  const [focusModeWas, setFocusModeWas] = React.useState(focusMode)
+  if (focusMode !== focusModeWas) {
+    setFocusModeWas(focusMode)
+    if (focusMode) setMenuOpen(false)
+  }
+
+  return (
+    <span className="group/rail inline-flex items-center">
+      <SidebarTrigger />
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        onOpenChangeComplete={(open) => {
+          if (open || !focusQueued) return
+          setFocusQueued(false)
+          onEnterFocusMode()
+        }}
+      >
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-caret-sm"
+              aria-label="Workspace options"
+              // The hairline is the only thing saying these two buttons are
+              // one control; it arrives with the hover fill they share.
+              className="border-l border-transparent text-muted-foreground group-hover/rail:border-border"
+            />
+          }
+        >
+          <ChevronDown />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem onClick={() => setFocusQueued(true)}>
+            <Minimize2 />
+            Focus mode
+            <DropdownMenuShortcut>⌘.</DropdownMenuShortcut>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  )
+}
+
 export function StoryHeader({
   story,
   costProfile,
   inspectorOpen,
   onToggleInspector,
   onOpenMobileInspector,
+  focusMode,
+  onEnterFocusMode,
   className,
 }: {
   story: Story
@@ -95,6 +173,9 @@ export function StoryHeader({
   inspectorOpen: boolean
   onToggleInspector: () => void
   onOpenMobileInspector: () => void
+  /** Only to close the portalled menu when the header goes away; the class below still does the hiding. */
+  focusMode: boolean
+  onEnterFocusMode: () => void
   className?: string
 }) {
   const inspectorLabel = inspectorOpen ? "Hide inspector" : "Show inspector"
@@ -108,7 +189,10 @@ export function StoryHeader({
         className
       )}
     >
-      <SidebarTrigger />
+      <SidebarSplitTrigger
+        focusMode={focusMode}
+        onEnterFocusMode={onEnterFocusMode}
+      />
       {/* The title is the door to the story's library metadata — the fields
           used to be in the inspector, and clicking the thing you want to edit
           beats hunting for the field that edits it. The button sits INSIDE the
