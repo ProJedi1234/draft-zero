@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Pencil, RefreshCw, Square, Trash2, X } from "lucide-react"
+import { Pencil, Square, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import type { ImageJob } from "@/hooks/use-image-generation"
@@ -16,6 +16,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { ImageCostChip } from "@/components/cost/image-cost-chip"
+import { ImageRetryButton } from "@/components/story/image-retry-button"
 import { ImagePlaceholder } from "@/components/story/image-placeholder"
 import { ImageVariantSwitcher } from "@/components/story/image-variant-switcher"
 
@@ -43,6 +44,7 @@ export function ImageBlock({
   job,
   busy,
   onRetry,
+  onRetryWithModel,
   onEditPrompt,
   onStop,
 }: {
@@ -53,6 +55,8 @@ export function ImageBlock({
   job: ImageJob | null
   busy: boolean
   onRetry: () => void
+  /** Redraws this take under the named model — the retry caret's pick. */
+  onRetryWithModel: (modelId: string) => void
   /**
    * Puts this picture's prompt back in the composer, armed for image mode. The
    * composer is where prompts are written, so "edit" means "hand it back to the
@@ -113,12 +117,6 @@ export function ImageBlock({
   const actions =
     image && !job
       ? [
-          {
-            key: "retry",
-            icon: RefreshCw,
-            label: "Retry image",
-            onClick: onRetry,
-          },
           {
             key: "edit",
             icon: Pencil,
@@ -215,6 +213,14 @@ export function ImageBlock({
               <Separator orientation="vertical" className="mx-0.5 h-4" />
             </>
           )}
+          {/* Retry leads the cluster and is the one split control in it: the
+              plain half redraws under the story's model, the caret offers the
+              catalog for this take only. */}
+          <ImageRetryButton
+            disabled={busy || isPending}
+            onRetry={onRetry}
+            onRetryWithModel={onRetryWithModel}
+          />
           {actions.map(({ key, icon: Icon, label, onClick }) => (
             <Tooltip key={key}>
               <TooltipTrigger

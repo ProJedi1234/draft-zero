@@ -69,7 +69,7 @@ export function StoryCanvas({
   imageJob: ImageJob | null
   onImageStop: () => void
   /** Another draw of an existing picture — the slot it joins comes from the image. */
-  onImageRetry: (image: StoryImage) => void
+  onImageRetry: (image: StoryImage, modelId?: string) => void
   /** Loads a picture's prompt back into the composer. */
   onImageEditPrompt: (image: StoryImage) => void
   /** Regenerates the last passage. It takes no id: nothing else is retryable. */
@@ -619,6 +619,9 @@ export function StoryCanvas({
                     busy={busy}
                     onStop={onImageStop}
                     onRetry={() => onImageRetry(item.image)}
+                    onRetryWithModel={(modelId) =>
+                      onImageRetry(item.image, modelId)
+                    }
                     onEditPrompt={() => onImageEditPrompt(item.image)}
                   />
                 )
@@ -658,6 +661,7 @@ export function StoryCanvas({
                   // unreachable: ImageBlock renders no action cluster while a
                   // job is running.
                   onRetry={() => {}}
+                  onRetryWithModel={() => {}}
                   onEditPrompt={() => {}}
                 />
               )}

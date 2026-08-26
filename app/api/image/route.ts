@@ -18,6 +18,7 @@ interface Body {
   prompt?: unknown
   aspectRatio?: unknown
   imageGroupId?: unknown
+  modelId?: unknown
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -33,6 +34,14 @@ export async function POST(req: Request): Promise<Response> {
   const aspectRatio = body.aspectRatio as ImageAspectRatio
   const imageGroupId =
     typeof body.imageGroupId === "string" ? body.imageGroupId : undefined
+  // A per-request override — the retry menu's "redraw this take with…". It
+  // does not touch the story's stored choice, which is the promise the menu
+  // makes; and it is honoured verbatim like any explicit pick, so an
+  // ineligible model under ZDR is refused with the message naming the fix.
+  const modelOverride =
+    typeof body.modelId === "string" && body.modelId !== ""
+      ? body.modelId
+      : null
 
   if (storyId === "" || prompt === "") {
     return Response.json(
@@ -56,7 +65,8 @@ export async function POST(req: Request): Promise<Response> {
   // can actually route to, and travels with the run so the provider fails
   // closed rather than trusting account settings to catch it.
   const zdr = story.settings.zdr
-  const modelId = await resolveImageModelId(story.imageModelId, zdr)
+  const modelId =
+    modelOverride ?? (await resolveImageModelId(story.imageModelId, zdr))
 
   // Seeded from the clock: takes of one slot differ only by seed, so a seed
   // that repeats is a retry that returns the picture it meant to replace.

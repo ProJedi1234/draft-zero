@@ -28,6 +28,7 @@ import {
   type InspectorTab,
 } from "@/components/inspector/inspector-panel"
 import { Composer } from "@/components/story/composer"
+import { ImageRetryModelsProvider } from "@/components/story/image-retry-button"
 import { FocusExitButton } from "@/components/story/focus-exit-button"
 import { RetryProfilesProvider } from "@/components/story/retry-profile-menu"
 import { StoryCanvas } from "@/components/story/story-canvas"
@@ -162,17 +163,28 @@ export function StoryWorkspace({
       <div className="flex min-h-0 flex-1">
         {/* Keyed here, not on the workspace: generation state and the
             uncontrolled-after-mount fields (§4.2) must reset per story. */}
-        <StoryEditor
-          key={story.id}
-          story={story}
-          models={models}
-          profiles={profiles}
-          defaultProfileId={defaultProfileId}
-          mode={mode}
-          onModeChange={setMode}
-          attachRef={attachRef}
-          imageAttachRef={imageAttachRef}
-        />
+        <ImageRetryModelsProvider
+          value={{
+            models: imageModels,
+            zdr: story.settings.zdr,
+            // What plain Retry actually draws with — resolved the same way
+            // the server resolves it, so the menu's "current" mark and the
+            // footer name the model the button beside them really runs.
+            currentModelId: story.imageModelId ?? defaultImageModelId,
+          }}
+        >
+          <StoryEditor
+            key={story.id}
+            story={story}
+            models={models}
+            profiles={profiles}
+            defaultProfileId={defaultProfileId}
+            mode={mode}
+            onModeChange={setMode}
+            attachRef={attachRef}
+            imageAttachRef={imageAttachRef}
+          />
+        </ImageRetryModelsProvider>
         <InspectorPanel
           story={story}
           lorebookEntries={lorebookEntries}
@@ -381,13 +393,15 @@ function StoryEditor({
           removingEntryIds={generation.removingEntryIds}
           imageJob={image.job}
           onImageStop={image.stop}
-          onImageRetry={(target) =>
+          onImageRetry={(target, modelId) =>
             void image.generate({
               prompt: target.prompt,
               aspectRatio: target.aspectRatio,
               // Joins the slot, so this is another draw of the same beat rather
               // than a second picture appended to the end of the story.
               imageGroupId: target.imageGroupId,
+              // The caret's pick, this take only; absent for a plain retry.
+              modelId,
             })
           }
           onImageEditPrompt={handleEditImagePrompt}
