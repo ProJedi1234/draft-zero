@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 
 import type { StorySummary } from "@/lib/types"
@@ -22,7 +23,18 @@ export function StoryCard({ story }: { story: StorySummary }) {
   const wordCount = story.wordCount ?? 0
 
   return (
-    <div className="group relative flex items-center gap-2 rounded-lg border border-border/60 bg-card/40 pr-2 transition-colors focus-within:border-border hover:border-border hover:bg-card/80">
+    // The tint rides the outer element, not the link: the wrapper is what
+    // carries the card's own surface, and the two variables have to reach the
+    // .story-card rule painting the wash and spine underneath everything.
+    <div
+      className="story-card group relative flex items-center gap-2 rounded-lg border border-border/60 bg-card/40 pr-2 transition-colors focus-within:border-border hover:border-border hover:bg-card/80"
+      style={
+        {
+          "--story-h": story.tintHue ?? 0,
+          "--story-c": story.tintHue === null ? 0 : story.tintStrength,
+        } as React.CSSProperties
+      }
+    >
       <Link
         href={`/story/${story.id}`}
         className="min-w-0 flex-1 px-4 py-3 outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-ring/30"
