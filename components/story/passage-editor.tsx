@@ -10,6 +10,8 @@ import type { ActionKind, StoryEntry } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { KindSwitcher, kindMeta } from "@/components/story/kind-switcher"
+import { PROSE_TYPE_CLASS } from "@/components/story/prose"
+import { cn } from "@/lib/utils"
 
 /** Unsaved editor text, per passage, for the length of the browser session. */
 const DRAFT_STORAGE_PREFIX = "draft-zero:passage-draft:"
@@ -237,7 +239,15 @@ export function PassageEditor({
         autoCorrect="on"
         autoCapitalize="sentences"
         spellCheck
-        className="min-h-0 border-0 bg-transparent p-0 font-serif text-[1.0625rem] leading-8 text-foreground shadow-none disabled:opacity-100 md:text-[1.0625rem]"
+        // The type spec comes from prose.tsx, not from a second copy of it:
+        // this textarea stands exactly where the passage it is editing was, so
+        // any divergence is a jump on entering and leaving the editor.
+        // md:text-[1.0625rem] stays local — it overrides the Textarea
+        // primitive's own responsive size, which the rendered prose never has.
+        className={cn(
+          PROSE_TYPE_CLASS,
+          "min-h-0 border-0 bg-transparent p-0 shadow-none disabled:opacity-100 md:text-[1.0625rem]"
+        )}
       />
       <span role="status" aria-live="polite" className="sr-only">
         {announceKind ? `${active.label} — ${active.placeholder}` : ""}

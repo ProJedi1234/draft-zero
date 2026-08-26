@@ -5,6 +5,50 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * The story tint. A story contributes exactly two numbers — a hue, and a
+ * strength from 0 to 1 — and every token below is written as
+ * oklch(L, budget * strength, hue). At strength 0 every product is zero and the
+ * whole palette collapses to the chroma-zero values the app has always had, so
+ * an untinted story renders identically to the app before this existed.
+ *
+ * Registered rather than merely declared, for two reasons: a registered
+ * property has a typed initial value (so a page that never sets one is neutral
+ * rather than invalid), and only a registered property can be transitioned.
+ *
+ * Which tokens participate is a taste decision, made once, here. --foreground
+ * and --primary deliberately do NOT: prose stays ink, and the buttons that
+ * carry the app's few solid fills stay neutral against a tinted page.
+ * --destructive is likewise untouched — it means "danger", not "this story".
+ */
+@property --story-h {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --story-c {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+/*
+ * The ambient layer: one light source over the manuscript. A glow above the
+ * prose column and a vignette at the edges, both painted in tokens that equal
+ * --background exactly at strength 0 — so an untinted story gets a gradient
+ * from the page colour to itself, which is no gradient at all.
+ *
+ * A background-image on the shell rather than a positioned ::before: the
+ * canvas and composer are ordinary children with no stacking context of their
+ * own, and a pseudo-element would need a z-index on each of them to sit under.
+ */
+@utility story-ambient {
+  background-image:
+    radial-gradient(120% 90% at 50% 12%, var(--ambient-glow) 0%, transparent 55%),
+    radial-gradient(140% 120% at 50% 50%, transparent 55%, var(--ambient-edge) 100%);
+}
+
+/*
  * Full-height app shell. The viewport is edge-to-edge (viewport-fit=cover), so
  * the shell pads itself below the status bar / notch while its background
  * bleeds behind it. --app-h is set by ViewportHeightSync only while the mobile
@@ -289,6 +333,14 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+    /* The tint's own surfaces. Mapped here so they are ordinary utilities
+       (bg-surface-glass, border-story-accent) rather than arbitrary values —
+       Tailwind can only ship classes it can see, and a var() in brackets at
+       every call site is how the five glass recipes drifted apart before. */
+    --color-story-accent: var(--story-accent);
+    --color-surface-glass: var(--surface-glass);
+    --color-surface-glass-strong: var(--surface-glass-strong);
+    --color-scrim: var(--scrim);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -298,73 +350,143 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/*
+ * Light: the hue as tinted paper.
+ *
+ * The budgets here are roughly six times dark's, and that asymmetry is the
+ * point rather than an oversight. Chroma is perceptually compressed near white:
+ * the 0.012 that reads clearly against an L 0.15 background is invisible
+ * against an L 0.97 one, which is exactly how the first two cuts of this
+ * shipped — light mode measured as tinted and looked plain.
+ *
+ * Both earlier cuts were set from a desktop screenshot and both were called
+ * invisible on a real device. Judge any change to these numbers on the hardware
+ * the app is read on, at arm's length, and not in a headless capture: a tint
+ * that is obvious in a PNG viewed at 100% is nowhere near obvious enough on a
+ * bright panel with True Tone shifting the white point underneath it.
+ *
+ * The surfaces also step further down off white as they tint, because
+ * oklch(1 C H) is white whatever C says. There is no room above L 1 for a
+ * colour to live, so a white page can only take a tint by leaving white
+ * first.
+ */
 :root {
-    --background: oklch(1 0 0);
+    /* Transitioned so a tint change breathes. Only the strength: interpolating
+       a hue from 25 to 305 sweeps the entire wheel, which reads as a rainbow
+       wipe rather than a room changing colour. Hue snaps, chroma fades. */
+    transition: --story-c 500ms ease;
+
+    --background: oklch(calc(1 - 0.075 * var(--story-c)) calc(0.07 * var(--story-c)) var(--story-h));
     --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
+    --card: oklch(calc(1 - 0.062 * var(--story-c)) calc(0.06 * var(--story-c)) var(--story-h));
     --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
+    --popover: oklch(calc(1 - 0.062 * var(--story-c)) calc(0.06 * var(--story-c)) var(--story-h));
     --popover-foreground: oklch(0.145 0 0);
     --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
+    --primary-foreground: oklch(calc(0.985 - 0.05 * var(--story-c)) calc(0.042 * var(--story-c)) var(--story-h));
+    --secondary: oklch(calc(0.97 - 0.078 * var(--story-c)) calc(0.088 * var(--story-c)) var(--story-h));
     --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
+    --muted: oklch(calc(0.97 - 0.078 * var(--story-c)) calc(0.088 * var(--story-c)) var(--story-h));
+    --muted-foreground: oklch(0.556 calc(0.11 * var(--story-c)) var(--story-h));
+    --accent: oklch(calc(0.97 - 0.078 * var(--story-c)) calc(0.088 * var(--story-c)) var(--story-h));
     --accent-foreground: oklch(0.205 0 0);
     --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
+    --border: oklch(calc(0.922 - 0.075 * var(--story-c)) calc(0.105 * var(--story-c)) var(--story-h));
+    --input: oklch(calc(0.922 - 0.075 * var(--story-c)) calc(0.105 * var(--story-c)) var(--story-h));
+    --ring: oklch(0.708 calc(0.15 * var(--story-c)) var(--story-h));
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
+    --sidebar: oklch(calc(0.985 - 0.088 * var(--story-c)) calc(0.078 * var(--story-c)) var(--story-h));
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-primary-foreground: oklch(calc(0.985 - 0.05 * var(--story-c)) calc(0.042 * var(--story-c)) var(--story-h));
+    --sidebar-accent: oklch(calc(0.97 - 0.078 * var(--story-c)) calc(0.088 * var(--story-c)) var(--story-h));
     --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --sidebar-border: oklch(calc(0.922 - 0.075 * var(--story-c)) calc(0.105 * var(--story-c)) var(--story-h));
+    --sidebar-ring: oklch(0.708 calc(0.15 * var(--story-c)) var(--story-h));
+
+    /* Both equal --background at strength 0, so the ambient layer paints the
+       page colour onto itself and disappears. */
+    --ambient-glow: oklch(calc(1 - 0.03 * var(--story-c)) calc(0.055 * var(--story-c)) var(--story-h));
+    --ambient-edge: oklch(calc(1 - 0.17 * var(--story-c)) calc(0.11 * var(--story-c)) var(--story-h));
+    /* The user-passage rule. At strength 0 this is exactly the primary/40 it
+       replaces; at full strength it is the tint's most saturated appearance
+       anywhere in the app, which is why the writer's own words carry it. */
+    --story-accent: oklch(calc(0.205 + 0.295 * var(--story-c)) calc(0.105 * var(--story-c)) var(--story-h) / calc(40% + 35% * var(--story-c)));
 }
 
+/*
+ * Dark: the hue as coloured shadow.
+ *
+ * The comment that used to sit here said dark needs SMALLER budgets than light
+ * because a dark surface holds colour more readily. That is wrong, and it cost
+ * three rounds of tuning to notice. Chroma is compressed at BOTH ends of the
+ * lightness range: perceived colourfulness peaks around mid lightness and falls
+ * away toward black exactly as it does toward white. An L 0.15 surface is no
+ * better at showing a tint than an L 0.97 one, so both schemes need generous
+ * budgets, and neither is the other's reference.
+ *
+ * The corollary is that a tinting surface has to move toward mid lightness to
+ * have anywhere to put the colour: light steps DOWN off white, and dark steps
+ * UP off black. Both blocks now do that.
+ */
 .dark {
-    --background: oklch(0.145 0 0);
+    --background: oklch(calc(0.145 + 0.035 * var(--story-c)) calc(0.05 * var(--story-c)) var(--story-h));
     --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
+    --card: oklch(calc(0.205 + 0.03 * var(--story-c)) calc(0.058 * var(--story-c)) var(--story-h));
     --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
+    --popover: oklch(calc(0.205 + 0.03 * var(--story-c)) calc(0.058 * var(--story-c)) var(--story-h));
     --popover-foreground: oklch(0.985 0 0);
     --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
+    --primary-foreground: oklch(0.205 calc(0.05 * var(--story-c)) var(--story-h));
+    --secondary: oklch(calc(0.269 + 0.02 * var(--story-c)) calc(0.075 * var(--story-c)) var(--story-h));
     --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
+    --muted: oklch(calc(0.269 + 0.02 * var(--story-c)) calc(0.075 * var(--story-c)) var(--story-h));
+    --muted-foreground: oklch(0.708 calc(0.1 * var(--story-c)) var(--story-h));
+    --accent: oklch(calc(0.269 + 0.02 * var(--story-c)) calc(0.075 * var(--story-c)) var(--story-h));
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
+    /* Steps down off pure white as it tints, for the same reason the light
+       surfaces do: at L 1 there is nowhere for chroma to go. */
+    --border: oklch(calc(1 - 0.16 * var(--story-c)) calc(0.13 * var(--story-c)) var(--story-h) / 10%);
+    --input: oklch(calc(1 - 0.16 * var(--story-c)) calc(0.13 * var(--story-c)) var(--story-h) / 15%);
+    --ring: oklch(0.556 calc(0.11 * var(--story-c)) var(--story-h));
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
+    --sidebar: oklch(calc(0.205 + 0.03 * var(--story-c)) calc(0.058 * var(--story-c)) var(--story-h));
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.488 0.243 264.376);
     --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent: oklch(calc(0.269 + 0.02 * var(--story-c)) calc(0.075 * var(--story-c)) var(--story-h));
     --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --sidebar-border: oklch(calc(1 - 0.16 * var(--story-c)) calc(0.13 * var(--story-c)) var(--story-h) / 10%);
+    --sidebar-ring: oklch(0.556 calc(0.11 * var(--story-c)) var(--story-h));
+
+    --ambient-glow: oklch(calc(0.145 + 0.105 * var(--story-c)) calc(0.11 * var(--story-c)) var(--story-h));
+    --ambient-edge: oklch(calc(0.145 - 0.05 * var(--story-c)) calc(0.05 * var(--story-c)) var(--story-h));
+    --story-accent: oklch(calc(0.922 - 0.182 * var(--story-c)) calc(0.16 * var(--story-c)) var(--story-h) / calc(40% + 30% * var(--story-c)));
+}
+
+/*
+ * Surfaces that float over the manuscript, and the scrim behind a modal.
+ *
+ * Derived from --background rather than restated, so they tint with everything
+ * else and there is one place to change how glassy the app is. These were five
+ * inline recipes (three alphas, two blur radii) before the tint gave them a
+ * reason to agree with each other.
+ */
+:root {
+    --surface-glass: color-mix(in oklch, var(--background), transparent 35%);
+    --surface-glass-strong: color-mix(in oklch, var(--background), transparent 15%);
+    /* Neutral on purpose: a scrim is the absence of the page, not more of it. */
+    --scrim: oklch(0 0 0 / 20%);
 }
 
 @layer base {

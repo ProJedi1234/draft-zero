@@ -33,7 +33,7 @@ export function FocusExitButton({ onExit }: { onExit: () => void }) {
             size="icon-sm"
             aria-label="Exit focus mode"
             onClick={onExit}
-            className="absolute top-[calc(0.5rem+env(safe-area-inset-top))] right-[calc(0.5rem+env(safe-area-inset-right))] z-20 bg-background/65 shadow-lg backdrop-blur-md pointer-fine:opacity-0 pointer-fine:hover:opacity-100 pointer-fine:focus-visible:opacity-100"
+            className="absolute top-[calc(0.5rem+env(safe-area-inset-top))] right-[calc(0.5rem+env(safe-area-inset-right))] z-20 bg-surface-glass shadow-lg backdrop-blur-md pointer-fine:opacity-0 pointer-fine:hover:opacity-100 pointer-fine:focus-visible:opacity-100"
           />
         }
       >

@@ -75,7 +75,7 @@ export function CostChip({
       <PopoverContent
         align="end"
         sideOffset={8}
-        className="w-[22rem] gap-0 bg-background/85 p-0 backdrop-blur-md"
+        className="w-[22rem] gap-0 bg-surface-glass-strong p-0 backdrop-blur-md"
         aria-label="Spend ledger"
       >
         <CostLedger profile={profile} span={span} />
