@@ -10,6 +10,7 @@ import { ViewportHeightSync } from "@/components/viewport-height-sync"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/sonner"
 import { listActiveRuns } from "@/lib/generation/live"
+import { listActiveImageRuns } from "@/lib/images/live"
 import { listStories } from "@/lib/db/queries"
 import { cn } from "@/lib/utils"
 
@@ -91,11 +92,14 @@ export default async function RootLayout({
   children: React.ReactNode
 }>) {
   const stories = await listStories()
-  // Synchronous and in-process — the registry is a Map on globalThis, not a
-  // query. Read here rather than inside listStories because it is not database
-  // state: a run lives and dies with this server, and folding it into the read
-  // layer would put a fact with no row in it behind a Postgres round trip.
-  const activeRuns = listActiveRuns()
+  // Synchronous and in-process — the registries are Maps on globalThis, not
+  // queries. Read here rather than inside listStories because it is not
+  // database state: a run lives and dies with this server, and folding it into
+  // the read layer would put a fact with no row in it behind a Postgres round
+  // trip. Both kinds merged, because to the library "working" is one state —
+  // a story drawing a picture is busy in exactly the way one streaming prose
+  // is, and the mark does not owe the reader the distinction.
+  const activeRuns = [...listActiveRuns(), ...listActiveImageRuns()]
 
   return (
     <html

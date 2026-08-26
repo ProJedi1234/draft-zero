@@ -117,12 +117,14 @@ export function useStorySync(): void {
             continue
           }
           if (event.type === "image-run-started") {
-            // Routed like run-started, to its own attach. No scheduleRefresh:
-            // a draw starting persists nothing, and the library carries no
-            // status mark for pictures — the change event on landing covers it.
+            // Routed like run-started, to its own attach — and refreshed for
+            // the same reason: the sidebar's status marks read the registries
+            // during the root layout's render, so without a refetch a story
+            // that started drawing never says so.
             const target = runHandoff.current
             if (target !== null && event.storyId === target.storyId)
               target.onImageRunStarted(event.runId)
+            scheduleRefresh()
             continue
           }
           if (event.type === "summary-stopped") {

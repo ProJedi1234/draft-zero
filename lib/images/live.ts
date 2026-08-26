@@ -30,7 +30,12 @@ import type {
   ImageUsage,
 } from "@/lib/images/types"
 import { publishBus, touchStory } from "@/lib/sync/bus"
-import type { ImageRunEndFrame, ImageRunFrame, ImageRunWireEvent } from "@/lib/sync/types"
+import type {
+  ActiveRun,
+  ImageRunEndFrame,
+  ImageRunFrame,
+  ImageRunWireEvent,
+} from "@/lib/sync/types"
 import type { ImageAspectRatio, SettledCallStatus } from "@/lib/types"
 
 /** Same linger as the text side: a subscriber racing the finish still gets snapshot + end. */
@@ -41,6 +46,12 @@ type ImageRunListener = (event: ImageRunWireEvent) => void
 export interface LiveImageRun {
   readonly runId: string
   readonly storyId: string
+  /**
+   * When the server started this draw. The library counts elapsed time from
+   * here, so every device agrees on how long a render has been going
+   * regardless of when it connected.
+   */
+  readonly startedAt: string
   readonly prompt: string
   readonly aspectRatio: ImageAspectRatio
   /** The slot a retry redraws, or null for a new beat. */
@@ -91,6 +102,19 @@ export function findImageRun(
     if (lingered && lingered.storyId === storyId) return lingered
   }
   return null
+}
+
+/**
+ * Every draw in flight, for the library's status marks — merged with the text
+ * registry's list in the root layout, because a story that is drawing is
+ * "working" in exactly the sense a story that is streaming prose is.
+ */
+export function listActiveImageRuns(): ActiveRun[] {
+  return [...live.active.values()].map((run) => ({
+    storyId: run.storyId,
+    runId: run.runId,
+    startedAt: run.startedAt,
+  }))
 }
 
 export interface ImageRunAttachment {
@@ -150,6 +174,7 @@ export function launchImageRun(
   const run: LiveImageRun = {
     runId: crypto.randomUUID(),
     storyId: opts.storyId,
+    startedAt: new Date().toISOString(),
     storyTitle: opts.storyTitle,
     prompt: opts.prompt,
     aspectRatio: opts.aspectRatio,
@@ -384,6 +409,19 @@ async function finishImageRun(
   // Before the end frame on purpose: by the time the origin device settles,
   // every passive device has been told the tree moved.
   if (imageId !== null) touchStory(run.storyId)
+  // The text side's run-ended, reused rather than twinned: its one consumer —
+  // the library's done/failed marks — is medium-agnostic, unlike run-started,
+  // whose handler must know which subscribe channel to attach. A discarded
+  // run is skipped because its story is being deleted and there is no row
+  // left to mark.
+  if (!run.discarded) {
+    publishBus({
+      kind: "run-ended",
+      storyId: run.storyId,
+      runId: run.runId,
+      status: end.status,
+    })
+  }
   for (const listener of run.listeners) {
     try {
       listener(end)
