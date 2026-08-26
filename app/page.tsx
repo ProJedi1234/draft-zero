@@ -1,6 +1,6 @@
-import Link from "next/link"
 import { Feather } from "lucide-react"
 
+import { StoryCard } from "@/components/library/story-card"
 import { ImportScenarioButton } from "@/components/sidebar/import-scenario-button"
 import { NewStoryButton } from "@/components/sidebar/new-story-button"
 import {
@@ -12,7 +12,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 import { listStoriesWithCounts } from "@/lib/db/queries"
-import { formatRelativeDate } from "@/lib/format"
 
 /**
  * The library index, and — more load-bearing than it looks — the one URL in the
@@ -87,21 +86,7 @@ export default async function Page() {
         <ul className="flex flex-col gap-2">
           {stories.map((story) => (
             <li key={story.id}>
-              <Link
-                href={`/story/${story.id}`}
-                className="block rounded-lg border border-border/60 bg-card/40 px-4 py-3 transition-colors hover:border-border hover:bg-card/80"
-              >
-                <span className="block truncate font-medium">
-                  {story.title}
-                </span>
-                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                  {story.genre ? `${story.genre} · ` : ""}
-                  {formatRelativeDate(story.updatedAt)}
-                  {(story.wordCount ?? 0) > 0
-                    ? ` · ${story.wordCount?.toLocaleString()} words`
-                    : ""}
-                </span>
-              </Link>
+              <StoryCard story={story} />
             </li>
           ))}
         </ul>

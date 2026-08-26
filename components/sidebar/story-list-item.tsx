@@ -2,11 +2,8 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
-import { Copy, Loader2, MoreHorizontal, PencilLine, Trash2 } from "lucide-react"
-import { toast } from "sonner"
+import { usePathname } from "next/navigation"
 
-import { duplicateStory } from "@/lib/actions/stories"
 import type { StorySummary } from "@/lib/types"
 import { formatElapsed, formatRelativeDate } from "@/lib/format"
 import type { RunStatus } from "@/hooks/use-run-status"
@@ -15,23 +12,12 @@ import {
   type RunMarkState,
 } from "@/components/sidebar/story-run-mark"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import { DeleteStoryDialog } from "@/components/sidebar/delete-story-dialog"
-import { StoryDetailsDialog } from "@/components/story/story-details-dialog"
-
-type PendingDialog = "details" | "delete" | null
+import { StoryActionsMenu } from "@/components/story/story-actions-menu"
 
 /**
  * The wall clock in whole seconds, re-read once a second while `active`.
@@ -104,48 +90,8 @@ export function StoryListItem({
   run: RunStatus
 }) {
   const pathname = usePathname()
-  const router = useRouter()
   const isActive = pathname === `/story/${story.id}`
-
-  const [menuOpen, setMenuOpen] = React.useState(false)
-  // Dialogs open only once the menu has finished closing, so the menu's
-  // focus restoration never fights the dialog's focus trap.
-  const [queuedDialog, setQueuedDialog] = React.useState<PendingDialog>(null)
-  const [detailsOpen, setDetailsOpen] = React.useState(false)
-  const [deleteOpen, setDeleteOpen] = React.useState(false)
-  const [isPending, startTransition] = React.useTransition()
   const elapsed = useElapsed(run.state === "working" ? run.startedAt : null)
-
-  // The kebab menu is portalled and tracks its anchor, so a rail sliding
-  // offcanvas — ⌘B, the trigger, focus mode — leaves it behind, shifted back
-  // into the viewport as a modal menu over the manuscript. Adjusted during
-  // render rather than in an effect, like the mobile sheet's route close: the
-  // menu would otherwise be visibly orphaned for one committed frame.
-  const { state: sidebarState } = useSidebar()
-  const [lastSidebarState, setLastSidebarState] = React.useState(sidebarState)
-  if (sidebarState !== lastSidebarState) {
-    setLastSidebarState(sidebarState)
-    if (sidebarState === "collapsed") setMenuOpen(false)
-  }
-
-  function handleMenuClosed(open: boolean) {
-    if (open || queuedDialog === null) return
-    if (queuedDialog === "details") setDetailsOpen(true)
-    if (queuedDialog === "delete") setDeleteOpen(true)
-    setQueuedDialog(null)
-  }
-
-  function handleDuplicate() {
-    startTransition(async () => {
-      const res = await duplicateStory(story.id)
-      if (!res.ok) {
-        toast.error(res.error)
-        return
-      }
-      toast.success("Story duplicated")
-      router.push(`/story/${res.data.id}`)
-    })
-  }
 
   return (
     <SidebarMenuItem>
@@ -176,56 +122,13 @@ export function StoryListItem({
       <span className="pointer-events-none absolute top-2 right-1 flex size-5 items-center justify-center group-focus-within/menu-item:opacity-0 group-hover/menu-item:opacity-0">
         <StoryRunMark state={run.state} />
       </span>
-      <DropdownMenu
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
-        onOpenChangeComplete={handleMenuClosed}
-      >
-        <DropdownMenuTrigger
-          render={<SidebarMenuAction showOnHover aria-label="Story actions" />}
-        >
-          {isPending ? (
-            <Loader2 className="animate-spin" />
-          ) : (
-            <MoreHorizontal />
-          )}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="right" align="start">
-          <DropdownMenuItem
-            disabled={isPending}
-            onClick={() => setQueuedDialog("details")}
-          >
-            <PencilLine />
-            Edit details
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled={isPending} onClick={handleDuplicate}>
-            <Copy />
-            Duplicate
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={isPending}
-            onClick={() => setQueuedDialog("delete")}
-          >
-            <Trash2 />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <StoryDetailsDialog
-        storyId={story.id}
-        title={story.title}
-        description={story.description}
-        genre={story.genre}
-        open={detailsOpen}
-        onOpenChange={setDetailsOpen}
-      />
-      <DeleteStoryDialog
-        storyId={story.id}
-        title={story.title}
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
+      <StoryActionsMenu
+        story={story}
+        trigger={<SidebarMenuAction showOnHover aria-label="Story actions" />}
+        side="right"
+        align="start"
+        closeOnSidebarCollapse
+        navigateOnDuplicate
       />
     </SidebarMenuItem>
   )
