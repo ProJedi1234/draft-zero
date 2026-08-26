@@ -125,6 +125,12 @@ export async function updateStoryTint(
     hue: number | null
     /** 0..1. Ignored when hue is null. */
     strength?: number
+    /**
+     * Whether the atmosphere call may keep choosing after this. Left undefined
+     * leaves the flag alone; the swatch row passes false, because a colour
+     * chosen by hand is a decision and not a starting point.
+     */
+    auto?: boolean
   }
 ): Promise<ActionResult> {
   const hue =
@@ -142,8 +148,35 @@ export async function updateStoryTint(
     .set({
       tintHue: hue,
       ...(strength === undefined ? {} : { tintStrength: strength }),
+      ...(patch.auto === undefined ? {} : { tintAuto: patch.auto }),
       updatedAt: new Date().toISOString(),
     })
+    .where(eq(stories.id, id))
+    .returning({ id: stories.id })
+
+  if (updated.length === 0) return { ok: false, error: "Story not found." }
+
+  commitChange(id)
+  return { ok: true, data: null }
+}
+
+/**
+ * Hand the tint back to the model, or take it away again.
+ *
+ * Its own action rather than a field on updateStoryTint's patch because turning
+ * Auto back on deliberately writes NOTHING else: the story keeps whatever
+ * colour it is wearing until the next post-turn check decides the scene has
+ * moved. Clearing the hue here would flash the room grey in between, which is
+ * not what "let it choose" should look like.
+ */
+export async function setStoryTintAuto(
+  id: string,
+  auto: boolean
+): Promise<ActionResult> {
+  const db = await getDb()
+  const updated = await db
+    .update(stories)
+    .set({ tintAuto: auto, updatedAt: new Date().toISOString() })
     .where(eq(stories.id, id))
     .returning({ id: stories.id })
 

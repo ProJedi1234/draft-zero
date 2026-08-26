@@ -169,6 +169,13 @@
       "when": 1787781092711,
       "tag": "0023_image_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787856274495,
+      "tag": "0024_mighty_zemo",
+      "breakpoints": true
     }
   ]
 }

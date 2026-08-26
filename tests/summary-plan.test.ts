@@ -66,6 +66,7 @@ function story(entries: StoryEntry[], contextWindow = 8192): Story {
     wordCount: 0,
     tintHue: null,
     tintStrength: 1,
+    tintAuto: true,
     entries,
     images: [],
     profileId: null,

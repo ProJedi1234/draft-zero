@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { AtmosphereCard } from "@/components/settings/atmosphere-card"
 import { GenerationDefaultsCard } from "@/components/settings/generation-defaults-card"
 import { ImageGenerationCard } from "@/components/settings/image-generation-card"
 import { ModelProfilesCard } from "@/components/settings/model-profiles-card"
@@ -208,6 +209,12 @@ function SettingsView({
             summarizer={settings.summarizer}
             requireZdr={requireZdr}
             defaultContextWindow={settings.defaultGeneration.contextWindow}
+          />
+
+          <AtmosphereCard
+            models={models}
+            atmosphere={settings.atmosphere}
+            requireZdr={requireZdr}
           />
 
           <Card size="sm">
