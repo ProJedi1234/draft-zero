@@ -3,6 +3,7 @@
 import * as React from "react"
 import { ChevronRight } from "lucide-react"
 
+import { AtmosphereRow } from "@/components/inspector/atmosphere-row"
 import { NarratorDialog } from "@/components/inspector/narrator-dialog"
 import { SummaryDialog } from "@/components/inspector/summary-dialog"
 import { Button } from "@/components/ui/button"
@@ -140,6 +141,11 @@ export function PromptSection({ story }: { story: Story }) {
         open={narratorOpen}
         onOpenChange={setNarratorOpen}
       />
+
+      {/* Last, and after the separator the spacing already implies: everything
+          above changes what the model reads, and this changes nothing but the
+          room it is read in. */}
+      <AtmosphereRow story={story} />
     </div>
   )
 }
