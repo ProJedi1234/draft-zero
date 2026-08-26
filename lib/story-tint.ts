@@ -29,14 +29,3 @@ export const STORY_TINTS: readonly StoryTint[] = [
   { id: "iris", label: "Iris", hue: 300, strength: 0.9 },
   { id: "rose", label: "Rose", hue: 350, strength: 0.95 },
 ]
-
-/**
- * Which swatch a story is sitting on, or null for none.
- *
- * By hue alone: strength is the swatch's recommendation, and a story whose
- * strength has since been nudged is still that colour.
- */
-export function matchStoryTint(hue: number | null): StoryTint | null {
-  if (hue === null) return null
-  return STORY_TINTS.find((tint) => tint.hue === hue) ?? null
-}

@@ -48,5 +48,19 @@ export function StoryTint({
     return () => window.clearTimeout(settled)
   }, [h, c])
 
+  // Leaving a story is a tint change too. The stylesheet goes with this
+  // component, returning :root to the neutral palette — and StatusBarTint can
+  // no more see that than it could see the arrival, so the strip would keep the
+  // departed story's colour over a neutral library until some unrelated class
+  // change revived it. Its own effect does not re-run on navigation: it depends
+  // on the sidebar's open state, nothing else.
+  React.useEffect(() => {
+    return () => {
+      const notify = () => window.dispatchEvent(new Event(TINT_CHANGE_EVENT))
+      notify()
+      window.setTimeout(notify, 550)
+    }
+  }, [])
+
   return <style>{`:root{--story-h:${h};--story-c:${c}}`}</style>
 }
