@@ -725,6 +725,8 @@ export const MOCK_STORIES: Story[] = [
   {
     id: "story-cartographer",
     title: "The Cartographer's Debt",
+    tintHue: 200,
+    tintStrength: 0.85,
     description:
       "A surveyor who draws maps that come true owes one last chart to the river god that taught her how.",
     genre: "Fantasy",
@@ -802,6 +804,8 @@ export const MOCK_STORIES: Story[] = [
   {
     id: "story-static",
     title: "Static Between Stars",
+    tintHue: 255,
+    tintStrength: 0.85,
     description:
       "A salvage crew answers a distress call from a colony ship that went silent sixty years ago — and finds the broadcast is still being made.",
     genre: "Science Fiction",
@@ -864,6 +868,8 @@ export const MOCK_STORIES: Story[] = [
   {
     id: "story-lighthouse",
     title: "The Lighthouse at Wren Point",
+    tintHue: 60,
+    tintStrength: 1,
     description:
       "A grief-struck keeper takes the winter posting at a lighthouse whose last three keepers all resigned on the same date.",
     genre: "Mystery",
@@ -920,6 +926,8 @@ export const MOCK_STORIES: Story[] = [
   {
     id: "story-untitled",
     title: "Untitled Story",
+    tintHue: null,
+    tintStrength: 1,
     description: "A brand-new draft. Nothing written yet.",
     genre: "Unsorted",
     createdAt: "2026-08-10T07:00:00Z",
@@ -943,6 +951,8 @@ export const MOCK_STORIES: Story[] = [
   {
     id: "story-meridian",
     title: "Signal from the Hollow Deck",
+    tintHue: 25,
+    tintStrength: 1,
     description:
       "Two centuries into the crossing, a sealed deck answers a hail nobody sent.",
     genre: "Science fiction",

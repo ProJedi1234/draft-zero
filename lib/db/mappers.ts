@@ -239,6 +239,8 @@ export function toStorySummary(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     wordCount,
+    tintHue: row.tintHue,
+    tintStrength: row.tintStrength,
   }
 }
 
@@ -383,6 +385,8 @@ export function toStory(
     summarize: row.summarize,
     summary,
     systemPrompt: row.systemPrompt,
+    tintHue: row.tintHue,
+    tintStrength: row.tintStrength,
     activeLorebookEntryIds: matches.map((match) => match.entry.id),
     canUndo: history.canUndo,
     canRedo: history.canRedo,

@@ -86,6 +86,16 @@ export const stories = pgTable("stories", {
   // continuity cliff, and the writer who switched this off asked to stop
   // spending money, not to forget what has happened so far.
   summarize: boolean("summarize").notNull().default(true),
+  // The story's atmosphere: a hue in degrees, or NULL for "untinted". Nullable
+  // rather than defaulted to 0, because 0 is red — "no tint" and "red" are
+  // different answers and a default would silently give every existing story
+  // the second one. The renderer collapses NULL to strength 0, which is the
+  // chroma-zero palette the app had before this column existed.
+  tintHue: integer("tint_hue"),
+  // How far toward the hue the palette travels, 0..1. Per-story rather than
+  // global: cool hues carry further than warm ones at equal chroma, so a teal
+  // story and a gold one want different numbers to read as equally present.
+  tintStrength: doublePrecision("tint_strength").notNull().default(1),
   // Seq of the newest APPLIED op; 0 means none. Everything above it is the redo
   // tail, kept on disk so redo need not reconstruct anything. On the story
   // rather than derived from the ops table because "which op is current" is a

@@ -25,6 +25,7 @@ import { FocusExitButton } from "@/components/story/focus-exit-button"
 import { RetryProfilesProvider } from "@/components/story/retry-profile-menu"
 import { StoryCanvas } from "@/components/story/story-canvas"
 import { StoryHeader } from "@/components/story/story-header"
+import { StoryTint } from "@/components/story/story-tint"
 import {
   Sheet,
   SheetContent,
@@ -102,7 +103,24 @@ export function StoryWorkspace({
   }, [story.id])
 
   return (
-    <div className="relative flex h-app min-w-0 flex-col">
+    // story-ambient is the room's light source: a glow near the top and a
+    // vignette at the edges. It belongs on the workspace, not on the editor
+    // column inside it — scoped to the column, the gradient began at the
+    // header's bottom border, so the colour appeared to slide UNDER a flat
+    // grey bar and the header read as a lid rather than part of the room. The
+    // header paints no background of its own, so lighting the workspace lights
+    // it too. Both gradient stops equal --background at strength 0, so an
+    // untinted story gets a gradient from the page colour to itself — nothing
+    // to see, and nothing to switch off.
+    //
+    // The inspector still paints an opaque --background and so stops the
+    // gradient at its own left border. That seam is known and deliberately
+    // left: closing it means making the panel translucent, which is a
+    // question about what the inspector IS, not about where the light comes
+    // from.
+    <div className="relative flex h-app min-w-0 flex-col story-ambient">
+      {/* Document-wide, and only while a story is open — see StoryTint. */}
+      <StoryTint hue={story.tintHue} strength={story.tintStrength} />
       <StoryHeader
         story={story}
         costProfile={costProfile}
