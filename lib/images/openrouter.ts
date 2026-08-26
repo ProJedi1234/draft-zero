@@ -8,7 +8,9 @@ import "server-only"
 
 import type { ImageAspectRatio } from "@/lib/types"
 
-import { providerOptions } from "./moderation"
+import { zdrTagsForModel } from "@/lib/generation/zdr"
+
+import { imageProviderParam } from "./moderation"
 import type {
   ImageGenerationEvent,
   ImageGenerationProvider,
@@ -68,10 +70,21 @@ export class OpenRouterImageProvider implements ImageGenerationProvider {
   async *generate(
     request: ImageGenerationRequest
   ): AsyncGenerator<ImageGenerationEvent> {
-    const { prompt, modelId, aspectRatio, seed, signal } = request
+    const { prompt, modelId, zdr, aspectRatio, seed, signal } = request
     if (!modelId) throw new Error("No image model selected.")
 
-    const provider = providerOptions(modelId)
+    // Refused here, before any request, with a message that names the actual
+    // problem. Sending it anyway would surface OpenRouter's 404, which points
+    // the writer at their account's privacy page — the wrong lever when the
+    // real fix is picking one of the models the picker leaves selectable.
+    const zdrTags = zdr ? [...(await zdrTagsForModel(modelId))] : []
+    if (zdr && zdrTags.length === 0) {
+      throw new Error(
+        "This model has no zero-data-retention endpoint. Pick one of the models the picker leaves selectable, or turn the story's retention switch off."
+      )
+    }
+
+    const provider = imageProviderParam(modelId, zdr, zdrTags)
 
     const res = await fetch(ENDPOINT, {
       method: "POST",

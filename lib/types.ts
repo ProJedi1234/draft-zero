@@ -860,6 +860,14 @@ export interface OpenRouterImageModel {
   id: string
   name: string
   provider: string
+  /**
+   * At least one of this model's endpoints retains nothing, per OpenRouter's
+   * global ZDR list — the same source the text catalog's flag comes from. False
+   * is also what an unconfigured or failed lookup yields, which is the safe
+   * direction: the picker greys the row rather than promising retention-free
+   * routing the app could not verify.
+   */
+  zdr: boolean
 }
 
 /** A model's reasoning support, straight from the OpenRouter catalog. */

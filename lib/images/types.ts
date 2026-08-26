@@ -13,6 +13,13 @@ export interface ImageGenerationRequest {
    * that the named model drew it.
    */
   modelId: string | null
+  /**
+   * The story's effective retention policy (its own switch, or the app floor
+   * resolve folds in). A live provider must route retention-free or refuse;
+   * the offline mock ignores it, since a picture drawn in the browser never
+   * leaves the machine.
+   */
+  zdr: boolean
   aspectRatio: ImageAspectRatio
   /**
    * Deterministic seed. Takes of one slot differ only in this, which is what
