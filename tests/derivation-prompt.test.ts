@@ -45,7 +45,7 @@ describe("renderDerivationPrompt", () => {
     )
     expect(rendered).toContain("The moment to depict:\nThe arrived moment.")
     expect(rendered).toContain(
-      "Story so far, for context:\nFirst beat.\n\nSecond beat."
+      "Recent passages, for context:\nFirst beat.\n\nSecond beat."
     )
   })
 
@@ -54,7 +54,26 @@ describe("renderDerivationPrompt", () => {
       contextOf({ storyText: "Only this." })
     )
     expect(rendered).toContain("The moment to depict:\nOnly this.")
-    expect(rendered).not.toContain("Story so far")
+    expect(rendered).not.toContain("Recent passages")
+  })
+
+  // The summary is where a character introduced far outside the manuscript
+  // window still has a face — dropping it silently is the continuity bug this
+  // block exists to pin.
+  test("the rolling summary rides along under its own label", () => {
+    const rendered = renderDerivationPrompt(
+      contextOf({ summary: "Long ago, a city drowned.", storyText: "A beat." })
+    )
+    expect(rendered).toContain(
+      "The story so far, summarized:\nLong ago, a city drowned."
+    )
+  })
+
+  test("an empty summary contributes no labelled block", () => {
+    const rendered = renderDerivationPrompt(
+      contextOf({ summary: "  ", storyText: "A beat." })
+    )
+    expect(rendered).not.toContain("summarized")
   })
 
   test("a chevroned player turn is a legitimate final moment", () => {
@@ -106,13 +125,25 @@ describe("DERIVATION_SYSTEM_PROMPT", () => {
     expect(DERIVATION_SYSTEM_PROMPT).toContain('Lines beginning with "> "')
   })
 
-  // The example is the format enforcement. If it ever stops looking like the
-  // output we want, the prohibitions are all that is left holding the shape.
-  test("carries a worked example whose prompt obeys its own rules", () => {
-    const example = DERIVATION_SYSTEM_PROMPT.split("Example prompt:")[1]
-    expect(example).toBeDefined()
-    const words = example!.split("Reply with")[0]!.trim().split(/\s+/)
-    expect(words.length).toBeGreaterThanOrEqual(50)
-    expect(words.length).toBeLessThanOrEqual(90)
+  // The examples are the format enforcement. If they ever stop looking like
+  // the output we want, the prohibitions are all that is left holding the
+  // shape — and if they collapse back to one, every derivation imitates it.
+  test("carries several worked examples, each inside the elastic length band", () => {
+    const examples = DERIVATION_SYSTEM_PROMPT.split("Example prompt:")
+      .slice(1)
+      .map((chunk) => chunk.split(/Example story:|Reply with/)[0]!.trim())
+    expect(examples.length).toBeGreaterThanOrEqual(3)
+    for (const example of examples) {
+      const words = example.split(/\s+/)
+      expect(words.length).toBeGreaterThanOrEqual(25)
+      expect(words.length).toBeLessThanOrEqual(90)
+    }
+  })
+
+  // One example must demonstrate lore-as-canon: appearance details arriving in
+  // a "Relevant details:" block and reappearing in the prompt, not re-imagined.
+  test("one example shows lore appearance details carried into the prompt", () => {
+    expect(DERIVATION_SYSTEM_PROMPT).toContain("Relevant details:")
+    expect(DERIVATION_SYSTEM_PROMPT).toContain("soot-streaked leather apron")
   })
 })
