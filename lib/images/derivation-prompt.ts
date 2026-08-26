@@ -131,7 +131,9 @@ Reply with the prompt only — no preamble, no quotes, no alternatives.`
 
 /**
  * The user turn: the story as the narrator would see it, composed at the
- * story's own context window.
+ * derivation's own small, lore-heavy budget — see DERIVATION_CONTEXT_TOKENS in
+ * app/api/image-prompt/route.ts for why it is neither 2k-and-no-summary nor
+ * the story's full window.
  *
  * Memory and lore ride along because a passage on its own routinely cannot say
  * what it looks like — "she stepped inside" names neither the woman nor the

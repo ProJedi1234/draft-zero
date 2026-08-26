@@ -7,6 +7,7 @@
 // nothing and the writer can ask again for a fraction of a cent.
 import { listLorebookEntries, getStory } from "@/lib/db/queries"
 import { composeContext } from "@/lib/generation/context"
+import { LORE_BUDGET_MAX } from "@/lib/types"
 import { recordCallStarted, settleCall } from "@/lib/generation/calls"
 import { resolveOpenRouterKey } from "@/lib/generation/key"
 import { mapOpenRouterError } from "@/lib/generation/openrouter"
@@ -15,6 +16,38 @@ import { deriveImagePrompt } from "@/lib/images/derive-prompt"
 import { chunkText } from "@/lib/generation/fixtures"
 
 export const runtime = "nodejs"
+
+/**
+ * The derivation's own context budget — deliberately NOT the story's window.
+ *
+ * This call has been at both extremes. It started at 2,048 tokens with the
+ * summary silently dropped, which is where character continuity went to die:
+ * anyone last described outside the slice was re-invented every derivation.
+ * The fix swung to the story's full window, which over-corrected — a
+ * description of one visible moment does not need six thousand tokens of
+ * manuscript, and past a point the extra prose actively dilutes the scene
+ * toward the story's average.
+ *
+ * What the swing taught is that continuity never lived in the raw window: it
+ * lives in the SUMMARY (fixed overhead, always rides) and the LORE. So the
+ * budget is small and lore-heavy: 4,096 tokens with lore allowed its maximum
+ * share, which after the measured overhead, memory and summary leaves roughly
+ * one to two thousand tokens of recent manuscript — the moment and its
+ * immediate approach, not the book. composeContext returns lore's unspent
+ * share to prose, so the split self-balances per story.
+ *
+ * Env-overridable per stack rather than a writer-facing knob, at least until
+ * someone actually wants to tune it per story: a derivation budget is a
+ * property of how the feature works, not of any one manuscript.
+ */
+const DERIVATION_CONTEXT_TOKENS = 4096
+
+function derivationWindow(): number {
+  const parsed = Number(process.env.DERIVATION_CONTEXT_TOKENS)
+  return Number.isInteger(parsed) && parsed > 0
+    ? parsed
+    : DERIVATION_CONTEXT_TOKENS
+}
 
 
 export async function POST(req: Request): Promise<Response> {
@@ -45,20 +78,14 @@ export async function POST(req: Request): Promise<Response> {
     )
   }
 
-  // The narrator's full context, at the story's own window — memory, triggered
-  // lore, the rolling summary and as much manuscript as fits. An earlier slice
-  // capped this at 2,048 tokens to keep the call cheap, and the cap was where
-  // character continuity went to die: a character whose description last
-  // appeared outside the slice was re-invented, differently, every derivation.
-  // renderDerivationPrompt keeps the moment from drowning in the rest — the
-  // final paragraph is split out under its own label — and the cost of the
-  // wider window is a deliberate trade, priced in fractions of a cent and
-  // visible on the ledger.
   const context = composeContext({
     story,
     lorebookEntries,
     variant: 0,
-    contextWindow: story.settings.contextWindow,
+    contextWindow: derivationWindow(),
+    // Lore's ceiling, not its floor: composeContext hands lore's unspent share
+    // back to story prose, so a lore-light story gets its space back for free.
+    loreBudget: LORE_BUDGET_MAX,
   })
 
   const key = resolveOpenRouterKey()
