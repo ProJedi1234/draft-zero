@@ -8,6 +8,7 @@ import "server-only"
 import { MOCK_IMAGE_MODELS, MOCK_IMAGE_PRICES } from "@/lib/mock-data"
 import type { OpenRouterImageModel } from "@/lib/types"
 
+import { getAppSettings } from "@/lib/db/queries"
 import { resolveOpenRouterKey } from "@/lib/generation/key"
 import { zdrModelSlugs } from "@/lib/generation/zdr"
 
@@ -145,25 +146,38 @@ export async function getImageModelPrice(
 }
 
 /**
- * The model a story draws with: its own choice, or the catalog's first entry.
+ * The model a story draws with: its own choice, then the app's default, then
+ * the catalog's first entry.
  *
- * Resolved server-side so nothing has to invent a default. A stored id that has
- * since left the catalog is still honoured rather than silently replaced — the
- * writer chose it, and a request that fails loudly beats one quietly served by
- * a model they did not pick. That includes a stored non-ZDR id under a ZDR
- * policy: the generation path refuses it with a message naming the problem,
- * which beats silently redrawing the story with a model they never selected.
+ * Resolved server-side so nothing has to invent a default. A stored STORY
+ * choice that has since left the catalog is still honoured rather than
+ * silently replaced — the writer chose it, and a request that fails loudly
+ * beats one quietly served by a model they did not pick. That includes a
+ * stored non-ZDR id under a ZDR policy: the generation path refuses it with a
+ * message naming the problem.
  *
- * `zdr` bends only the DEFAULT: a story that never chose falls to the first
- * entry its policy can actually use, so a fresh ZDR story does not start life
- * pointed at a model every request will bounce off.
+ * The APP default is held to a weaker standard on purpose: under a ZDR policy
+ * an ineligible default is passed over rather than honoured into a refusal,
+ * because a default is what the writer gets when they never chose — and what
+ * they never chose must not be a model every request bounces off. Same for
+ * `zdr` bending the final catalog fallback.
  */
 export async function resolveImageModelId(
   storyChoice: string | null,
   zdr = false
 ): Promise<string> {
   if (storyChoice) return storyChoice
-  const models = await listImageModels()
+  const [models, settings] = await Promise.all([
+    listImageModels(),
+    getAppSettings(),
+  ])
   const eligible = zdr ? models.filter((model) => model.zdr) : models
+  const preferred = settings.defaultImageModelId
+  if (
+    preferred !== null &&
+    (!zdr || eligible.some((model) => model.id === preferred))
+  ) {
+    return preferred
+  }
   return eligible[0]?.id ?? models[0]?.id ?? MOCK_IMAGE_MODELS[0].id
 }

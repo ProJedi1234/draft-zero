@@ -55,16 +55,21 @@ function groupByProvider(models: OpenRouterImageModel[]): ProviderGroup[] {
  *
  * It sits outside the profile branch above, because an image model is not part
  * of a model profile — a story following one still has to be able to choose.
+ * Which is also why the default affordance lives IN the picker: with no
+ * profile card to fall back on, "go back to the default" has to be a row the
+ * writer can see and pick, not a state they can only reach by never choosing.
  */
 export function ImageModelSelect({
   models,
   value,
   price,
   zdr,
+  defaultModelId,
+  label = "Image model",
   onValueChange,
 }: {
   models: OpenRouterImageModel[]
-  /** The story's own choice, or null to follow the catalog's first entry. */
+  /** The story's own choice, or null to follow the app's default. */
   value: string | null
   /**
    * What the SELECTED model costs per image, or null when unknown. Read on the
@@ -74,23 +79,32 @@ export function ImageModelSelect({
   price: string | null
   /** The story's effective retention policy — its own switch or the app floor. */
   zdr: boolean
-  onValueChange: (modelId: string) => void
+  /**
+   * What null resolves to, server-resolved so this display can never disagree
+   * with what a generation would actually send. Absent on the settings page,
+   * where this picker EDITS the default rather than following it.
+   */
+  defaultModelId?: string
+  /** "Image model" in the inspector; the settings page names its role instead. */
+  label?: string
+  onValueChange: (modelId: string | null) => void
 }) {
   const [open, setOpen] = React.useState(false)
   const allowed = zdr ? models.filter((model) => model.zdr) : models
   const blocked = zdr ? models.filter((model) => !model.zdr) : []
   const providers = groupByProvider(allowed)
 
-  // Null is "follow the catalog" — resolved for display rather than shown as a
-  // blank or an "Auto" row, since nothing here makes the routing decision that
-  // "Auto" would imply. Under a ZDR policy the catalog's first ELIGIBLE entry,
-  // matching what resolveImageModelId will actually send.
-  const resolved = value ?? allowed[0]?.id ?? models[0]?.id ?? ""
+  // Null is "follow the default" — resolved for display rather than shown as a
+  // blank, since nothing here makes a routing decision an "Auto" would imply.
+  const resolved =
+    value ?? defaultModelId ?? allowed[0]?.id ?? models[0]?.id ?? ""
   const selected = models.find((model) => model.id === resolved)
+  const defaultModel = models.find((model) => model.id === defaultModelId)
+  const following = defaultModelId !== undefined && value === null
 
   return (
     <div className="space-y-2">
-      <Label htmlFor="image-model">Image model</Label>
+      <Label htmlFor="image-model">{label}</Label>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           render={
@@ -105,6 +119,10 @@ export function ImageModelSelect({
               id. Silently falling back to another model would redraw the story
               in something the writer never picked. */}
           <span className="flex-1 truncate text-left">
+            {/* "Default · " names the relationship, not just the model: the
+                writer can tell a story that follows the default from one that
+                happens to have chosen the same model. */}
+            {following && "Default · "}
             {selected?.name ?? resolved}
           </span>
           <ChevronsUpDownIcon className="opacity-50" />
@@ -114,6 +132,25 @@ export function ImageModelSelect({
             <CommandInput placeholder="Search image models…" />
             <CommandList>
               <CommandEmpty>No image model found.</CommandEmpty>
+              {defaultModelId !== undefined && (
+                <CommandGroup>
+                  <CommandItem
+                    value="default app settings"
+                    data-checked={following}
+                    onSelect={() => {
+                      onValueChange(null)
+                      setOpen(false)
+                    }}
+                  >
+                    <span className="flex-1 truncate">
+                      Default{defaultModel ? ` · ${defaultModel.name}` : ""}
+                    </span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      Settings
+                    </span>
+                  </CommandItem>
+                </CommandGroup>
+              )}
               {providers.map(({ provider, models: providerModels }) => (
                 <CommandGroup key={provider} heading={provider}>
                   {providerModels.map((model) => (

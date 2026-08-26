@@ -5,7 +5,7 @@
 // Small enough to own its whole lifecycle here — unlike a story generation,
 // nothing needs to survive the tab closing, since an abandoned prompt is worth
 // nothing and the writer can ask again for a fraction of a cent.
-import { listLorebookEntries, getStory } from "@/lib/db/queries"
+import { getAppSettings, listLorebookEntries, getStory } from "@/lib/db/queries"
 import { composeContext } from "@/lib/generation/context"
 import { LORE_BUDGET_MAX } from "@/lib/types"
 import { recordCallStarted, settleCall } from "@/lib/generation/calls"
@@ -36,19 +36,11 @@ export const runtime = "nodejs"
  * immediate approach, not the book. composeContext returns lore's unspent
  * share to prose, so the split self-balances per story.
  *
- * Env-overridable per stack rather than a writer-facing knob, at least until
- * someone actually wants to tune it per story: a derivation budget is a
- * property of how the feature works, not of any one manuscript.
+ * App-wide rather than per story — a derivation budget is a property of how
+ * the image feature works, not of any one manuscript — and configured on the
+ * settings page (app_settings.image_context_tokens) beside the default image
+ * model, with 4,096 as the shipped default.
  */
-const DERIVATION_CONTEXT_TOKENS = 4096
-
-function derivationWindow(): number {
-  const parsed = Number(process.env.DERIVATION_CONTEXT_TOKENS)
-  return Number.isInteger(parsed) && parsed > 0
-    ? parsed
-    : DERIVATION_CONTEXT_TOKENS
-}
-
 
 export async function POST(req: Request): Promise<Response> {
   let storyId: string
@@ -62,9 +54,10 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: "Malformed request." }, { status: 400 })
   }
 
-  const [story, lorebookEntries] = await Promise.all([
+  const [story, lorebookEntries, appSettings] = await Promise.all([
     getStory(storyId),
     listLorebookEntries(storyId),
+    getAppSettings(),
   ])
   if (!story) {
     return Response.json({ error: "Story not found." }, { status: 404 })
@@ -82,7 +75,7 @@ export async function POST(req: Request): Promise<Response> {
     story,
     lorebookEntries,
     variant: 0,
-    contextWindow: derivationWindow(),
+    contextWindow: appSettings.imageContextTokens,
     // Lore's ceiling, not its floor: composeContext hands lore's unspent share
     // back to story prose, so a lore-light story gets its space back for free.
     loreBudget: LORE_BUDGET_MAX,

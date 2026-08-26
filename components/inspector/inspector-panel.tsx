@@ -35,6 +35,7 @@ export function InspectorPanel({
   models,
   imageModels,
   imageModelPrice,
+  defaultImageModelId,
   profiles,
   defaultProfileId,
   requireZdr,
@@ -48,6 +49,7 @@ export function InspectorPanel({
   imageModels: OpenRouterImageModel[]
   /** What the SELECTED image model costs per image, or null when unknown. */
   imageModelPrice: string | null
+  defaultImageModelId: string
   /** Every profile, in the writer's order — the switcher's list. */
   profiles: ModelProfile[]
   /** The profile new stories start from; starred in the switcher. */
@@ -83,6 +85,7 @@ export function InspectorPanel({
           models={models}
           imageModels={imageModels}
           imageModelPrice={imageModelPrice}
+          defaultImageModelId={defaultImageModelId}
           profiles={profiles}
           defaultProfileId={defaultProfileId}
           requireZdr={requireZdr}
@@ -107,6 +110,7 @@ export function InspectorContent({
   models,
   imageModels,
   imageModelPrice,
+  defaultImageModelId,
   profiles,
   defaultProfileId,
   requireZdr,
@@ -118,6 +122,7 @@ export function InspectorContent({
   models: OpenRouterModel[]
   imageModels: OpenRouterImageModel[]
   imageModelPrice: string | null
+  defaultImageModelId: string
   profiles: ModelProfile[]
   defaultProfileId: string | null
   requireZdr: boolean
@@ -132,6 +137,7 @@ export function InspectorContent({
       models={models}
       imageModels={imageModels}
       imageModelPrice={imageModelPrice}
+      defaultImageModelId={defaultImageModelId}
       profiles={profiles}
       defaultProfileId={defaultProfileId}
       requireZdr={requireZdr}
@@ -156,6 +162,7 @@ function InspectorSections({
   models,
   imageModels,
   imageModelPrice,
+  defaultImageModelId,
   profiles,
   defaultProfileId,
   requireZdr,
@@ -167,6 +174,7 @@ function InspectorSections({
   models: OpenRouterModel[]
   imageModels: OpenRouterImageModel[]
   imageModelPrice: string | null
+  defaultImageModelId: string
   profiles: ModelProfile[]
   defaultProfileId: string | null
   requireZdr: boolean
@@ -255,6 +263,7 @@ function InspectorSections({
                 models={models}
                 imageModels={imageModels}
                 imageModelPrice={imageModelPrice}
+                defaultImageModelId={defaultImageModelId}
                 profiles={profiles}
                 defaultProfileId={defaultProfileId}
                 requireZdr={requireZdr}

@@ -751,7 +751,28 @@ export interface AppSettings {
    * back whatever it says for itself.
    */
   requireZdr: boolean
+  /**
+   * The image model stories draw with unless they chose their own — the one
+   * default images have, since they deliberately sit outside model profiles.
+   * Null means "the catalog's first eligible entry", which is the seed state
+   * rather than a frozen id that would outlive the catalog that suggested it.
+   */
+  defaultImageModelId: string | null
+  /**
+   * The derivation call's context budget, in tokens. App-wide because it is a
+   * property of how the image feature works, not of any one manuscript — see
+   * the rationale where it is spent, in app/api/image-prompt/route.ts.
+   */
+  imageContextTokens: number
 }
+
+/**
+ * The budgets the image-context select offers. A short ladder rather than the
+ * prose window's, because this call's ceiling is dilution, not recall — past a
+ * few thousand tokens the extra manuscript pulls the derived scene toward the
+ * story's average. See app/api/image-prompt/route.ts.
+ */
+export const IMAGE_CONTEXT_OPTIONS = [1024, 2048, 4096, 8192, 16384] as const
 
 /** Uniform server-action result. Actions never throw for expected failures. */
 export type ActionResult<T = null> =
