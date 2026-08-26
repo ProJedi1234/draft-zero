@@ -43,9 +43,15 @@ export function AtmosphereRow({ story }: { story: Story }) {
     version: story.updatedAt,
   })
 
+  // `onSettle` rather than settling both channels here: useServerSyncedValue
+  // counts writes and wants exactly one settle per `write`, and only the caller
+  // knows which of the two it actually wrote. A strength release that settled
+  // the hue as well would drop a swatch press's count to zero while that write
+  // was still travelling, handing the control back to payloads that predate it.
   function save(
     nextHue: number | null,
     nextStrength: number,
+    onSettle: () => void,
     onFail: () => void
   ) {
     startTransition(async () => {
@@ -63,8 +69,7 @@ export function AtmosphereRow({ story }: { story: Story }) {
           error instanceof Error && error.message ? error.message : message
       }
       if (ok) {
-        hue.settle()
-        strength.settle()
+        onSettle()
       } else {
         onFail()
         toast.error(message)
@@ -85,10 +90,18 @@ export function AtmosphereRow({ story }: { story: Story }) {
         : recommended
     hue.write(nextHue)
     strength.write(nextStrength)
-    save(nextHue, nextStrength, () => {
-      hue.reset(previousHue)
-      strength.reset(previousStrength)
-    })
+    save(
+      nextHue,
+      nextStrength,
+      () => {
+        hue.settle()
+        strength.settle()
+      },
+      () => {
+        hue.reset(previousHue)
+        strength.reset(previousStrength)
+      }
+    )
   }
 
   function commitStrength(next: number) {
@@ -96,15 +109,28 @@ export function AtmosphereRow({ story }: { story: Story }) {
     const changed = next !== previous
     strength.write(next)
     if (!changed) return
-    save(hue.server, next, () => strength.reset(previous))
+    save(
+      hue.server,
+      next,
+      () => strength.settle(),
+      () => strength.reset(previous)
+    )
   }
 
   const active = hue.value
 
   return (
     <div className="space-y-2">
-      <Label>Atmosphere</Label>
-      <div className="flex flex-wrap gap-1.5">
+      <Label id={`${uid}-label`}>Atmosphere</Label>
+      {/* A group, so the label and the note below are announced once for the
+          row rather than the note drifting loose in the panel — a <label> with
+          no control and a describedby with no describee name nothing. */}
+      <div
+        role="group"
+        aria-labelledby={`${uid}-label`}
+        aria-describedby={`${uid}-desc`}
+        className="flex flex-wrap gap-1.5"
+      >
         <TintSwatch
           label="No tint"
           selected={active === null}
