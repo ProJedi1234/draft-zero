@@ -134,10 +134,22 @@ export function ImageRetryButton({
           >
             <ChevronDown />
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-64 p-0" sideOffset={4}>
-            <Command>
+          {/* The height is clamped on the POPUP, not just the list. The list
+              carries its own max-height, but this menu is the one place the
+              whole popup must never exceed the screen — a caret anchored to a
+              picture can open with the entire viewport as available room, and
+              a constraint that lives only on an inner flex child has lost on
+              WebKit before. Belt on the popup, braces on the list; min-h-0 on
+              the list is what lets it actually shrink inside the flex column,
+              and the footer is shrink-0 so clamping never eats the promise. */}
+          <PopoverContent
+            align="end"
+            className="max-h-[min(24rem,calc(100dvh-2rem))] w-72 gap-0 overflow-hidden p-0"
+            sideOffset={4}
+          >
+            <Command className="max-h-full">
               <CommandInput placeholder="Redraw with…" />
-              <CommandList className="max-h-64">
+              <CommandList className="min-h-0">
                 <CommandEmpty>No image model found.</CommandEmpty>
                 <ImageModelCommandList
                   models={context.models}
@@ -152,7 +164,7 @@ export function ImageRetryButton({
               {/* The promise this control lives or dies by, word for word the
                   text menu's: trying a model on one picture must not quietly
                   re-point the story. */}
-              <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+              <p className="shrink-0 border-t px-3 py-2 text-xs text-muted-foreground">
                 This take only. The story keeps drawing with{" "}
                 <span className="font-medium text-foreground">
                   {currentName ?? context.currentModelId}
