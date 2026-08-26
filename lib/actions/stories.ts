@@ -109,6 +109,50 @@ export async function updateStoryMeta(
   return { ok: true, data: null }
 }
 
+/**
+ * Set (or clear) the story's atmosphere.
+ *
+ * Validated here rather than trusted from the client, because these two numbers
+ * are interpolated straight into a stylesheet the browser will run — see
+ * StoryTint. A hue outside 0..359 or a strength outside 0..1 is clamped rather
+ * than rejected: they are a swatch and a slider, and there is no writer-visible
+ * failure that "your colour was 400 degrees" would explain.
+ */
+export async function updateStoryTint(
+  id: string,
+  patch: {
+    /** Degrees, or null to clear the tint back to the neutral palette. */
+    hue: number | null
+    /** 0..1. Ignored when hue is null. */
+    strength?: number
+  }
+): Promise<ActionResult> {
+  const hue =
+    patch.hue === null || !Number.isFinite(patch.hue)
+      ? null
+      : ((Math.round(patch.hue) % 360) + 360) % 360
+  const strength =
+    patch.strength === undefined || !Number.isFinite(patch.strength)
+      ? undefined
+      : Math.min(1, Math.max(0, patch.strength))
+
+  const db = await getDb()
+  const updated = await db
+    .update(stories)
+    .set({
+      tintHue: hue,
+      ...(strength === undefined ? {} : { tintStrength: strength }),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(stories.id, id))
+    .returning({ id: stories.id })
+
+  if (updated.length === 0) return { ok: false, error: "Story not found." }
+
+  commitChange(id)
+  return { ok: true, data: null }
+}
+
 /** Full copy (entries + lorebook + settings), title suffixed " (copy)", fresh ids/timestamps. */
 export async function duplicateStory(
   id: string

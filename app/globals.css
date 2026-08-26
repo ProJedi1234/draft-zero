@@ -489,6 +489,67 @@
     --scrim: oklch(0 0 0 / 20%);
 }
 
+/*
+ * A library card wearing its own story's colour, so the shelf reads as a row
+ * of rooms rather than a list of filenames.
+ *
+ * These compute their colours from --story-h/--story-c directly instead of
+ * reusing --border, --card and the rest, and that is forced rather than
+ * chosen. A custom property is substituted where it is DECLARED: --border's
+ * value is computed on :root, with :root's --story-c already folded in, and an
+ * element that overrides the two variables cannot reach back and recompute it.
+ * Every card on this page sits under one :root, so per-card tinting has to be
+ * per-card arithmetic. (The open story is the opposite case — one tint for the
+ * whole document — which is exactly why THAT one goes on :root and gets the
+ * entire palette for free.)
+ *
+ * Both effects are multiplied by --story-c in their alpha, so an untinted
+ * story's card computes to fully transparent and is left exactly as it was —
+ * the same "invisible at strength 0" guarantee the palette makes, kept by the
+ * same means.
+ *
+ * The wash blooms from the left edge and the spine pins it there, because a
+ * card is read left to right and a colour that starts at the title is a colour
+ * you have already seen by the time you reach the words.
+ */
+.story-card {
+  background-image: radial-gradient(
+    120% 160% at 0% 50%,
+    oklch(0.55 calc(0.13 * var(--story-c, 0)) var(--story-h, 0) / calc(16% * var(--story-c, 0)))
+      0%,
+    transparent 70%
+  );
+  box-shadow: inset 2px 0 0 0
+    oklch(0.55 calc(0.13 * var(--story-c, 0)) var(--story-h, 0) / calc(75% * var(--story-c, 0)));
+}
+
+.dark .story-card {
+  background-image: radial-gradient(
+    120% 160% at 0% 50%,
+    oklch(0.72 calc(0.14 * var(--story-c, 0)) var(--story-h, 0) / calc(20% * var(--story-c, 0)))
+      0%,
+    transparent 70%
+  );
+  box-shadow: inset 2px 0 0 0
+    oklch(0.72 calc(0.14 * var(--story-c, 0)) var(--story-h, 0) / calc(80% * var(--story-c, 0)));
+}
+
+/*
+ * A tint swatch in the inspector. Its own colour, not a sample of the live
+ * palette: a swatch has to show what a tint WOULD do while the page is still
+ * showing something else, so it reads --swatch-h/--swatch-c (set per button)
+ * rather than --story-h/--story-c. Two rules because the answer differs by
+ * scheme, exactly as the palette itself does — brighter and more saturated
+ * against a dark page, deeper against a light one.
+ */
+.tint-swatch {
+  background-color: oklch(0.55 calc(0.13 * var(--swatch-c, 1)) var(--swatch-h, 0));
+}
+
+.dark .tint-swatch {
+  background-color: oklch(0.72 calc(0.14 * var(--swatch-c, 1)) var(--swatch-h, 0));
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

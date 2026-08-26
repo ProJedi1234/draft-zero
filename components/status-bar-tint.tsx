@@ -2,6 +2,7 @@
 
 import * as React from "react"
 
+import { TINT_CHANGE_EVENT } from "@/components/story/story-tint"
 import { useSidebar } from "@/components/ui/sidebar"
 
 /**
@@ -84,7 +85,16 @@ export function StatusBarTint() {
       // style on every touch, and repainting the strip for that is pure waste.
       attributeFilter: ["class"],
     })
-    return () => observer.disconnect()
+    // The story tint moves the same two tokens without touching any attribute
+    // this observer can see — it mounts a stylesheet — so it says so directly.
+    // Without this the strip keeps the previous story's colour until some
+    // unrelated class change happens to revive it, which is the same
+    // first-run-only staleness the note above describes.
+    window.addEventListener(TINT_CHANGE_EVENT, apply)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener(TINT_CHANGE_EVENT, apply)
+    }
   }, [openMobile])
 
   return null

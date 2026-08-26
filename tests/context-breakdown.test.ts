@@ -75,6 +75,8 @@ function story(overrides: Partial<Story> = {}): Story {
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     wordCount: 0,
+    tintHue: null,
+    tintStrength: 1,
     entries: [],
     // Custom, i.e. following no profile — so `settings` below is the story's
     // own, which is what every case here is written against.

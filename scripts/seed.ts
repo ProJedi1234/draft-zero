@@ -50,6 +50,8 @@ async function seed() {
       loreBudget: story.settings.loreBudget,
       frequencyPenalty: story.settings.frequencyPenalty,
       presencePenalty: story.settings.presencePenalty,
+      tintHue: story.tintHue,
+      tintStrength: story.tintStrength,
       createdAt: story.createdAt,
       updatedAt: story.updatedAt,
     })

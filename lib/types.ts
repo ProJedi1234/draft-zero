@@ -554,6 +554,16 @@ export interface Story {
   summary: string
   /** Per-story narrator prompt override; null uses DEFAULT_SYSTEM_PROMPT. */
   systemPrompt: string | null
+  /**
+   * The story's atmosphere: a hue in degrees, or null for untinted.
+   *
+   * Only a hue — the palette's lightness and per-token chroma budgets belong to
+   * the colour scheme, so one stored number renders correctly as coloured
+   * shadow in dark and as tinted paper in light. See globals.css.
+   */
+  tintHue: number | null
+  /** How far toward that hue the palette travels, 0..1. Ignored when untinted. */
+  tintStrength: number
   /** LorebookEntry ids currently "triggered" for this story (mocked). */
   activeLorebookEntryIds: string[]
   canUndo: boolean
@@ -609,6 +619,9 @@ export interface StorySummary {
   updatedAt: string
   /** Only the library grid pays for this; the sidebar list omits it. */
   wordCount?: number
+  /** The story's atmosphere, so a card can wear it. See Story.tintHue. */
+  tintHue: number | null
+  tintStrength: number
 }
 
 /**
