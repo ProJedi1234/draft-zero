@@ -1,15 +1,16 @@
 "use client"
 
 import * as React from "react"
+import { Sparkles } from "lucide-react"
 import { toast } from "sonner"
 
 import { SliderField } from "@/components/slider-field"
 import { Label } from "@/components/ui/label"
 import { useDragHold } from "@/hooks/use-drag-hold"
 import { useServerSyncedValue } from "@/hooks/use-server-synced"
-import { updateStoryTint } from "@/lib/actions/stories"
+import { setStoryTintAuto, updateStoryTint } from "@/lib/actions/stories"
 import { STORY_TINTS } from "@/lib/story-tint"
-import type { Story } from "@/lib/types"
+import type { ActionResult, Story } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const FALLBACK_ERROR = "Couldn't save your changes."
@@ -25,7 +26,9 @@ const FALLBACK_ERROR = "Couldn't save your changes."
  * from anywhere else (a slider, a model) needs no new machinery.
  *
  * Off is a swatch rather than a clear button, because "untinted" is a choice
- * about the story's atmosphere and belongs in the same row as the others.
+ * about the story's atmosphere and belongs in the same row as the others. Auto
+ * is in the row for the same reason: "let the story choose" is one of the
+ * answers to the question the row asks, not a setting about the row.
  */
 export function AtmosphereRow({ story }: { story: Story }) {
   const uid = React.useId()
@@ -42,15 +45,24 @@ export function AtmosphereRow({ story }: { story: Story }) {
     hold: dragging,
     version: story.updatedAt,
   })
+  // A third channel for the same reason: the post-turn atmosphere call moves
+  // hue and strength on its own, and the payload announcing that arrives while
+  // a press of Auto here may still be in flight.
+  const auto = useServerSyncedValue(story.tintAuto, {
+    version: story.updatedAt,
+  })
 
-  // `onSettle` rather than settling both channels here: useServerSyncedValue
+  // `onSettle` rather than settling every channel here: useServerSyncedValue
   // counts writes and wants exactly one settle per `write`, and only the caller
-  // knows which of the two it actually wrote. A strength release that settled
+  // knows which of the three it actually wrote. A strength release that settled
   // the hue as well would drop a swatch press's count to zero while that write
   // was still travelling, handing the control back to payloads that predate it.
+  //
+  // The write itself is a thunk for the same reason the flag has its own
+  // action: engaging Auto must not send a hue, so the two gestures cannot share
+  // one call shape — only the error handling and the transition.
   function save(
-    nextHue: number | null,
-    nextStrength: number,
+    write: () => Promise<ActionResult>,
     onSettle: () => void,
     onFail: () => void
   ) {
@@ -58,10 +70,7 @@ export function AtmosphereRow({ story }: { story: Story }) {
       let ok = false
       let message = FALLBACK_ERROR
       try {
-        const result = await updateStoryTint(story.id, {
-          hue: nextHue,
-          strength: nextStrength,
-        })
+        const result = await write()
         ok = result.ok
         if (!result.ok) message = result.error
       } catch (error) {
@@ -80,6 +89,7 @@ export function AtmosphereRow({ story }: { story: Story }) {
   function pick(nextHue: number | null, recommended: number) {
     const previousHue = hue.server
     const previousStrength = strength.server
+    const previousAuto = auto.server
     // The swatch carries its own recommended strength, so pressing one is a
     // complete answer rather than the first half of one. A story that has been
     // tuned away from the recommendation keeps its number: re-pressing the
@@ -90,16 +100,27 @@ export function AtmosphereRow({ story }: { story: Story }) {
         : recommended
     hue.write(nextHue)
     strength.write(nextStrength)
+    // Pinning rides along on the same write rather than following it: a colour
+    // pressed by hand and a flag saying so are one decision, and splitting them
+    // leaves a window in which the next post-turn check could overrule a press
+    // that has already happened.
+    auto.write(false)
     save(
-      nextHue,
-      nextStrength,
+      () =>
+        updateStoryTint(story.id, {
+          hue: nextHue,
+          strength: nextStrength,
+          auto: false,
+        }),
       () => {
         hue.settle()
         strength.settle()
+        auto.settle()
       },
       () => {
         hue.reset(previousHue)
         strength.reset(previousStrength)
+        auto.reset(previousAuto)
       }
     )
   }
@@ -110,14 +131,25 @@ export function AtmosphereRow({ story }: { story: Story }) {
     strength.write(next)
     if (!changed) return
     save(
-      hue.server,
-      next,
+      () => updateStoryTint(story.id, { hue: hue.server, strength: next }),
       () => strength.settle(),
       () => strength.reset(previous)
     )
   }
 
+  function engageAuto() {
+    const previous = auto.server
+    if (previous) return
+    auto.write(true)
+    save(
+      () => setStoryTintAuto(story.id, true),
+      () => auto.settle(),
+      () => auto.reset(previous)
+    )
+  }
+
   const active = hue.value
+  const engaged = auto.value
 
   return (
     <div className="space-y-2">
@@ -131,9 +163,11 @@ export function AtmosphereRow({ story }: { story: Story }) {
         aria-describedby={`${uid}-desc`}
         className="flex flex-wrap gap-1.5"
       >
+        <AutoSwatch engaged={engaged} onSelect={engageAuto} />
         <TintSwatch
           label="No tint"
           selected={active === null}
+          provisional={engaged}
           onSelect={() => pick(null, 1)}
         />
         {STORY_TINTS.map((tint) => (
@@ -142,11 +176,20 @@ export function AtmosphereRow({ story }: { story: Story }) {
             label={tint.label}
             hue={tint.hue}
             selected={active === tint.hue}
+            provisional={engaged}
             onSelect={() => pick(tint.hue, tint.strength)}
           />
         ))}
       </div>
-      {active === null ? (
+      {engaged ? (
+        // No strength slider while the story is choosing: the next check would
+        // move the number back, and a control whose value quietly reverts is
+        // worse than one that isn't there. Pressing a swatch takes it back.
+        <p className="text-xs text-muted-foreground">
+          The story picks its own colour after each turn, as the scene moves.
+          Press a swatch to keep the one it is wearing.
+        </p>
+      ) : active === null ? (
         <p className="text-xs text-muted-foreground">
           The room takes the story&apos;s colour. Light and dark each render it
           their own way.
@@ -174,16 +217,60 @@ export function AtmosphereRow({ story }: { story: Story }) {
   )
 }
 
+/**
+ * The row's one non-colour position: hand the choice back to the model.
+ *
+ * A swatch-shaped button rather than a switch beside the row, because it is
+ * mutually exclusive with the eight colours in exactly the way they are with
+ * each other — and because the row is icon-only, a sparkle carries "chosen for
+ * you" without a word of label in a panel that has room for none.
+ */
+function AutoSwatch({
+  engaged,
+  onSelect,
+}: {
+  engaged: boolean
+  onSelect: () => void
+}) {
+  const label = engaged
+    ? "Auto: the story chooses its colour"
+    : "Auto: let the story choose its colour"
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={engaged}
+      title={label}
+      aria-label={label}
+      className={cn(
+        "flex size-6 items-center justify-center border transition-[box-shadow,border-color,color]",
+        engaged
+          ? "border-foreground text-foreground ring-2 ring-foreground/30"
+          : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+      )}
+    >
+      <Sparkles className="size-3.5" />
+    </button>
+  )
+}
+
 function TintSwatch({
   label,
   hue,
   selected,
+  provisional,
   onSelect,
 }: {
   label: string
   /** Absent for the "no tint" swatch, which shows the neutral palette. */
   hue?: number
   selected: boolean
+  /**
+   * Selected, but by the model rather than by hand — drawn a shade quieter so
+   * the row says which colour the story is wearing without claiming anyone
+   * asked for it.
+   */
+  provisional: boolean
   onSelect: () => void
 }) {
   return (
@@ -195,9 +282,11 @@ function TintSwatch({
       aria-label={label}
       className={cn(
         "tint-swatch size-6 border transition-[box-shadow,border-color]",
-        selected
-          ? "border-foreground ring-2 ring-foreground/30"
-          : "border-border hover:border-foreground/40"
+        !selected && "border-border hover:border-foreground/40",
+        selected &&
+          (provisional
+            ? "border-foreground/50 ring-2 ring-foreground/15"
+            : "border-foreground ring-2 ring-foreground/30")
       )}
       style={
         {
