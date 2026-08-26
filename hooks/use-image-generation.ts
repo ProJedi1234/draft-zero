@@ -3,6 +3,8 @@
 import * as React from "react"
 import { toast } from "sonner"
 
+import { stopIllustration } from "@/lib/actions/images"
+import { subscribeImageRun } from "@/lib/sync/client"
 import type { ImageAspectRatio } from "@/lib/types"
 
 /** What the composer hands over when the writer sends an image. */
@@ -14,23 +16,32 @@ export interface IllustrateRequest {
 }
 
 export interface ImageJob {
+  runId: string
   aspectRatio: ImageAspectRatio
   /** The latest partial, or null before the first one lands. */
   previewB64: string | null
   mediaType: string
+  /**
+   * Set by the end frame once the row is committed. The job is then held until
+   * the refreshed story tree carries that id, so the finished picture never
+   * blinks out and back — the workspace's settle effect is the handover.
+   */
+  landedImageId: string | null
 }
 
+/** How long to wait before re-attaching after a dropped subscribe stream. */
+const RETRY_BACKOFF_MS = [1000, 2000, 5000]
+
 /**
- * Runs one illustration to completion.
+ * Mirrors a story's live image run — whoever started it.
  *
- * Scoped to the STORY rather than to a passage: an image is a beat the writer
- * asks for from the composer, so there is one in flight at a time for the
- * manuscript, the same way there is one generation at a time.
- *
- * The work happens SERVER-side (POST /api/image) — this only holds the
- * in-flight state and the abort. It has to: the key lives on the server, the
- * ledger row has to be opened before the first byte, and a stop has to reach
- * the upstream request rather than merely stopping the browser listening.
+ * The picture twin of useGeneration's attach model: the draw itself is a
+ * detached task on the server (lib/images/live.ts), and this hook is a pure
+ * subscriber. `generate` launches a run and watches it; `attach` watches one
+ * some other device launched (handed over via image-run-started on the sync
+ * channel) or probes "is anything drawing?" with a null runId on mount and
+ * reconnect. Detaching — switching stories, closing the tab — leaves the draw
+ * running, which is the entire point; only `stop` aborts it, from any device.
  */
 export function useImageGeneration(
   storyId: string,
@@ -42,7 +53,8 @@ export function useImageGeneration(
      * only copy of what the writer typed is in flight. A failure that dropped
      * it would make every retry a retype — and the prompt is the expensive part
      * of an illustration, sometimes literally, since the wand may have been
-     * paid for to write it.
+     * paid for to write it. Only the device that sent the prompt restores it:
+     * an attached device never held the draft, so it has nothing to put back.
      */
     onRestoreDraft?: (prompt: string) => void
   } = {}
@@ -50,26 +62,17 @@ export function useImageGeneration(
   const [job, setJob] = React.useState<ImageJob | null>(null)
   const abortRef = React.useRef<AbortController | null>(null)
 
-  // A generation outlives the composer that started it but not the story:
-  // switching stories must not leave a request writing into a canvas that has
-  // moved on. Aborting the fetch aborts the upstream call too — see the route.
-  React.useEffect(() => {
-    return () => abortRef.current?.abort()
-  }, [storyId])
-
-  // Read through a ref so `generate` does not have to be rebuilt (and every
-  // in-flight closure invalidated) each time the workspace re-renders with a
-  // new callback identity.
+  // Read through refs so the callbacks below keep one identity across
+  // renders — same shape as useGeneration. Written in an effect, not during
+  // render: a ref written during render is a value React may discard.
+  const jobRef = React.useRef<ImageJob | null>(null)
   const optionsRef = React.useRef(options)
-  // In an effect, not during render — the same shape useGeneration uses. A ref
-  // written during render is a value React is entitled to discard.
   React.useEffect(() => {
+    jobRef.current = job
     optionsRef.current = options
   })
 
-  // Held so a failure can hand the words back. Cleared once a generation
-  // settles into a row, at which point the prompt is on disk and the composer
-  // is not where it belongs any more.
+  // Held so a failure can hand the words back; null on attached devices.
   const promptRef = React.useRef<string | null>(null)
 
   const restoreDraft = React.useCallback(() => {
@@ -78,32 +81,115 @@ export function useImageGeneration(
     if (prompt !== null) optionsRef.current.onRestoreDraft?.(prompt)
   }, [])
 
-  const stop = React.useCallback(() => {
-    abortRef.current?.abort()
-    abortRef.current = null
-    setJob(null)
-    // A stop is a decision to change something, which almost always means the
-    // prompt. Handing it back is the difference between "stop and edit" and
-    // "stop and retype".
-    restoreDraft()
-  }, [restoreDraft])
-
-  const generate = React.useCallback(
-    async (request: IllustrateRequest) => {
+  /**
+   * The one watch loop. Subscribes (a null runId is the probe), folds frames
+   * into `job`, and re-attaches on a dropped stream — a stall mid-draw must
+   * not strand the shimmer, and the linger window means even a run that
+   * finished during the gap still delivers its end frame.
+   */
+  const watch = React.useCallback(
+    async (runId: string | null) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
-      promptRef.current = request.prompt
 
-      // previewB64 stays null for the whole run: the response is one JSON
-      // object, so the figure shimmers at the right aspect ratio until the
-      // picture lands. Partial previews are a GPT-Image-only feature and are
-      // not wired yet — see lib/images/openrouter.ts.
-      setJob({
-        aspectRatio: request.aspectRatio,
-        previewB64: null,
-        mediaType: "",
-      })
+      let currentRunId = runId
+      for (let attempt = 0; !controller.signal.aborted; attempt++) {
+        let events: AsyncGenerator<
+          import("@/lib/sync/types").ImageRunWireEvent
+        > | null
+        try {
+          events = await subscribeImageRun(
+            storyId,
+            currentRunId,
+            controller.signal
+          )
+        } catch {
+          if (controller.signal.aborted) return
+          const backoff =
+            RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)]
+          await new Promise((resolve) => setTimeout(resolve, backoff))
+          continue
+        }
+
+        // 204: nothing running (and nothing lingering under that id). For the
+        // probe that answer IS the state; for a named run it means the linger
+        // window closed — either way the honest job is none.
+        if (events === null) {
+          if (!controller.signal.aborted) setJob(null)
+          return
+        }
+
+        try {
+          for await (const event of events) {
+            if (controller.signal.aborted) return
+            if (event.type === "image-run") {
+              currentRunId = event.runId
+              setJob({
+                runId: event.runId,
+                aspectRatio: event.aspectRatio,
+                previewB64: event.previewB64,
+                mediaType: event.previewMediaType ?? "",
+                landedImageId: null,
+              })
+            } else if (event.type === "partial") {
+              setJob((prev) =>
+                prev
+                  ? { ...prev, previewB64: event.b64, mediaType: event.mediaType }
+                  : prev
+              )
+            } else if (event.type === "end") {
+              if (event.status === "ok" && event.imageId !== null) {
+                // Held, not cleared: the shimmer covers the gap until the
+                // revalidated tree delivers the row. The prompt is on disk
+                // now, so a later stop must not resurrect it.
+                promptRef.current = null
+                setJob((prev) =>
+                  prev ? { ...prev, landedImageId: event.imageId } : prev
+                )
+              } else {
+                if (event.status === "error") {
+                  toast.error(
+                    event.error ?? "Couldn't generate that illustration."
+                  )
+                }
+                // Aborted is the writer's own decision — no toast, and the
+                // origin device gets its words back to edit.
+                setJob(null)
+                restoreDraft()
+              }
+              return
+            }
+            // Pings need no handling — arriving is their whole content.
+          }
+          // The stream ended without an end frame: a dropped socket. Loop and
+          // re-attach to the same run.
+        } catch {
+          if (controller.signal.aborted) return
+        }
+      }
+    },
+    [storyId, restoreDraft]
+  )
+
+  // A watcher outlives the composer but not the story: switching stories
+  // detaches the listener and nothing else — the draw keeps going without us.
+  React.useEffect(() => {
+    return () => abortRef.current?.abort()
+  }, [storyId])
+
+  const stop = React.useCallback(() => {
+    // The server owns the run, so Stop is an action any device may call. The
+    // job is NOT cleared here: the loop settles, the end frame arrives with
+    // status aborted, and the same path every device takes clears it — with
+    // the draft handed back on the device that typed it.
+    const current = jobRef.current
+    void stopIllustration(storyId, current?.runId ?? null)
+  }, [storyId])
+
+  const generate = React.useCallback(
+    async (request: IllustrateRequest) => {
+      promptRef.current = request.prompt
 
       try {
         const res = await fetch("/api/image", {
@@ -115,47 +201,58 @@ export function useImageGeneration(
             aspectRatio: request.aspectRatio,
             imageGroupId: request.imageGroupId,
           }),
-          signal: controller.signal,
         })
-
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as {
-            error?: string
-          } | null
-          // 499 is this route's "the writer stopped it" — their own action, so
-          // it gets no error toast.
-          if (res.status !== 499) {
-            toast.error(body?.error ?? "Couldn't generate that illustration.")
-          }
-          setJob(null)
+        const body = (await res.json().catch(() => null)) as {
+          runId?: string
+          error?: string
+        } | null
+        if (!res.ok || !body?.runId) {
+          toast.error(body?.error ?? "Couldn't generate that illustration.")
           restoreDraft()
           return
         }
-      } catch (err) {
-        if ((err as Error)?.name !== "AbortError") {
-          toast.error("Couldn't generate that illustration.")
-        }
-        setJob(null)
+        // Shown before the first frame arrives, so the placeholder reserves
+        // its box the instant Send lands rather than a round-trip later.
+        setJob({
+          runId: body.runId,
+          aspectRatio: request.aspectRatio,
+          previewB64: null,
+          mediaType: "",
+          landedImageId: null,
+        })
+        void watch(body.runId)
+      } catch {
+        toast.error("Couldn't generate that illustration.")
         restoreDraft()
-        return
-      } finally {
-        if (abortRef.current === controller) abortRef.current = null
       }
-
-      // Succeeded: the prompt is on the row now, so there is nothing left to
-      // hand back and a later stop must not resurrect it into the composer.
-      promptRef.current = null
-
-      // The job is held past the response so the shimmer covers the gap until
-      // the revalidated tree delivers the row — otherwise the figure vanishes
-      // and reappears. `settle` hands over.
     },
-    [restoreDraft, storyId]
+    [restoreDraft, storyId, watch]
   )
 
-  const settle = React.useCallback(() => setJob(null), [])
+  /** Attach to a run someone else started (image-run-started), or re-probe (null). */
+  const attach = React.useCallback(
+    (runId: string | null) => {
+      // Already watching that very run — a reattach would drop the socket to
+      // open an identical one.
+      if (runId !== null && jobRef.current?.runId === runId) return
+      void watch(runId)
+    },
+    [watch]
+  )
 
-  return { job, generate, stop, settle }
+  // The magic moment, same as the text side's: a device that merely OPENS the
+  // story while a draw is live adopts it — shimmer up, Stop armed — with no
+  // interaction and no UI. One 204 when nothing is drawing.
+  React.useEffect(() => {
+    attach(null)
+  }, [attach])
+
+  /** The workspace's handover: the refreshed tree carries the row now. */
+  const settle = React.useCallback(() => {
+    setJob((prev) => (prev && prev.landedImageId !== null ? null : prev))
+  }, [])
+
+  return { job, generate, stop, settle, attach }
 }
 
 /**

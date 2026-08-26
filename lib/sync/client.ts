@@ -9,6 +9,7 @@
 
 import {
   SYNC_PING_INTERVAL_MS,
+  type ImageRunWireEvent,
   type RunWireEvent,
   type SyncWireEvent,
 } from "@/lib/sync/types"
@@ -49,12 +50,15 @@ export const runHandoff: {
     storyId: string
     /** A run began on this story somewhere — attach to it. */
     onRunStarted: (runId: string) => void
+    /** An image run began on this story somewhere — attach to that channel. */
+    onImageRunStarted: (runId: string) => void
     /**
      * The socket came back after being down. run-started events emitted in
      * the gap are gone for good — a device that slept through one would show
      * an idle composer under a live run forever — so this is where the
      * generation hook re-probes "is anything running?". Cheap when the answer
-     * is no: one 204.
+     * is no: one 204. The image hook re-probes its own channel off the same
+     * signal.
      */
     onReconnect: () => void
   } | null
@@ -190,6 +194,26 @@ export async function subscribeRun(
   if (res.status === 204) return null
   if (!res.ok) throw new Error(`subscribe failed (${res.status})`)
   return readNdjsonLines<RunWireEvent>(res, signal)
+}
+
+/**
+ * Attaches to a story's live IMAGE run — the picture twin of subscribeRun,
+ * same 204-means-idle contract, against its own route and registry.
+ */
+export async function subscribeImageRun(
+  storyId: string,
+  runId: string | null,
+  signal: AbortSignal
+): Promise<AsyncGenerator<ImageRunWireEvent> | null> {
+  const params = new URLSearchParams({ storyId })
+  if (runId !== null) params.set("runId", runId)
+  const res = await fetch(`/api/image/subscribe?${params.toString()}`, {
+    signal,
+    cache: "no-store",
+  })
+  if (res.status === 204) return null
+  if (!res.ok) throw new Error(`image subscribe failed (${res.status})`)
+  return readNdjsonLines<ImageRunWireEvent>(res, signal)
 }
 
 /** Opens the long-lived "something changed" channel. */

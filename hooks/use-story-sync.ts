@@ -116,6 +116,15 @@ export function useStorySync(): void {
             scheduleRefresh()
             continue
           }
+          if (event.type === "image-run-started") {
+            // Routed like run-started, to its own attach. No scheduleRefresh:
+            // a draw starting persists nothing, and the library carries no
+            // status mark for pictures — the change event on landing covers it.
+            const target = runHandoff.current
+            if (target !== null && event.storyId === target.storyId)
+              target.onImageRunStarted(event.runId)
+            continue
+          }
           if (event.type === "summary-stopped") {
             // The one message this app raises that nobody asked for. It fires
             // once, when the summarizer stops retrying — not on the transient

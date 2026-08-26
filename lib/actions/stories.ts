@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
 import { lorebookEntries, stories, storyEntries } from "@/lib/db/schema"
 import { discardStoryRun } from "@/lib/generation/live"
+import { discardStoryImageRun } from "@/lib/images/live"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import { clampLoreBudget, isContextWindow } from "@/lib/types"
 import type { ActionResult, GenerationSettings } from "@/lib/types"
@@ -255,6 +256,9 @@ export async function deleteStory(id: string): Promise<ActionResult> {
   // settle ends "error" over a persist the delete doomed. Discard aborts the
   // run and ends it "aborted" with nothing persisted.
   discardStoryRun(id)
+  // ...and its draw, for the same reason: nothing may persist into a
+  // manuscript that is going away.
+  discardStoryImageRun(id)
   const db = await getDb()
   // Child entries and lorebook entries go with it: Postgres enforces the
   // ON DELETE CASCADE declared on both story_id columns, so no explicit child

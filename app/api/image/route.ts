@@ -1,25 +1,17 @@
-// POST /api/image — generate an illustration and persist it.
+// POST /api/image — launch an illustration run and return its id.
 //
-// A route rather than a server action for one reason: Stop. A server action
-// resolves once and cannot be cancelled, so a "stop" against one could only
-// stop the client listening while the request ran on and billed. Here the
-// client's abort travels down `req.signal`, aborts the upstream fetch, and the
-// generation genuinely ends — which is what makes the Stop tooltip's promise
-// about all-or-nothing billing true rather than decorative.
-import { createIllustration } from "@/lib/actions/images"
+// Thin on purpose, like startGeneration: the draw itself is a detached task in
+// lib/images/live.ts that outlives this request, because the request is the
+// first thing that can die — a closed tab or a sleeping phone must not take a
+// thirty-second render with it. The client subscribes to
+// /api/image/subscribe with the runId this returns; every other device on the
+// story gets the same runId over the sync channel's image-run-started.
 import { getStory } from "@/lib/db/queries"
-import { recordCallStarted, settleCall } from "@/lib/generation/calls"
-import { resolveOpenRouterKey } from "@/lib/generation/key"
-import { MockImageProvider } from "@/lib/images/mock-provider"
+import { launchImageRun } from "@/lib/images/live"
 import { resolveImageModelId } from "@/lib/images/models"
-import { OpenRouterImageProvider } from "@/lib/images/openrouter"
-import type { ImageGenerationProvider } from "@/lib/images/types"
 import { IMAGE_ASPECT_RATIOS, type ImageAspectRatio } from "@/lib/types"
 
 export const runtime = "nodejs"
-
-/** Generation can take a while; images are slower than a first text token. */
-export const maxDuration = 300
 
 interface Body {
   storyId?: unknown
@@ -61,145 +53,31 @@ export async function POST(req: Request): Promise<Response> {
 
   // settings.zdr is the story's effective policy — resolve has already folded
   // the app-wide floor in. It bends the default model toward one a ZDR request
-  // can actually route to, and travels with the request so the provider fails
+  // can actually route to, and travels with the run so the provider fails
   // closed rather than trusting account settings to catch it.
   const zdr = story.settings.zdr
   const modelId = await resolveImageModelId(story.imageModelId, zdr)
-  const key = resolveOpenRouterKey()
 
   // Seeded from the clock: takes of one slot differ only by seed, so a seed
   // that repeats is a retry that returns the picture it meant to replace.
   const seed = Date.now() % 0x7fffffff
 
-  const provider: ImageGenerationProvider = key
-    ? new OpenRouterImageProvider(key)
-    : new MockImageProvider()
-
-  // The offline mock bills nothing, so it opens no ledger row — the same rule
-  // the text mock follows. A row with a null cost would be indistinguishable
-  // from a real call OpenRouter declined to price.
-  const callId = key ? crypto.randomUUID() : null
-  if (callId) {
-    await recordCallStarted({
-      id: callId,
-      storyId: story.id,
-      origStoryId: story.id,
-      storyTitle: story.title,
-      requestKind: "illustrate",
-      modelId,
-      // Images do not think. Null rather than "off", which would claim a
-      // reasoning setting was consulted and declined.
-      thinking: null,
-      providerName: null,
-    })
+  const launched = launchImageRun({
+    storyId: story.id,
+    storyTitle: story.title,
+    prompt,
+    aspectRatio,
+    imageGroupId,
+    modelId,
+    zdr,
+    seed,
+  })
+  if (!launched) {
+    return Response.json(
+      { error: "An illustration is already being drawn for this story." },
+      { status: 409 }
+    )
   }
 
-  const controller = new AbortController()
-  req.signal.addEventListener("abort", () => controller.abort(), { once: true })
-
-  try {
-    let final: {
-      b64: string
-      mediaType: string
-      costUsd: number | null
-      promptTokens: number | null
-      completionTokens: number | null
-    } | null = null
-
-    for await (const event of provider.generate({
-      prompt,
-      modelId,
-      zdr,
-      aspectRatio,
-      seed,
-      signal: controller.signal,
-    })) {
-      // Partials are dropped: this response is a single JSON object, not a
-      // stream. Only the mock emits them today, and rendering a preview the
-      // real provider cannot produce would make the offline path feel better
-      // than the live one — exactly backwards.
-      if (event.type === "completed") {
-        final = {
-          b64: event.b64,
-          mediaType: event.mediaType,
-          costUsd: event.usage.costUsd,
-          promptTokens: event.usage.promptTokens,
-          completionTokens: event.usage.completionTokens,
-        }
-      }
-    }
-
-    if (controller.signal.aborted || final === null) {
-      // Stopped, or a provider that ended without an image. Under OpenRouter's
-      // all-or-nothing image billing nothing was charged either way, so the row
-      // settles with no cost rather than an invented one.
-      if (callId) {
-        await settleCall(callId, {
-          status: controller.signal.aborted ? "aborted" : "error",
-          generationId: null,
-          usage: null,
-        })
-      }
-      return Response.json({ error: "Generation stopped." }, { status: 499 })
-    }
-
-    const created = await createIllustration({
-      storyId: story.id,
-      imageGroupId,
-      prompt,
-      derivedPrompt: null,
-      modelId,
-      aspectRatio,
-      seed,
-      mediaType: final.mediaType,
-      b64: final.b64,
-      // Handed in so the row and its price are joined in the same write the
-      // picture is created by — nothing downstream has to reconcile them.
-      callId,
-    })
-
-    if (!created.ok) {
-      if (callId) {
-        await settleCall(callId, {
-          status: "error",
-          generationId: null,
-          usage: null,
-        })
-      }
-      return Response.json({ error: created.error }, { status: 500 })
-    }
-
-    if (callId) {
-      await settleCall(callId, {
-        status: "ok",
-        generationId: null,
-        usage: {
-          promptTokens: final.promptTokens ?? 0,
-          completionTokens: final.completionTokens ?? 0,
-          reasoningTokens: 0,
-          costUsd: final.costUsd,
-          cachedPromptTokens: null,
-          upstreamPromptCostUsd: null,
-          upstreamCompletionCostUsd: null,
-          isByok: null,
-        },
-      })
-    }
-
-    return Response.json({ image: created.data })
-  } catch (err) {
-    if (callId) {
-      await settleCall(callId, {
-        status: controller.signal.aborted ? "aborted" : "error",
-        generationId: null,
-        usage: null,
-      })
-    }
-    if (controller.signal.aborted) {
-      return Response.json({ error: "Generation stopped." }, { status: 499 })
-    }
-    const message =
-      err instanceof Error ? err.message : "The image request failed."
-    return Response.json({ error: message }, { status: 502 })
-  }
+  return Response.json({ runId: launched.runId })
 }

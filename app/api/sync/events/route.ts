@@ -24,6 +24,12 @@ function toWire(event: BusEvent): SyncWireEvent {
         storyId: event.storyId,
         runId: event.runId,
       }
+    case "image-run-started":
+      return {
+        type: "image-run-started",
+        storyId: event.storyId,
+        runId: event.runId,
+      }
     case "run-ended":
       return {
         type: "run-ended",

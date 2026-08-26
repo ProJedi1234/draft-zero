@@ -103,13 +103,23 @@ export function StoryWorkspace({
   // through — which is the entire multi-device story; there is deliberately
   // nothing to see.
   const attachRef = React.useRef<((runId: string | null) => void) | null>(null)
+  // The image run's twin bridge — its own ref because the two runs are
+  // independent and each hook owns its own channel.
+  const imageAttachRef = React.useRef<((runId: string | null) => void) | null>(
+    null
+  )
   React.useEffect(() => {
     runHandoff.current = {
       storyId: story.id,
       onRunStarted: (runId) => attachRef.current?.(runId),
+      onImageRunStarted: (runId) => imageAttachRef.current?.(runId),
       // A reconnect means run-started events may have been missed while the
-      // socket was down; a null attach is the "is anything running?" probe.
-      onReconnect: () => attachRef.current?.(null),
+      // socket was down; a null attach is the "is anything running?" probe —
+      // one per channel.
+      onReconnect: () => {
+        attachRef.current?.(null)
+        imageAttachRef.current?.(null)
+      },
     }
     return () => {
       runHandoff.current = null
@@ -158,6 +168,7 @@ export function StoryWorkspace({
           mode={mode}
           onModeChange={setMode}
           attachRef={attachRef}
+          imageAttachRef={imageAttachRef}
         />
         <InspectorPanel
           story={story}
@@ -214,6 +225,7 @@ function StoryEditor({
   mode,
   onModeChange,
   attachRef,
+  imageAttachRef,
 }: {
   story: Story
   /** For the retry menu's one-line summary of each profile. */
@@ -224,6 +236,8 @@ function StoryEditor({
   onModeChange: (mode: ComposerMode) => void
   /** Bridge from the workspace's sync channel: run-started → attach mid-flight; null = re-probe. */
   attachRef: { current: ((runId: string | null) => void) | null }
+  /** Same bridge for the image channel — image-run-started lands here. */
+  imageAttachRef: { current: ((runId: string | null) => void) | null }
 }) {
   const [draft, setDraft] = React.useState("")
   const composerRef = React.useRef<HTMLTextAreaElement>(null)
@@ -243,6 +257,16 @@ function StoryEditor({
       onModeChange("image")
     },
   })
+  // The bridge from the workspace's sync registration: an image-run-started
+  // (or the reconnect probe) calls through to whatever editor is mounted.
+  const attachImage = image.attach
+  React.useEffect(() => {
+    imageAttachRef.current = attachImage
+    return () => {
+      imageAttachRef.current = null
+    }
+  }, [imageAttachRef, attachImage])
+
   const derivation = useImagePromptDerivation(story.id)
   // Remembered across sends, like the armed mode: a writer working in portrait
   // is working in portrait until they say otherwise.
@@ -317,12 +341,16 @@ function StoryEditor({
   )
 
   // The in-flight preview is held until the revalidated tree delivers the row,
-  // so the finished picture does not blink out and back. This is the handover.
-  const imageCount = story.images.length
+  // so the finished picture does not blink out and back. This is the handover —
+  // keyed on the ACTIVE take ids, not the count, because a retry lands as a
+  // new active take in an old slot and leaves the count exactly where it was.
+  // settle() itself only clears a job whose picture has landed, so the extra
+  // firings on unrelated tree changes are no-ops.
+  const imageIds = story.images.map((storyImage) => storyImage.id).join(",")
   const settleImage = image.settle
   React.useEffect(() => {
     settleImage()
-  }, [imageCount, settleImage])
+  }, [imageIds, settleImage])
 
   /** Hands a picture's prompt back to the composer, armed to redraw it. */
   const handleEditImagePrompt = React.useCallback(
