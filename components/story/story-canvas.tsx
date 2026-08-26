@@ -584,7 +584,7 @@ export function StoryCanvas({
                   data-source="user"
                   data-unacknowledged={optimisticUserPending || undefined}
                   className={cn(
-                    "relative -mx-4 border-l-2 border-primary/40 px-4 py-3 transition-opacity duration-200",
+                    "relative -mx-4 border-l-2 border-story-accent px-4 py-3 transition-opacity duration-200",
                     optimisticUserPending && "opacity-50"
                   )}
                 >

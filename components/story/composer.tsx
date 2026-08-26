@@ -218,7 +218,7 @@ export function Composer({
       className="pointer-events-none absolute inset-x-0 bottom-0 z-10"
     >
       <div className="mx-auto w-full max-w-2xl px-6 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <div className="pointer-events-auto border bg-background/65 shadow-lg backdrop-blur-md transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
+        <div className="pointer-events-auto border bg-surface-glass shadow-lg backdrop-blur-md transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
           <Textarea
             ref={textareaRef}
             value={value}

@@ -13,8 +13,16 @@ import * as React from "react"
 import { InlineMarkdown } from "@/components/inline-markdown"
 import { toParagraphs } from "@/lib/markdown"
 
-export const PARAGRAPH_CLASS =
-  "font-serif text-[1.0625rem] leading-8 text-foreground [&:not(:first-child)]:mt-5"
+/**
+ * The type spec alone — family, size, leading, colour — with no paragraph
+ * rhythm. Exported for the passage editor, which replaces a rendered passage
+ * in place: it needs the same letterforms but not the same top margin, and it
+ * carried its own copy of these four classes until the two could drift.
+ */
+export const PROSE_TYPE_CLASS =
+  "font-serif text-[1.0625rem] leading-8 text-foreground"
+
+export const PARAGRAPH_CLASS = `${PROSE_TYPE_CLASS} [&:not(:first-child)]:mt-5`
 
 /** A single paragraph of manuscript prose. */
 export function ProseParagraph({

@@ -112,7 +112,7 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
       data-source={entry.source}
       className={cn(
         "group relative -mx-4 px-4 py-3 transition-colors",
-        entry.source === "user" && "border-l-2 border-primary/40",
+        entry.source === "user" && "border-l-2 border-story-accent",
         editing ? "bg-muted/40" : "hover:bg-muted/40"
       )}
     >
