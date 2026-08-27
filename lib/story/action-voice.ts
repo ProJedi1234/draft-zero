@@ -36,6 +36,28 @@ const TERMINAL_PUNCTUATION = /[.?!…]$/
 /** Straight or curly closing double quote. */
 const CLOSING_QUOTE = /["”]$/
 
+/**
+ * Closed-class words that cannot stand between a determiner and the noun it
+ * introduces. One of these in the gap means the determiner opened a *different*
+ * noun phrase, so a "mine" after it is the pronoun: "the sword becomes mine",
+ * "a friend of mine", "the same as mine". Open-class verbs are unlistable, so
+ * "the guard drops mine" still reads as a noun — the accepted failure pinned
+ * in action-voice.test.ts.
+ */
+const NOT_A_NOUN_GAP = [
+  "is|was|are|were|be|been|being",
+  "become|becomes|became|seem|seems|seemed|remain|remains|remained",
+  "look|looks|looked|sound|sounds|sounded|feel|feels|felt|stay|stays|stayed",
+  "make|makes|made|call|calls|called|turn|turns|turned",
+  "will|would|shall|should|can|could|may|might|must",
+  "have|has|had|do|does|did",
+  "it|them|him",
+  "and|or|but|nor|than|as|like|unlike",
+  "of|to|in|on|at|by|with|without|from|for|into|onto|over|under",
+  "near|behind|beside|beneath|against|toward|towards|around|about",
+  "after|before|between|beyond|through|upon",
+].join("|")
+
 interface PronounRule {
   /** Regex source, spliced into one alternation. */
   source: string
@@ -84,11 +106,11 @@ const PRONOUN_RULES: readonly PronounRule[] = [
   // determiner is what keeps "I enter the abandoned mine" from becoming "You
   // enter the abandoned yours"; nothing else in this map is ambiguous enough to
   // need the guard. Up to three words may sit between the determiner and the
-  // noun ("the old flooded mine"), but none of them may be a form of *be*:
-  // "the key is mine" is the pronoun, and the copula is what tells them apart.
+  // noun ("the old flooded mine"), but they must all be plausible modifiers:
+  // any word from NOT_A_NOUN_GAP breaks the noun phrase and hands "mine" back
+  // to the pronoun rule ("the key is mine", "a friend of mine").
   {
-    source:
-      "(?<!\\b(?:the|a|an|this|that|its|his|her|their)\\s(?:(?!(?:is|was|are|were|be|been)\\s)\\w+\\s){0,3})mine",
+    source: `(?<!\\b(?:the|a|an|this|that|its|his|her|their|my|our|your)\\s(?:(?!(?:${NOT_A_NOUN_GAP})\\s)\\w+\\s){0,3})mine`,
     to: "yours",
   },
   { source: "our", to: "your" },

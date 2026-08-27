@@ -52,13 +52,28 @@ const DO_CASES: readonly Case[] = [
   ["we’re leaving", "You're leaving."],
 
   // "mine" is only a pronoun when no determiner precedes it — adjectives
-  // between the two do not change that, and a copula does.
+  // between the two do not change that, but any closed-class word (a verb of
+  // being, a preposition, a conjunction) breaks the noun phrase and does.
   ["I climb down into the mine", "You climb down into the mine."],
   [
     "I climb down into the old flooded mine",
     "You climb down into the old flooded mine.",
   ],
+  ["I sweep out my old mine", "You sweep out your old mine."],
   ["the key is mine", "You the key is yours."],
+  ["the city will be mine", "You the city will be yours."],
+  ["the sword becomes mine", "You the sword becomes yours."],
+  ["that makes it mine", "You that makes it yours."],
+  ["the horse is a friend of mine", "You the horse is a friend of yours."],
+  ["her blade is the same as mine", "You her blade is the same as yours."],
+  ["I compare the map with mine", "You compare the map with yours."],
+  [
+    "I hand her the coat and grab mine",
+    "You hand her the coat and grab yours.",
+  ],
+  // ACCEPTED: an open-class verb between the determiner and "mine" cannot be
+  // listed, so the guard still reads this "mine" as a noun and leaves it.
+  ["the guard drops mine", "You the guard drops mine."],
 
   // Quotations are masked, so the dialogue inside keeps its first person.
   ['I say, "I will find my sister"', 'You say, "I will find my sister."'],
