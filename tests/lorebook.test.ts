@@ -71,6 +71,7 @@ function story(overrides: Partial<Story> = {}): Story {
     wordCount: 0,
     tintHue: null,
     tintStrength: 1,
+    tintAuto: true,
     entries: [],
     images: [],
     imageModelId: null,

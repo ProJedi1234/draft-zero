@@ -496,6 +496,21 @@ export type SummarizerSettings = Omit<GenerationIdentity, "modelId"> & {
   maxTokens: number | null
 }
 
+/**
+ * Everything the atmosphere picker runs under — the micro-call that reads the
+ * tail of a manuscript and answers with a tint name, or with "keep".
+ *
+ * The summarizer's bundle without its two lengths, because there is nothing to
+ * scale: the answer is one word, and the only cap worth having is the small
+ * fixed one the runner sets to leave a reasoning model room to think. Same
+ * nullable model for the same reason — "not chosen" follows the app's built-in
+ * default as that changes.
+ */
+export type AtmosphereSettings = Omit<GenerationIdentity, "modelId"> & {
+  modelId: string | null
+  temperature: number
+}
+
 /** The model half of a bundle — what a profile always states for itself. */
 export type GenerationIdentity = Pick<
   GenerationSettings,
@@ -634,6 +649,14 @@ export interface Story {
   /** How far toward that hue the palette travels, 0..1. Ignored when untinted. */
   tintStrength: number
   /**
+   * Whether the model gets to choose the tint as the story moves.
+   *
+   * On by default, and turned off by touching a swatch: a hue chosen by hand is
+   * a decision, and something that repainted the room the writer just painted
+   * would be a bug however good its taste. Picking Auto again hands it back.
+   */
+  tintAuto: boolean
+  /**
    * Which image model this story draws with, or null to follow the catalog's
    * first entry. Deliberately NOT part of a model profile: profiles bundle the
    * settings that shape prose, and there are few enough image models that a
@@ -770,6 +793,12 @@ export interface AppSettings {
    * opened, meaning "the built-in default", which keeps improving.
    */
   summarizer: SummarizerSettings
+  /**
+   * What picks a story's tint once the scene has moved — the same bundle,
+   * app-wide for the same reason: naming the mood of a passage is one job, and
+   * the writer should not pay their prose model's rate to have it done.
+   */
+  atmosphere: AtmosphereSettings
   /**
    * Zero data retention for the whole app: every story, every profile, every
    * generation.

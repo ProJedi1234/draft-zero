@@ -840,6 +840,12 @@ export async function getAppSettings(): Promise<AppSettings> {
       // defaults, and a concrete number is the override.
       summaryTargetWords: null,
       summaryMaxTokens: null,
+      // Null for the same reason the summarizer's is.
+      atmosphereModelId: null,
+      atmosphereThinking: "off" as const,
+      atmosphereProviderTag: null,
+      atmosphereZdr: false,
+      atmosphereTemperature: 0.2,
       requireZdr: false,
       // Null follows the catalog's first eligible entry; 4,096 is the shipped
       // derivation budget — see app/api/image-prompt/route.ts for the why.

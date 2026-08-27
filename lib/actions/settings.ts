@@ -76,6 +76,26 @@ export async function updateAppSettings(
     values.summaryTargetWords = targetWords
     values.summaryMaxTokens = maxTokens
   }
+  if (patch.atmosphere !== undefined) {
+    const { modelId, thinking, providerTag, zdr, temperature } =
+      patch.atmosphere
+    // Same three guards as the summarizer above, and for the same reason: an
+    // unknown thinking level or an out-of-range temperature is a provider 400,
+    // and this call is invisible — it would reach the writer as a story that
+    // has quietly stopped choosing its own colour.
+    if (thinking !== "off" && !REASONING_EFFORTS.includes(thinking)) {
+      return { ok: false, error: "Unknown thinking level." }
+    }
+    if (!inRange(temperature, 0, 2)) {
+      return { ok: false, error: "Temperature must be between 0 and 2." }
+    }
+    const trimmed = modelId?.trim() ?? ""
+    values.atmosphereModelId = trimmed === "" ? null : trimmed
+    values.atmosphereThinking = thinking
+    values.atmosphereProviderTag = providerTag
+    values.atmosphereZdr = zdr
+    values.atmosphereTemperature = temperature
+  }
   if (patch.requireZdr !== undefined) {
     values.requireZdr = patch.requireZdr
   }

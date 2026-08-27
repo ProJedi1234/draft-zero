@@ -101,6 +101,12 @@ export const stories = pgTable("stories", {
   // global: cool hues carry further than warm ones at equal chroma, so a teal
   // story and a gold one want different numbers to read as equally present.
   tintStrength: doublePrecision("tint_strength").notNull().default(1),
+  // Whether the post-turn atmosphere call may repaint the two columns above.
+  // Defaulted true so a story that predates the column arrives with it on, but
+  // the migration backfills false for every story that already has a hue: that
+  // hue was chosen by hand, and the first thing the writer would see otherwise
+  // is the app overruling a decision they made.
+  tintAuto: boolean("tint_auto").notNull().default(true),
   // Seq of the newest APPLIED op; 0 means none. Everything above it is the redo
   // tail, kept on disk so redo need not reconstruct anything. On the story
   // rather than derived from the ops table because "which op is current" is a
@@ -583,6 +589,26 @@ export const appSettings = pgTable("app_settings", {
   // that an overshoot is not cut off mid-sentence. Distinct from the target: a
   // target is a request the model may miss, this is where the provider stops.
   summaryMaxTokens: integer("summary_max_tokens"),
+  // The atmosphere picker's bundle — the same five columns as the summarizer's,
+  // minus the two lengths, because its whole output is one word and there is
+  // nothing to scale. Separate columns rather than a shared "utility model"
+  // bundle: they are two jobs with two right answers, and folding them together
+  // would mean changing one to change the other.
+  atmosphereModelId: text("atmosphere_model_id"),
+  atmosphereThinking: text("atmosphere_thinking")
+    .notNull()
+    .default("off")
+    .$type<ThinkingLevel>(),
+  atmosphereProviderTag: text("atmosphere_provider_tag"),
+  // A floor it adds to, never an escape from one, exactly as summary_zdr is:
+  // the STORY's policy still binds, since it is the story's prose being sent.
+  atmosphereZdr: boolean("atmosphere_zdr").notNull().default(false),
+  // Lower than the summarizer's: this is a classification with eight legal
+  // answers and one abstention, and there is no sense in which a warmer sample
+  // reads the scene better.
+  atmosphereTemperature: doublePrecision("atmosphere_temperature")
+    .notNull()
+    .default(0.2),
   // The app-wide zero-data-retention floor. ORed into every story and profile
   // at read time rather than written into them, so switching it off restores
   // what each of them says for itself instead of leaving a fan-out behind.
