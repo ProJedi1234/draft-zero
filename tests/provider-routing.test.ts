@@ -54,6 +54,11 @@ mock.module("@/lib/db/entry-writes", () => ({
     ok: true,
     data: { entry: { id: "entry-1" } },
   }),
+  // Never called here, but the replacement is the WHOLE module, and another
+  // test file's hoisted imports may evaluate lib/images/persist against it
+  // (file order is the environment's choice) — so every export the import
+  // graph touches has to exist. Same rule as generation-stream's mock.
+  nextStoryPosition: async () => 0,
 }))
 const silentDb = {
   insert: () => ({ values: async () => {} }),
