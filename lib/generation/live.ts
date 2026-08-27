@@ -19,6 +19,7 @@ import { eq } from "drizzle-orm"
 import { getDb } from "@/lib/db/client"
 import { persistGeneratedEntry } from "@/lib/db/entry-writes"
 import { stories } from "@/lib/db/schema"
+import { scheduleAtmosphere } from "@/lib/generation/atmosphere"
 import { recordCallStarted, settleCall } from "@/lib/generation/calls"
 import { resolveOpenRouterKey } from "@/lib/generation/key"
 import { MockGenerationProvider } from "@/lib/generation/mock-provider"
@@ -696,14 +697,19 @@ async function finishRun(
   run.listeners.clear()
 
   // Last, and deliberately after the writer has their prose: bringing the
-  // story's summary up to date is bookkeeping about a turn that is already
-  // over. Floated, never awaited — see lib/generation/summarize.ts.
+  // story's summary up to date, and asking whether the story has moved somewhere
+  // that should recolour the room, are both bookkeeping about a turn that is
+  // already over. Floated, never awaited — see lib/generation/summarize.ts and
+  // lib/generation/atmosphere.ts, neither of which may throw into this path.
   //
   // Only when a passage actually landed. A discarded run's story is being
   // deleted, and a run that persisted nothing left the manuscript exactly as
-  // long as it was — so the window cannot have moved and the answer is already
-  // known without reading anything.
-  if (!run.discarded && entryId !== null) scheduleSummary(run.storyId)
+  // long as it was — so neither the window nor the mood can have moved, and the
+  // answer is already known without reading anything.
+  if (!run.discarded && entryId !== null) {
+    scheduleSummary(run.storyId)
+    scheduleAtmosphere(run.storyId)
+  }
 
   const timer = setTimeout(() => live.lingering.delete(run.runId), LINGER_MS)
   // A lingering run must not hold the process open — tests and graceful

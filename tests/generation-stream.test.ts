@@ -55,16 +55,22 @@ mock.module("@/lib/generation/openrouter", () => ({
   }),
 }))
 
-// The run loop schedules a summary after a passage lands. That is the run
-// loop's job and is asserted in tests/summarize-runner.test.ts; here it would
-// only mean a background job reading a database this file has replaced with a
-// two-method fake. Spread the real module rather than replacing it, so the
-// other file still imports the genuine article — a module mock is process-wide
-// and does not unwind between files.
+// The run loop schedules a summary and a tint check after a passage lands.
+// That is the run loop's job and is asserted in tests/summarize-runner.test.ts
+// and tests/atmosphere-runner.test.ts; here they would only mean background
+// jobs reading a database this file has replaced with a two-method fake. Spread
+// the real modules rather than replacing them, so the other files still import
+// the genuine article — a module mock is process-wide and does not unwind
+// between files.
 const realSummarize = await import("@/lib/generation/summarize")
 mock.module("@/lib/generation/summarize", () => ({
   ...realSummarize,
   scheduleSummary: () => {},
+}))
+const realAtmosphere = await import("@/lib/generation/atmosphere")
+mock.module("@/lib/generation/atmosphere", () => ({
+  ...realAtmosphere,
+  scheduleAtmosphere: () => {},
 }))
 
 let currentKey: string | null = "sk-or-test"

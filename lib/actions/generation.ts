@@ -32,8 +32,9 @@ import {
 import { appendActionEntry } from "./entries"
 
 // The kinds a CLIENT may name, which is deliberately not every kind that
-// exists: "summarize" is minted server-side only, and a browser able to ask for
-// one could bill an account for calls that leave no passage behind to notice.
+// exists: "summarize" and "atmosphere" are minted server-side only, and a
+// browser able to ask for one could bill an account for calls that leave no
+// passage behind to notice.
 const REQUEST_KINDS: GenerationRequestKind[] = ["generate", "retry", "continue"]
 const BUSY_ERROR = "A generation is already running for this story."
 

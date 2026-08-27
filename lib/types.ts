@@ -121,12 +121,13 @@ export interface EntryGeneration {
 /**
  * Which move sent a generation request.
  *
- * "summarize" is the odd one and deliberately so: it is the only kind the
- * writer never asked for and never watches, and the only one that produces no
- * passage. It is in this union because the spend ledger is keyed by it and a
- * billed call that no aggregate can see is worse than one recorded oddly — see
- * REQUEST_KINDS in lib/actions/generation.ts, which keeps the kinds the client
- * is allowed to name separate from the ones that only the server raises.
+ * "summarize" and "atmosphere" are the odd ones and deliberately so: they are
+ * the kinds the writer never asked for and never watches, and the only ones
+ * that produce no passage. They are in this union because the spend ledger is
+ * keyed by it and a billed call that no aggregate can see is worse than one
+ * recorded oddly — see REQUEST_KINDS in lib/actions/generation.ts, which keeps
+ * the kinds the client is allowed to name separate from the ones that only the
+ * server raises.
  *
  * "illustrate-prompt" is a TEXT call like the others — it asks the story's own
  * model to describe the current scene as an image prompt. The picture that
@@ -140,6 +141,7 @@ export type GenerationRequestKind =
   | "retry"
   | "continue"
   | "summarize"
+  | "atmosphere"
   | "illustrate-prompt"
   /** The picture itself. Billed per image or per megapixel, never per token. */
   | "illustrate"
