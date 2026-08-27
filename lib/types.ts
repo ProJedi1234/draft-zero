@@ -202,6 +202,14 @@ export interface GlobalCostSummary {
   todayUsd: string
   weekUsd: string
   allTimeUsd: string
+  /**
+   * The slice of each window spent on pictures ("illustrate" calls). A subset
+   * of the figure beside it, never an addition — the derivation call that
+   * described the scene is token-billed prose and stays on the text side.
+   */
+  todayImageUsd: string
+  weekImageUsd: string
+  allTimeImageUsd: string
   /** All-time count of settled calls with no price. */
   unpricedCalls: number
   /**
@@ -211,12 +219,18 @@ export interface GlobalCostSummary {
    */
   todayUnpricedCalls: number
   weekUnpricedCalls: number
+  /** Unpriced "illustrate" calls per window, so the picture line floors too. */
+  todayImageUnpricedCalls: number
+  weekImageUnpricedCalls: number
+  allTimeImageUnpricedCalls: number
 }
 
 /** One bucket of the spend-over-time series. `day` is a UTC "YYYY-MM-DD". */
 export interface SpendDay {
   day: string
   costUsd: string
+  /** The slice of `costUsd` that bought pictures. A subset, never summed in. */
+  imageUsd: string
   calls: number
 }
 
@@ -236,6 +250,22 @@ export interface ModelSpendRow {
   calls: number
   promptTokens: number
   completionTokens: number
+}
+
+/**
+ * Per-model spend for image models, in image units: a count of pictures and
+ * an average price per picture, never prompt/completion tokens — the columns
+ * a text model's row shows would read 0/0 here and mean nothing.
+ */
+export interface ImageModelSpendRow {
+  modelId: string
+  costUsd: string
+  /** Settled "illustrate" calls — one per picture asked for, kept or not. */
+  images: number
+  /** avg over PRICED pictures only, `null` when none were. Formatted, never summed. */
+  avgUsd: string | null
+  /** Pictures with no price, so the row's total reads as the floor it is. */
+  unpricedImages: number
 }
 
 /**

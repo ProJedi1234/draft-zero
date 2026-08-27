@@ -19,6 +19,7 @@ import {
 import type { SpendBar } from "@/lib/spend-window"
 import type {
   GlobalCostSummary,
+  ImageModelSpendRow,
   ModelSpendRow,
   StorySpendRow,
 } from "@/lib/types"
@@ -35,6 +36,7 @@ function UsageView({
   bars,
   byStory,
   byModel,
+  byImageModel,
   windowDays = 30,
   windowUsd,
   windowUnpricedCalls,
@@ -46,6 +48,7 @@ function UsageView({
   bars: SpendBar[]
   byStory: StorySpendRow[]
   byModel: ModelSpendRow[]
+  byImageModel: ImageModelSpendRow[]
   windowDays?: number
   /** Exact window total, summed in SQL rather than from the drawn buckets. */
   windowUsd: string
@@ -65,6 +68,17 @@ function UsageView({
       ),
     [byModel]
   )
+  const imageModelPeak = React.useMemo(
+    () =>
+      byImageModel.reduce(
+        (max, m) => Math.max(max, Number.parseFloat(m.costUsd) || 0),
+        0
+      ),
+    [byImageModel]
+  )
+  // "Has a picture ever been asked for" — the gate on every image surface
+  // below, so a text-only ledger never grows a row of $0 picture figures.
+  const hasImages = byImageModel.length > 0
 
   return (
     <div className="flex h-app flex-col">
@@ -93,6 +107,11 @@ function UsageView({
                     summary.todayUsd,
                     summary.todayUnpricedCalls
                   )}
+                  sub={
+                    hasImages
+                      ? `${formatUsdFloor(summary.todayImageUsd, summary.todayImageUnpricedCalls)} pictures`
+                      : undefined
+                  }
                 />
                 <Figure
                   label="This week"
@@ -100,6 +119,11 @@ function UsageView({
                     summary.weekUsd,
                     summary.weekUnpricedCalls
                   )}
+                  sub={
+                    hasImages
+                      ? `${formatUsdFloor(summary.weekImageUsd, summary.weekImageUnpricedCalls)} pictures`
+                      : undefined
+                  }
                   className="px-4"
                 />
                 <Figure
@@ -108,6 +132,11 @@ function UsageView({
                     summary.allTimeUsd,
                     summary.unpricedCalls
                   )}
+                  sub={
+                    hasImages
+                      ? `${formatUsdFloor(summary.allTimeImageUsd, summary.allTimeImageUnpricedCalls)} pictures`
+                      : undefined
+                  }
                   className="pl-4"
                 />
               </div>
@@ -177,6 +206,34 @@ function UsageView({
               </div>
             </CardContent>
           </Card>
+
+          {/* Absent, not empty, until a picture exists: an image ledger with
+              nothing to say is noise on a text-only install. */}
+          {hasImages ? (
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>By image model</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <RowList
+                    rows={byImageModel}
+                    cap={ROW_CAP}
+                    empty="No pictures yet."
+                    className="-mx-2"
+                    triggerClassName="mx-2"
+                    renderRow={(row) => (
+                      <ImageModelRow
+                        key={row.modelId}
+                        row={row}
+                        peak={imageModelPeak}
+                      />
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </ScrollArea>
     </div>
@@ -186,16 +243,24 @@ function UsageView({
 function Figure({
   label,
   value,
+  sub,
   className,
 }: {
   label: string
   value: string
+  /** The picture slice of `value` — a subset restated, never a second total. */
+  sub?: string
   className?: string
 }) {
   return (
     <div className={className}>
       <p className={MICRO_LABEL}>{label}</p>
       <p className="mt-1 font-mono text-2xl tabular-nums">{value}</p>
+      {sub ? (
+        <p className="mt-0.5 font-mono text-[0.6875rem] text-muted-foreground/50 tabular-nums">
+          {sub}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -265,6 +330,39 @@ function ModelRow({ row, peak }: { row: ModelSpendRow; peak: number }) {
       </div>
       {/* Share as a bar, not a pie: one dimension, monochrome, no legend —
           the house meter, same as the ledger's. */}
+      <Meter value={peak > 0 ? value / peak : 0} className="mt-1.5" />
+    </div>
+  )
+}
+
+function ImageModelRow({
+  row,
+  peak,
+}: {
+  row: ImageModelSpendRow
+  peak: number
+}) {
+  const value = Number.parseFloat(row.costUsd) || 0
+
+  return (
+    <div className="px-2 py-1.5 transition-colors hover:bg-muted/40">
+      <div className="flex items-baseline gap-3">
+        <span className="truncate font-mono text-xs">
+          {shortModelId(row.modelId)}
+        </span>
+        <span className="flex-1" />
+        <span className="shrink-0 font-mono text-xs text-muted-foreground/50 tabular-nums">
+          {plural(row.images, "image")}
+        </span>
+        {/* The image-unit column, where a text row shows tokens: what one
+            picture from this model tends to cost. */}
+        <span className="shrink-0 font-mono text-xs text-muted-foreground/50 tabular-nums">
+          {row.avgUsd === null ? "—" : `${formatUsd(row.avgUsd)}/img`}
+        </span>
+        <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+          {formatUsdFloor(row.costUsd, row.unpricedImages)}
+        </span>
+      </div>
       <Meter value={peak > 0 ? value / peak : 0} className="mt-1.5" />
     </div>
   )

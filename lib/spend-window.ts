@@ -13,6 +13,8 @@ import type { SpendDay } from "@/lib/types"
 export interface SpendBar extends SpendDay {
   /** Parsed once, here, purely to size the bar — never to add anything up. */
   value: number
+  /** The picture slice of `value`, parsed for the same reason and no other. */
+  imageValue: number
 }
 
 /**
@@ -41,8 +43,10 @@ export function buildSpendWindow(
     out.push({
       day,
       costUsd: hit?.costUsd ?? "0",
+      imageUsd: hit?.imageUsd ?? "0",
       calls: hit?.calls ?? 0,
       value: hit ? Number.parseFloat(hit.costUsd) || 0 : 0,
+      imageValue: hit ? Number.parseFloat(hit.imageUsd) || 0 : 0,
     })
   }
 
