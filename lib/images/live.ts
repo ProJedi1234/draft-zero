@@ -25,10 +25,7 @@ import { resolveOpenRouterKey } from "@/lib/generation/key"
 import { MockImageProvider } from "@/lib/images/mock-provider"
 import { OpenRouterImageProvider } from "@/lib/images/openrouter"
 import { persistIllustration } from "@/lib/images/persist"
-import type {
-  ImageGenerationProvider,
-  ImageUsage,
-} from "@/lib/images/types"
+import type { ImageGenerationProvider, ImageUsage } from "@/lib/images/types"
 import { publishBus, touchStory } from "@/lib/sync/bus"
 import type {
   ActiveRun,
@@ -300,11 +297,7 @@ async function imageRunLoop(run: LiveImageRun): Promise<void> {
           }
         }
       }
-      status = run.upstream.signal.aborted
-        ? "aborted"
-        : final
-          ? "ok"
-          : "error"
+      status = run.upstream.signal.aborted ? "aborted" : final ? "ok" : "error"
       if (status === "error") {
         errorMessage = "The image provider returned no image."
       }
