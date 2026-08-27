@@ -321,6 +321,7 @@ function StoryEditor({
   useDraftPersistence(story.id, draft, setDraft)
 
   useHistoryShortcuts(generation)
+  useContinueShortcut(generation)
 
   // The composer floats over the prose and autosizes; a fixed padding reservation
   // hides the newest lines — including the ones being streamed — as soon as the
@@ -481,6 +482,58 @@ function useHistoryShortcuts(generation: GenerationController) {
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [canRedo, canUndo, redo, undo])
+}
+
+/**
+ * ⌘↵ (Ctrl elsewhere) continues the story from anywhere in the workspace.
+ *
+ * The composer's tooltip has promised this combo all along, but the binding
+ * lived in the textarea's own handler, so it went dead the moment focus
+ * wandered to the canvas. This window-level copy honours the promise — and
+ * only the promise: it fires solely where nothing closer has a claim.
+ *
+ * Text fields keep theirs: in the composer ⌘↵ sends a drafted move, in the
+ * passage editor it saves the edit. Both are excluded here twice over — the
+ * field guard below, and defaultPrevented, since each claims the combo with
+ * preventDefault before it bubbles this far.
+ *
+ * Overlays keep theirs too. With a dialog, menu or the mobile inspector open,
+ * the writer is somewhere else; continuing the story from behind a save-profile
+ * dialog would spend a generation on a surface they cannot even see. Undo gets
+ * away without this guard because it is reversible — continue is not free.
+ */
+function useContinueShortcut(generation: GenerationController) {
+  const { busy, continueStory } = generation
+
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || event.isComposing) return
+      if (event.key !== "Enter") return
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey)
+        return
+
+      const target = event.target
+      if (target instanceof HTMLElement) {
+        if (
+          target.isContentEditable ||
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          target.closest('[role="dialog"], [role="menu"], [role="listbox"]')
+        ) {
+          return
+        }
+      }
+
+      // Claimed even while busy: out here the combo means continue and nothing
+      // else — letting it fall through to a focused button would activate that
+      // button instead, turning "continue" into whatever was last clicked.
+      event.preventDefault()
+      if (!busy) continueStory()
+    }
+
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [busy, continueStory])
 }
 
 /**
