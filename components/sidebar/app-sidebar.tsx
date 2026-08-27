@@ -81,8 +81,8 @@ export function AppSidebar({
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <StoryList page={storyPage} query={query} runStatus={runStatus} />
         <NavWorkspace />
+        <StoryList page={storyPage} query={query} runStatus={runStatus} />
       </SidebarContent>
       <SidebarFooter>
         <div className="flex items-center justify-between px-2 py-1">

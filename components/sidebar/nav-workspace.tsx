@@ -7,7 +7,6 @@ import { Gauge, Images, Library, Settings2 } from "lucide-react"
 import {
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -29,12 +28,17 @@ const items = [
   { title: "Settings", href: "/settings", icon: Settings2 },
 ]
 
+/**
+ * The four places that aren't a story. Unlabelled and first, because these are
+ * the app's own rooms rather than one category among several — a "Workspace"
+ * heading below an endless story list was how Settings ended up needing a
+ * scroll to reach.
+ */
 export function NavWorkspace() {
   const pathname = usePathname()
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Workspace</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (
