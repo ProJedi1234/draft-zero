@@ -222,6 +222,11 @@ export function ModelSection({
         models={imageModels}
         value={story.imageModelId}
         price={imageModelPrice}
+        // The story's effective policy: its own switch (which resolve has
+        // already floored at the app-wide setting) — not accountEnforced,
+        // which answers for the TEXT model's provider group, not for whichever
+        // vendor an image row belongs to.
+        zdr={settings.zdr}
         onValueChange={(next) => {
           // Immediate, never debounced — the same rule the model combobox
           // follows. A picker commits on choice; there is nothing to batch.

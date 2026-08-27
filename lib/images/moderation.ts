@@ -36,11 +36,50 @@ export const PROVIDER_OPTIONS: Record<string, Record<string, unknown>> = {
   "black-forest-labs": { safety_tolerance: 4 },
 }
 
-/** The `provider` block for a model id, or undefined when it has no knob. */
+/** The moderation half of the `provider` block, or undefined when the model's provider has no knob. */
 export function providerOptions(
   modelId: string
 ): { options: Record<string, Record<string, unknown>> } | undefined {
   const slug = modelId.split("/")[0]
   const options = PROVIDER_OPTIONS[slug]
   return options ? { options: { [slug]: options } } : undefined
+}
+
+/**
+ * The whole `provider` block for one image request, or undefined when there is
+ * nothing to say.
+ *
+ * The ZDR half is belt and braces on purpose, because the two straps fail
+ * differently. `zdr: true` is what the chat endpoint documents and what the
+ * images endpoint accepts without complaint, but the images docs do not list
+ * it, so whether the router honours it there is unverifiable from outside.
+ * `only`, pinned to the model's retention-free endpoint tags, IS documented
+ * for images — and if a tag ever stops matching, the request 404s rather than
+ * quietly routing through an endpoint that retains. Both failure modes land
+ * closed, which is the direction a retention promise has to fail in.
+ *
+ * `zdrTags` is an argument rather than a lookup so this stays pure and
+ * testable; the caller reads the tags from lib/generation/zdr's cached list.
+ * Empty tags under `zdr` are the CALLER's error to refuse before getting here
+ * — sending `{zdr: true}` alone would outsource the refusal to a provider 404
+ * whose message names the account's privacy page instead of the real problem.
+ */
+export function imageProviderParam(
+  modelId: string,
+  zdr: boolean,
+  zdrTags: readonly string[]
+):
+  | {
+      zdr?: true
+      only?: string[]
+      options?: Record<string, Record<string, unknown>>
+    }
+  | undefined {
+  const moderation = providerOptions(modelId)
+  if (!zdr) return moderation
+  return {
+    zdr: true,
+    ...(zdrTags.length > 0 ? { only: [...zdrTags] } : {}),
+    ...moderation,
+  }
 }

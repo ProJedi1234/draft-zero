@@ -10,7 +10,11 @@
 
 import { describe, expect, test } from "bun:test"
 
-import { PROVIDER_OPTIONS, providerOptions } from "@/lib/images/moderation"
+import {
+  PROVIDER_OPTIONS,
+  imageProviderParam,
+  providerOptions,
+} from "@/lib/images/moderation"
 
 describe("providerOptions", () => {
   test("nests options under the provider slug, as OpenRouter expects", () => {
@@ -44,6 +48,51 @@ describe("providerOptions", () => {
     expect(PROVIDER_OPTIONS.openai).toEqual({ moderation: "low" })
     expect(PROVIDER_OPTIONS["black-forest-labs"]).toEqual({
       safety_tolerance: 4,
+    })
+  })
+})
+
+describe("imageProviderParam", () => {
+  test("no policy, no knob: nothing at all", () => {
+    expect(imageProviderParam("recraft/recraft-v4", false, [])).toBeUndefined()
+  })
+
+  test("no policy: just the moderation block", () => {
+    expect(imageProviderParam("openai/gpt-image-1", false, [])).toEqual({
+      options: { openai: { moderation: "low" } },
+    })
+  })
+
+  // Both straps of the belt: `zdr` for the router that honours it, `only`
+  // pinned to the retention-free tags for the one that doesn't. Losing either
+  // silently would be a retention promise the request no longer keeps.
+  test("under ZDR: the flag AND the endpoint pin, together", () => {
+    expect(
+      imageProviderParam("google/gemini-3-pro-image", true, [
+        "google-vertex/global",
+      ])
+    ).toEqual({
+      zdr: true,
+      only: ["google-vertex/global"],
+    })
+  })
+
+  test("under ZDR the moderation block still rides along", () => {
+    expect(
+      imageProviderParam("black-forest-labs/flux.2-pro", true, ["bfl/zdr"])
+    ).toEqual({
+      zdr: true,
+      only: ["bfl/zdr"],
+      options: { "black-forest-labs": { safety_tolerance: 4 } },
+    })
+  })
+
+  // Empty tags are the caller's error to refuse BEFORE building a request —
+  // but if one is built anyway it must still carry the flag, so the failure
+  // is a provider refusal rather than a silent routing through retention.
+  test("under ZDR with no tags: the flag alone, never an empty pin", () => {
+    expect(imageProviderParam("qwen/qwen-image-3", true, [])).toEqual({
+      zdr: true,
     })
   })
 })

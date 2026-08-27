@@ -9,6 +9,7 @@ import { MOCK_IMAGE_MODELS, MOCK_IMAGE_PRICES } from "@/lib/mock-data"
 import type { OpenRouterImageModel } from "@/lib/types"
 
 import { resolveOpenRouterKey } from "@/lib/generation/key"
+import { zdrModelSlugs } from "@/lib/generation/zdr"
 
 const TTL_MS = 60 * 60 * 1000
 let cache: { at: number; data: OpenRouterImageModel[] } | null = null
@@ -31,7 +32,10 @@ interface RawImageModel {
   name?: unknown
 }
 
-function toDomain(raw: RawImageModel): OpenRouterImageModel | null {
+function toDomain(
+  raw: RawImageModel,
+  zdrSlugs: Set<string>
+): OpenRouterImageModel | null {
   if (typeof raw.id !== "string" || raw.id === "") return null
   const name =
     typeof raw.name === "string" && raw.name !== "" ? raw.name : raw.id
@@ -43,6 +47,9 @@ function toDomain(raw: RawImageModel): OpenRouterImageModel | null {
     name: rest.length > 0 ? rest.join(": ") : name,
     provider:
       rest.length > 0 ? provider : raw.id.split("/")[0].replace(/^~/, ""),
+    // The global ZDR endpoint list covers image endpoints too — verified
+    // against the live catalog, where 12 of 48 image models appear on it.
+    zdr: zdrSlugs.has(raw.id),
   }
 }
 
@@ -58,13 +65,17 @@ export async function listImageModels(): Promise<OpenRouterImageModel[]> {
   const key = resolveOpenRouterKey()
   if (!key) return MOCK_IMAGE_MODELS
   try {
-    const res = await fetch(ENDPOINT, {
-      headers: { Authorization: `Bearer ${key}` },
-    })
+    // The ZDR join rides the same fetch: zdrModelSlugs is the hour-cached
+    // global list the text catalog already reads, so this is one extra lookup,
+    // not one extra round trip per refresh.
+    const [res, zdrSlugs] = await Promise.all([
+      fetch(ENDPOINT, { headers: { Authorization: `Bearer ${key}` } }),
+      zdrModelSlugs(),
+    ])
     if (!res.ok) return MOCK_IMAGE_MODELS
     const body = (await res.json()) as { data?: RawImageModel[] }
     const data = (body.data ?? [])
-      .map(toDomain)
+      .map((raw) => toDomain(raw, zdrSlugs))
       .filter((model): model is OpenRouterImageModel => model !== null)
       .sort(
         (a, b) =>
@@ -139,12 +150,20 @@ export async function getImageModelPrice(
  * Resolved server-side so nothing has to invent a default. A stored id that has
  * since left the catalog is still honoured rather than silently replaced — the
  * writer chose it, and a request that fails loudly beats one quietly served by
- * a model they did not pick.
+ * a model they did not pick. That includes a stored non-ZDR id under a ZDR
+ * policy: the generation path refuses it with a message naming the problem,
+ * which beats silently redrawing the story with a model they never selected.
+ *
+ * `zdr` bends only the DEFAULT: a story that never chose falls to the first
+ * entry its policy can actually use, so a fresh ZDR story does not start life
+ * pointed at a model every request will bounce off.
  */
 export async function resolveImageModelId(
-  storyChoice: string | null
+  storyChoice: string | null,
+  zdr = false
 ): Promise<string> {
   if (storyChoice) return storyChoice
   const models = await listImageModels()
-  return models[0]?.id ?? MOCK_IMAGE_MODELS[0].id
+  const eligible = zdr ? models.filter((model) => model.zdr) : models
+  return eligible[0]?.id ?? models[0]?.id ?? MOCK_IMAGE_MODELS[0].id
 }

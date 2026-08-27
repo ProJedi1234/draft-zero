@@ -46,6 +46,13 @@ function groupByProvider(models: OpenRouterImageModel[]): ProviderGroup[] {
  * behaves differently from the identical-looking one beside it reads as broken
  * rather than as simplified.
  *
+ * Under a zero-data-retention policy the treatment is the text combobox's,
+ * verbatim: the models no retention-free endpoint serves leave their provider
+ * groups and collect at the bottom, greyed and unselectable. The numbers are
+ * why this matters more here than there — 12 of the live catalog's 48 image
+ * models have a ZDR endpoint, so without the partition three quarters of the
+ * list is pickable rows that every generation bounces off with a 404.
+ *
  * It sits outside the profile branch above, because an image model is not part
  * of a model profile — a story following one still has to be able to choose.
  */
@@ -53,6 +60,7 @@ export function ImageModelSelect({
   models,
   value,
   price,
+  zdr,
   onValueChange,
 }: {
   models: OpenRouterImageModel[]
@@ -64,15 +72,20 @@ export function ImageModelSelect({
    * price per row would be one request per row.
    */
   price: string | null
+  /** The story's effective retention policy — its own switch or the app floor. */
+  zdr: boolean
   onValueChange: (modelId: string) => void
 }) {
   const [open, setOpen] = React.useState(false)
-  const providers = groupByProvider(models)
+  const allowed = zdr ? models.filter((model) => model.zdr) : models
+  const blocked = zdr ? models.filter((model) => !model.zdr) : []
+  const providers = groupByProvider(allowed)
 
-  // Null is "follow the catalog", which is the first entry — resolved for
-  // display rather than shown as a blank or an "Auto" row, since nothing here
-  // makes the routing decision that "Auto" would imply.
-  const resolved = value ?? models[0]?.id ?? ""
+  // Null is "follow the catalog" — resolved for display rather than shown as a
+  // blank or an "Auto" row, since nothing here makes the routing decision that
+  // "Auto" would imply. Under a ZDR policy the catalog's first ELIGIBLE entry,
+  // matching what resolveImageModelId will actually send.
+  const resolved = value ?? allowed[0]?.id ?? models[0]?.id ?? ""
   const selected = models.find((model) => model.id === resolved)
 
   return (
@@ -121,6 +134,26 @@ export function ImageModelSelect({
                   ))}
                 </CommandGroup>
               ))}
+              {blocked.length > 0 ? (
+                // Kept rather than filtered away, exactly like the text
+                // combobox's blocked rows: a model that vanished from the list
+                // reads as a missing model, and the writer goes looking for it
+                // in a search box that no longer has it.
+                <CommandGroup heading="No zero-retention provider">
+                  {blocked.map((model) => (
+                    <CommandItem
+                      key={model.id}
+                      value={`${model.name} ${model.provider}`}
+                      disabled
+                    >
+                      <span className="flex-1 truncate">{model.name}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {model.provider}
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              ) : null}
             </CommandList>
           </Command>
         </PopoverContent>

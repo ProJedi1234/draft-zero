@@ -59,7 +59,12 @@ export async function POST(req: Request): Promise<Response> {
   if (!story)
     return Response.json({ error: "Story not found." }, { status: 404 })
 
-  const modelId = await resolveImageModelId(story.imageModelId)
+  // settings.zdr is the story's effective policy — resolve has already folded
+  // the app-wide floor in. It bends the default model toward one a ZDR request
+  // can actually route to, and travels with the request so the provider fails
+  // closed rather than trusting account settings to catch it.
+  const zdr = story.settings.zdr
+  const modelId = await resolveImageModelId(story.imageModelId, zdr)
   const key = resolveOpenRouterKey()
 
   // Seeded from the clock: takes of one slot differ only by seed, so a seed
@@ -104,6 +109,7 @@ export async function POST(req: Request): Promise<Response> {
     for await (const event of provider.generate({
       prompt,
       modelId,
+      zdr,
       aspectRatio,
       seed,
       signal: controller.signal,

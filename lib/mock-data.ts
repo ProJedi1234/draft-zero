@@ -89,31 +89,37 @@ export const MOCK_IMAGE_MODELS: OpenRouterImageModel[] = [
     id: "black-forest-labs/flux-1.1-pro",
     name: "FLUX 1.1 Pro",
     provider: "Black Forest Labs",
+    zdr: false,
   },
   {
     id: "bytedance-seed/seedream-4.5",
     name: "Seedream 4.5",
     provider: "ByteDance",
+    zdr: true,
   },
   {
     id: "google/gemini-3-pro-image",
     name: "Gemini 3 Pro Image",
     provider: "Google",
+    zdr: true,
   },
   {
     id: "openai/gpt-image-1",
     name: "GPT Image 1",
     provider: "OpenAI",
+    zdr: false,
   },
   {
     id: "recraft/recraft-v3",
     name: "Recraft V3",
     provider: "Recraft",
+    zdr: false,
   },
   {
     id: "x-ai/grok-imagine",
     name: "Grok Imagine",
     provider: "xAI",
+    zdr: false,
   },
 ]
 
