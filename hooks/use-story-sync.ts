@@ -33,6 +33,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import {
+  atmosphereStatus,
   localRefresh,
   openSyncChannel,
   runEndings,
@@ -135,6 +136,15 @@ export function useStorySync(): void {
             toast.error(
               "Summarizing stopped after repeated failures. Older passages will fall out of context unsummarized."
             )
+            continue
+          }
+          if (event.type === "atmosphere") {
+            atmosphereStatus.publish(event)
+            // A message is the server's way of saying this one is worth an
+            // interruption — it attaches one to the first failure of a streak
+            // and to the moment it gives up, and to nothing else. Every other
+            // phase is reported by the sparkle, which costs no interruption.
+            if (event.message !== null) toast.error(event.message)
             continue
           }
           if (event.type === "run-ended") {

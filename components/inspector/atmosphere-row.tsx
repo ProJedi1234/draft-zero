@@ -6,10 +6,12 @@ import { toast } from "sonner"
 
 import { SliderField } from "@/components/slider-field"
 import { Label } from "@/components/ui/label"
+import { useAtmosphereStatus } from "@/hooks/use-atmosphere-status"
 import { useDragHold } from "@/hooks/use-drag-hold"
 import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { setStoryTintAuto, updateStoryTint } from "@/lib/actions/stories"
 import { STORY_TINTS } from "@/lib/story-tint"
+import type { AtmospherePhase } from "@/lib/sync/types"
 import type { ActionResult, Story } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -150,6 +152,7 @@ export function AtmosphereRow({ story }: { story: Story }) {
 
   const active = hue.value
   const engaged = auto.value
+  const status = useAtmosphereStatus(story.id)
 
   return (
     <div className="space-y-2">
@@ -163,7 +166,11 @@ export function AtmosphereRow({ story }: { story: Story }) {
         aria-describedby={`${uid}-desc`}
         className="flex flex-wrap gap-1.5"
       >
-        <AutoSwatch engaged={engaged} onSelect={engageAuto} />
+        <AutoSwatch
+          engaged={engaged}
+          phase={status?.phase ?? null}
+          onSelect={engageAuto}
+        />
         <TintSwatch
           label="No tint"
           selected={active === null}
@@ -227,14 +234,23 @@ export function AtmosphereRow({ story }: { story: Story }) {
  */
 function AutoSwatch({
   engaged,
+  phase,
   onSelect,
 }: {
   engaged: boolean
+  /** Where the last check got to, or null if it hasn't run this session. */
+  phase: AtmospherePhase | null
   onSelect: () => void
 }) {
-  const label = engaged
-    ? "Auto: the story chooses its colour"
-    : "Auto: let the story choose its colour"
+  const checking = phase === "checking"
+  const stopped = phase === "stopped"
+  const label = stopped
+    ? "Auto: stopped after repeated failures — change the model in Settings"
+    : checking
+      ? "Auto: reading the scene…"
+      : engaged
+        ? "Auto: the story chooses its colour"
+        : "Auto: let the story choose its colour"
   return (
     <button
       type="button"
@@ -243,13 +259,25 @@ function AutoSwatch({
       title={label}
       aria-label={label}
       className={cn(
-        "flex size-6 items-center justify-center border transition-[box-shadow,border-color,color]",
-        engaged
-          ? "border-foreground text-foreground ring-2 ring-foreground/30"
-          : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+        "relative flex size-6 items-center justify-center border transition-[box-shadow,border-color,color]",
+        stopped
+          ? "border-destructive/60 text-destructive"
+          : engaged
+            ? "border-foreground text-foreground ring-2 ring-foreground/30"
+            : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground"
       )}
     >
       <Sparkles className="size-3.5" />
+      {/* A square that travels the swatch's own border rather than a ring
+          around it: the row is six-pixel-gapped chips, and anything drawn
+          outside this one's box lands on its neighbour. Purely decorative —
+          the state is in the label above, which is what a screen reader gets. */}
+      {checking ? (
+        <span
+          aria-hidden
+          className="atmosphere-scan pointer-events-none absolute -inset-px border border-foreground/70"
+        />
+      ) : null}
     </button>
   )
 }

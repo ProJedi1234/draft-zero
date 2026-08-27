@@ -491,6 +491,7 @@ export function toAppSettings(row: AppSettingsRow): AppSettings {
       providerTag: row.atmosphereProviderTag,
       zdr: row.atmosphereZdr,
       temperature: row.atmosphereTemperature,
+      maxTokens: row.atmosphereMaxTokens,
     },
     requireZdr: row.requireZdr,
     defaultImageModelId: row.defaultImageModelId,

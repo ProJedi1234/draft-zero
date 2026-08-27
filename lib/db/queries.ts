@@ -846,6 +846,7 @@ export async function getAppSettings(): Promise<AppSettings> {
       atmosphereProviderTag: null,
       atmosphereZdr: false,
       atmosphereTemperature: 0.2,
+      atmosphereMaxTokens: 2048,
       requireZdr: false,
       // Null follows the catalog's first eligible entry; 4,096 is the shipped
       // derivation budget — see app/api/image-prompt/route.ts for the why.

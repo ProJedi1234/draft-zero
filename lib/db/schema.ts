@@ -609,6 +609,12 @@ export const appSettings = pgTable("app_settings", {
   atmosphereTemperature: doublePrecision("atmosphere_temperature")
     .notNull()
     .default(0.2),
+  // Where the provider stops. Generous by default because it is a ceiling and
+  // not a spend: a model that answers in one word is billed for one word under
+  // any cap, while a model that reasons first is billed for nothing at all if
+  // the cap cuts it off before it speaks. Defaulted in the schema so the
+  // generated ALTER TABLE gives every existing row the same headroom.
+  atmosphereMaxTokens: integer("atmosphere_max_tokens").notNull().default(2048),
   // The app-wide zero-data-retention floor. ORed into every story and profile
   // at read time rather than written into them, so switching it off restores
   // what each of them says for itself instead of leaving a fan-out behind.

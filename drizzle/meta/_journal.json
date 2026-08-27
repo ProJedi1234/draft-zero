@@ -176,6 +176,13 @@
       "when": 1787856274495,
       "tag": "0024_mighty_zemo",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787856576675,
+      "tag": "0025_clean_mentallo",
+      "breakpoints": true
     }
   ]
 }

@@ -39,6 +39,13 @@ function toWire(event: BusEvent): SyncWireEvent {
       }
     case "summary-stopped":
       return { type: "summary-stopped", storyId: event.storyId }
+    case "atmosphere":
+      return {
+        type: "atmosphere",
+        storyId: event.storyId,
+        phase: event.phase,
+        message: event.message,
+      }
   }
 }
 

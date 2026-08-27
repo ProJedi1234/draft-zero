@@ -8,6 +8,7 @@ import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
 import { appSettings } from "@/lib/db/schema"
+import { clearAtmosphereBreaker } from "@/lib/generation/atmosphere"
 import { resolveOpenRouterKey } from "@/lib/generation/key"
 import {
   clampLoreBudget,
@@ -77,7 +78,7 @@ export async function updateAppSettings(
     values.summaryMaxTokens = maxTokens
   }
   if (patch.atmosphere !== undefined) {
-    const { modelId, thinking, providerTag, zdr, temperature } =
+    const { modelId, thinking, providerTag, zdr, temperature, maxTokens } =
       patch.atmosphere
     // Same three guards as the summarizer above, and for the same reason: an
     // unknown thinking level or an out-of-range temperature is a provider 400,
@@ -89,12 +90,28 @@ export async function updateAppSettings(
     if (!inRange(temperature, 0, 2)) {
       return { ok: false, error: "Temperature must be between 0 and 2." }
     }
+    // The floor is the answer itself: a handful of tokens is enough for one
+    // word from a model that does not think first, and anything less could not
+    // return an answer at all.
+    if (!Number.isInteger(maxTokens) || !inRange(maxTokens, 16, 32_000)) {
+      return {
+        ok: false,
+        error: "Max tokens must be a whole number between 16 and 32000.",
+      }
+    }
     const trimmed = modelId?.trim() ?? ""
     values.atmosphereModelId = trimmed === "" ? null : trimmed
     values.atmosphereThinking = thinking
     values.atmosphereProviderTag = providerTag
     values.atmosphereZdr = zdr
     values.atmosphereTemperature = temperature
+    values.atmosphereMaxTokens = maxTokens
+    // A bundle that has been edited is a different bundle, and the breaker's
+    // three strikes were against the old one. Without this, the Settings
+    // change that FIXES a broken picker cannot revive a story that already
+    // gave up on it — only a server restart could, which is not a thing to ask
+    // of anybody.
+    clearAtmosphereBreaker()
   }
   if (patch.requireZdr !== undefined) {
     values.requireZdr = patch.requireZdr

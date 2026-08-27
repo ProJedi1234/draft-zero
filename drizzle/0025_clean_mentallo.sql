@@ -1,0 +1,1 @@
+ALTER TABLE "app_settings" ADD COLUMN "atmosphere_max_tokens" integer DEFAULT 2048 NOT NULL;
