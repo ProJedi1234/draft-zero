@@ -66,10 +66,10 @@ services:
     # would shadow the real key and silently drop generation back to the offline
     # mock, which looks like a bug in the feature rather than a config mistake.
     #
-    # It buys the wand's prompt derivation (a real, cents-scale call to the
-    # story's own text model). IMAGE generation stays on the offline mock
-    # regardless — there is no live image provider on this branch — so the key
-    # cannot run up an image bill.
+    # It buys BOTH halves now: the wand's prompt derivation (a text call at the
+    # story's own model, priced like a prose turn since it composes the full
+    # context window) and the image itself (live via OpenRouter's /images,
+    # billed per image — cents each on most of the catalog).
     env_file:
       - /home/adityadhar/repos/draft-zero/.env.local
     environment:
