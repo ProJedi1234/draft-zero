@@ -62,6 +62,7 @@ export function StoryWorkspace({
   models,
   imageModels,
   imageModelPrice,
+  defaultImageModelId,
   costProfile,
   profiles,
   defaultProfileId,
@@ -74,6 +75,8 @@ export function StoryWorkspace({
   imageModels: OpenRouterImageModel[]
   /** What the story's selected image model costs per image, or null when unknown. */
   imageModelPrice: string | null
+  /** What a null story choice resolves to — the picker's "Default" row names it. */
+  defaultImageModelId: string
   /** Server-read spend for this story — the header chip's ledger. */
   costProfile: StoryCostProfile
   /** Every profile, in the writer's order — the inspector's switcher list. */
@@ -176,6 +179,7 @@ export function StoryWorkspace({
           models={models}
           imageModels={imageModels}
           imageModelPrice={imageModelPrice}
+          defaultImageModelId={defaultImageModelId}
           profiles={profiles}
           defaultProfileId={defaultProfileId}
           requireZdr={requireZdr}
@@ -204,6 +208,7 @@ export function StoryWorkspace({
             models={models}
             imageModels={imageModels}
             imageModelPrice={imageModelPrice}
+            defaultImageModelId={defaultImageModelId}
             profiles={profiles}
             defaultProfileId={defaultProfileId}
             requireZdr={requireZdr}

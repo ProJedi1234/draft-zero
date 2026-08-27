@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { GenerationDefaultsCard } from "@/components/settings/generation-defaults-card"
+import { ImageGenerationCard } from "@/components/settings/image-generation-card"
 import { ModelProfilesCard } from "@/components/settings/model-profiles-card"
 import { SummarizerCard } from "@/components/settings/summarizer-card"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -29,6 +30,7 @@ import {
   type AccountZdrPolicies,
   type AppSettings,
   type ModelProfile,
+  type OpenRouterImageModel,
   type OpenRouterModel,
 } from "@/lib/types"
 
@@ -49,11 +51,16 @@ function enforcedGroupList(policies: AccountZdrPolicies): string {
 function SettingsView({
   settings,
   models,
+  imageModels,
+  defaultImagePrice,
   profiles,
   followerCounts,
 }: {
   settings: AppSettings
   models: OpenRouterModel[]
+  imageModels: OpenRouterImageModel[]
+  /** What the resolved default image model costs per image, or null. */
+  defaultImagePrice: string | null
   profiles: ModelProfile[]
   /** Stories per profile id, for the editor's "followed by N stories" line. */
   followerCounts: Record<string, number>
@@ -177,6 +184,14 @@ function SettingsView({
           </Card>
 
           <GenerationDefaultsCard defaults={settings.defaultGeneration} />
+
+          <ImageGenerationCard
+            imageModels={imageModels}
+            defaultImageModelId={settings.defaultImageModelId}
+            imageContextTokens={settings.imageContextTokens}
+            defaultPrice={defaultImagePrice}
+            requireZdr={requireZdr}
+          />
 
           <ModelProfilesCard
             profiles={profiles}

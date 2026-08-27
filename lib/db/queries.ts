@@ -804,6 +804,10 @@ export async function getAppSettings(): Promise<AppSettings> {
       summaryTargetWords: null,
       summaryMaxTokens: null,
       requireZdr: false,
+      // Null follows the catalog's first eligible entry; 4,096 is the shipped
+      // derivation budget — see app/api/image-prompt/route.ts for the why.
+      defaultImageModelId: null,
+      imageContextTokens: 4096,
       defaultTemperature: DEFAULT_GENERATION_SETTINGS.temperature,
       defaultTopP: DEFAULT_GENERATION_SETTINGS.topP,
       defaultLoreBudget: DEFAULT_GENERATION_SETTINGS.loreBudget,

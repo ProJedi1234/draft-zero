@@ -587,6 +587,15 @@ export const appSettings = pgTable("app_settings", {
   // at read time rather than written into them, so switching it off restores
   // what each of them says for itself instead of leaving a fan-out behind.
   requireZdr: boolean("require_zdr").notNull().default(false),
+  // The image model stories draw with unless they chose their own. NULL means
+  // "the catalog's first eligible entry" — the pre-settings behaviour, kept as
+  // the seed state rather than frozen into a concrete id that would outlive
+  // the catalog that suggested it.
+  defaultImageModelId: text("default_image_model_id"),
+  // The derivation call's context budget, in tokens. A property of the image
+  // feature, not of any one story — which is why it lives here and not on the
+  // stories table beside the prose window.
+  imageContextTokens: integer("image_context_tokens").notNull().default(4096),
   // The shared generation defaults every profile inherits per field. NOT NULL
   // with the app's own defaults on the column, so the single settings row is
   // never half-populated and a profile always has something to fall back to.

@@ -38,6 +38,7 @@ export function ModelSection({
   models,
   imageModels,
   imageModelPrice,
+  defaultImageModelId,
   profiles,
   defaultProfileId,
   requireZdr,
@@ -49,6 +50,8 @@ export function ModelSection({
   imageModels: OpenRouterImageModel[]
   /** What the SELECTED image model costs per image, or null when unknown. */
   imageModelPrice: string | null
+  /** What a null story choice resolves to — names the picker's Default row. */
+  defaultImageModelId: string
   profiles: ModelProfile[]
   defaultProfileId: string | null
   /** The app-wide retention policy; a story can add to it, never lower it. */
@@ -227,6 +230,7 @@ export function ModelSection({
         // which answers for the TEXT model's provider group, not for whichever
         // vendor an image row belongs to.
         zdr={settings.zdr}
+        defaultModelId={defaultImageModelId}
         onValueChange={(next) => {
           // Immediate, never debounced — the same rule the model combobox
           // follows. A picker commits on choice; there is nothing to batch.

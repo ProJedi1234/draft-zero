@@ -485,6 +485,8 @@ export function toAppSettings(row: AppSettingsRow): AppSettings {
       maxTokens: row.summaryMaxTokens,
     },
     requireZdr: row.requireZdr,
+    defaultImageModelId: row.defaultImageModelId,
+    imageContextTokens: row.imageContextTokens,
   }
 }
 

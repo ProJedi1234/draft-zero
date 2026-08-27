@@ -346,7 +346,8 @@ export async function updateGenerationSettings(
  */
 export async function setStoryImageModel(
   id: string,
-  imageModelId: string
+  /** A concrete choice, or null to follow the app's default image model. */
+  imageModelId: string | null
 ): Promise<ActionResult> {
   const db = await getDb()
   const updated = await db

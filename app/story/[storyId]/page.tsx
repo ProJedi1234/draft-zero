@@ -73,8 +73,14 @@ export default async function StoryPage({ params }: StoryPageProps) {
   // One request, for the selected model only, and cached an hour — the image
   // catalog's list endpoint carries no pricing at all, so pricing every row
   // would be one round trip per row to fill a select nobody has opened.
+  // What a null story choice resolves to, passed down so the picker's
+  // "Default" row can name it without re-deriving the server's answer.
+  const defaultImageModelId = await resolveImageModelId(
+    null,
+    story.settings.zdr
+  )
   const imageModelPrice = await getImageModelPrice(
-    await resolveImageModelId(story.imageModelId)
+    story.imageModelId ?? defaultImageModelId
   )
 
   // No key here: the workspace keys its own editor subtree by story id, so
@@ -87,6 +93,7 @@ export default async function StoryPage({ params }: StoryPageProps) {
       models={models}
       imageModels={imageModels}
       imageModelPrice={imageModelPrice}
+      defaultImageModelId={defaultImageModelId}
       costProfile={costProfile}
       profiles={profiles}
       defaultProfileId={settings.defaultProfileId}

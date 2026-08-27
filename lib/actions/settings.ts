@@ -11,6 +11,7 @@ import { appSettings } from "@/lib/db/schema"
 import { resolveOpenRouterKey } from "@/lib/generation/key"
 import {
   clampLoreBudget,
+  IMAGE_CONTEXT_OPTIONS,
   isContextWindow,
   REASONING_EFFORTS,
   type ActionResult,
@@ -77,6 +78,27 @@ export async function updateAppSettings(
   }
   if (patch.requireZdr !== undefined) {
     values.requireZdr = patch.requireZdr
+  }
+  if (patch.defaultImageModelId !== undefined) {
+    // Blank clears back to "the catalog's first eligible entry". Deliberately
+    // NOT checked against the catalog, same reasoning as the summarizer model
+    // above: a stale id should cost a refused draw the writer is told about,
+    // not a settings page that refuses to save.
+    const trimmed = patch.defaultImageModelId?.trim() ?? ""
+    values.defaultImageModelId = trimmed === "" ? null : trimmed
+  }
+  if (patch.imageContextTokens !== undefined) {
+    // The select only offers the ladder, but the ladder is enforced here: this
+    // number sizes a billed prompt, and an absurd value pasted in through the
+    // action would quietly multiply every wand tap's cost.
+    if (
+      !(IMAGE_CONTEXT_OPTIONS as readonly number[]).includes(
+        patch.imageContextTokens
+      )
+    ) {
+      return { ok: false, error: "Unsupported image context size." }
+    }
+    values.imageContextTokens = patch.imageContextTokens
   }
 
   // Ensures the single settings row exists before patching it.
