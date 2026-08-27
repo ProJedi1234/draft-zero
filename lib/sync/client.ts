@@ -111,6 +111,9 @@ export type AtmosphereEvent = Extract<SyncWireEvent, { type: "atmosphere" }>
 export const atmosphereStatus = {
   last: new Map<string, AtmosphereEvent>(),
   listeners: new Set<(event: AtmosphereEvent) => void>(),
+  /** When "checking" was shown, per story — the floor below is measured from it. */
+  shownAt: new Map<string, number>(),
+  holds: new Map<string, ReturnType<typeof setTimeout>>(),
   subscribe(listener: (event: AtmosphereEvent) => void): () => void {
     this.listeners.add(listener)
     return () => {
@@ -118,6 +121,38 @@ export const atmosphereStatus = {
     }
   },
   publish(event: AtmosphereEvent): void {
+    const pending = this.holds.get(event.storyId)
+    if (pending !== undefined) {
+      clearTimeout(pending)
+      this.holds.delete(event.storyId)
+    }
+    if (event.phase === "checking") {
+      this.shownAt.set(event.storyId, Date.now())
+      this.commit(event)
+      return
+    }
+    // The floor. A check against a fast model is over in about a second, and
+    // it does not begin until the turn it follows has finished streaming — so
+    // the writer is reading their new passage during the entire life of the
+    // indicator, and an honest one is an indicator nobody has ever seen. This
+    // holds the terminal phase back so the mark is legible when the eye
+    // arrives. It delays no work and no colour: the tint is already written
+    // and its own `change` event has already gone out.
+    const shownAt = this.shownAt.get(event.storyId)
+    const elapsed = shownAt === undefined ? Infinity : Date.now() - shownAt
+    if (elapsed >= MIN_CHECKING_MS) {
+      this.commit(event)
+      return
+    }
+    this.holds.set(
+      event.storyId,
+      setTimeout(() => {
+        this.holds.delete(event.storyId)
+        this.commit(event)
+      }, MIN_CHECKING_MS - elapsed)
+    )
+  },
+  commit(event: AtmosphereEvent): void {
     this.last.set(event.storyId, event)
     for (const listener of this.listeners) {
       try {
@@ -128,6 +163,9 @@ export const atmosphereStatus = {
     }
   },
 }
+
+/** How long "checking" stays on screen at minimum. See publish() above. */
+const MIN_CHECKING_MS = 1400
 
 /**
  * One NDJSON response to a stream of parsed records.

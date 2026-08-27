@@ -464,9 +464,29 @@ describe("what reaches the model", () => {
     expect(completeCalls[0]!.user).toContain("never been tinted")
   })
 
+  test("an untinted story is not offered the abstention at all", async () => {
+    // The bug this pins: on an untinted story "keep" means "leave the room
+    // grey", and a prompt that says "when in doubt, keep" gets exactly that
+    // for as long as the writer is willing to wait. Observed three times in a
+    // row on a real story, including on a turn that moved the scene.
+    await run()
+    const system = completeCalls[0]!.system as string
+    expect(system).toContain("no colour yet")
+    expect(system).not.toContain("when in doubt, keep")
+    expect(completeCalls[0]!.user).toContain('Do not answer "keep"')
+  })
+
+  test("a tinted story still gets the abstention, and the bar for using it", async () => {
+    currentStory = tinted()
+    await run()
+    const system = completeCalls[0]!.system as string
+    expect(system).toContain("when in doubt, keep")
+    expect(system).not.toContain("no colour yet")
+  })
+
   test("the built-in picker is used when Settings names none", async () => {
     await run()
-    expect(completeCalls[0]!.modelId).toBe("~anthropic/claude-haiku-latest")
+    expect(completeCalls[0]!.modelId).toBe("~deepseek/deepseek-v4-flash-latest")
     expect(started[0]!.requestKind).toBe("atmosphere")
   })
 

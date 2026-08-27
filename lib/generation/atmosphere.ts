@@ -319,7 +319,7 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
   const timer = setTimeout(() => abort.abort(), ATMOSPHERE_TIMEOUT_MS)
   try {
     const result = await io.complete({
-      system: renderAtmosphereSystemPrompt(),
+      system: renderAtmosphereSystemPrompt(currentTintId(story) !== null),
       user: renderAtmosphereRequest({
         current: currentTintId(story),
         tail: manuscriptTail(story.entries, TAIL_WORDS),
