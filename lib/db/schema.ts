@@ -615,6 +615,12 @@ export const appSettings = pgTable("app_settings", {
   // the cap cuts it off before it speaks. Defaulted in the schema so the
   // generated ALTER TABLE gives every existing row the same headroom.
   atmosphereMaxTokens: integer("atmosphere_max_tokens").notNull().default(2048),
+  // How many passages must land between checks. Three because that is about
+  // what the 150-word rule it replaces came to in practice, so a story already
+  // running does not change cadence the day the column appears.
+  atmospherePassagesBetweenChecks: integer("atmosphere_passages_between_checks")
+    .notNull()
+    .default(3),
   // The app-wide zero-data-retention floor. ORed into every story and profile
   // at read time rather than written into them, so switching it off restores
   // what each of them says for itself instead of leaving a fan-out behind.

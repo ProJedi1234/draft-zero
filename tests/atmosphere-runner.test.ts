@@ -106,6 +106,15 @@ function makeStory(over: Partial<Story> = {}): Story {
   }
 }
 
+/**
+ * A story `count` passages long — the unit the gate counts, and the one the
+ * writer sets a threshold in. The fixtures carry a two-entry tail, so the rest
+ * of the manuscript sits before the window exactly as a real long story's does.
+ */
+function passages(count: number): Partial<Story> {
+  return { entriesBefore: Math.max(0, count - ENTRIES.length) }
+}
+
 /** The story as it looks already wearing Abyss (hue 255 in STORY_TINTS). */
 function tinted(over: Partial<Story> = {}): Story {
   return makeStory({ tintHue: 255, tintStrength: 0.85, ...over })
@@ -130,6 +139,7 @@ const BASE_ATMOSPHERE: AtmosphereSettings = {
   zdr: false,
   temperature: 0.2,
   maxTokens: 2048,
+  passagesBetweenChecks: 3,
 }
 let atmosphere: AtmosphereSettings = BASE_ATMOSPHERE
 let completeImpl: () => Promise<CompleteResult> = async () => ({
@@ -222,20 +232,78 @@ describe("when it asks at all", () => {
   })
 
   test("a tinted story that has barely moved is left alone", async () => {
-    currentStory = tinted({ wordCount: 1000 })
+    currentStory = tinted(passages(10))
     await run()
     expect(completeCalls).toHaveLength(1)
 
     // Two more passages' worth of words is not enough to reopen the question.
-    currentStory = tinted({ wordCount: 1080 })
+    currentStory = tinted(passages(11))
     await run()
     expect(completeCalls).toHaveLength(1)
   })
 
   test("a tinted story that has genuinely moved is asked again", async () => {
-    currentStory = tinted({ wordCount: 1000 })
+    currentStory = tinted(passages(10))
     await run()
-    currentStory = tinted({ wordCount: 1200 })
+    currentStory = tinted(passages(13))
+    await run()
+    expect(completeCalls).toHaveLength(2)
+  })
+
+  test("the cadence is the writer's number, in passages", async () => {
+    // Two passages is not enough at the default of three...
+    currentStory = tinted(passages(10))
+    await run()
+    currentStory = tinted(passages(12))
+    await run()
+    expect(completeCalls).toHaveLength(1)
+
+    // ...and is enough the moment the writer says it is. The same manuscript,
+    // a different answer, because how fast a story moves is not knowable from
+    // inside the runner.
+    atmosphere = { ...BASE_ATMOSPHERE, passagesBetweenChecks: 2 }
+    await run()
+    expect(completeCalls).toHaveLength(2)
+  })
+
+  test("one means after every passage", async () => {
+    atmosphere = { ...BASE_ATMOSPHERE, passagesBetweenChecks: 1 }
+    currentStory = tinted(passages(10))
+    await run()
+    currentStory = tinted(passages(11))
+    await run()
+    expect(completeCalls).toHaveLength(2)
+  })
+
+  test("the watermark counts the whole manuscript, not the loaded window", async () => {
+    // entriesBefore is what makes a windowed read honest here: without it a
+    // long story's tail would answer "how far have you come" with the size of
+    // a viewport, and the gate would fire on a story that had not moved.
+    currentStory = tinted({ ...passages(400) })
+    await run()
+    currentStory = tinted({ ...passages(401) })
+    await run()
+    expect(completeCalls).toHaveLength(1)
+  })
+
+  test("a watermark from above the story's own length is not believed", async () => {
+    // Two ways to get here and one right answer. The writer rewound, so the
+    // manuscript really is shorter than the mark — or the mark means something
+    // else than it did when it was written, which is what a hot reload did the
+    // day this counted words and started counting passages: every open story
+    // compared ~100 passages against ~7000 words and the gate declined
+    // forever, with no ledger row and no log line to say so.
+    currentStory = tinted(passages(400))
+    await run()
+    expect(completeCalls).toHaveLength(1)
+
+    currentStory = tinted(passages(12))
+    await run()
+    expect(completeCalls).toHaveLength(2)
+
+    // ...and the mark is re-stamped in the current unit, so the gate closes
+    // again straight away rather than firing on every turn from here on.
+    currentStory = tinted(passages(13))
     await run()
     expect(completeCalls).toHaveLength(2)
   })
@@ -312,9 +380,9 @@ describe("what it does with the answer", () => {
       generationId: null,
       usage: null,
     })
-    currentStory = tinted({ wordCount: 1000 })
+    currentStory = tinted(passages(10))
     await run()
-    currentStory = tinted({ wordCount: 1050 })
+    currentStory = tinted(passages(11))
     await run()
     // Without the advance, "keep" would reopen the question every single turn.
     expect(completeCalls).toHaveLength(1)
@@ -329,12 +397,12 @@ describe("what it does with the answer", () => {
     // Untinted is eager for the FIRST look only. "No tint yet" is this model's
     // standing answer, and a bypass keyed on the hue would re-ask at full price
     // after every turn until it changed its mind.
-    currentStory = makeStory({ wordCount: 1000 })
+    currentStory = makeStory(passages(10))
     await run()
-    currentStory = makeStory({ wordCount: 1050 })
+    currentStory = makeStory(passages(11))
     await run()
     expect(completeCalls).toHaveLength(1)
-    currentStory = makeStory({ wordCount: 1200 })
+    currentStory = makeStory(passages(13))
     await run()
     expect(completeCalls).toHaveLength(2)
   })
@@ -374,14 +442,14 @@ describe("what it does with the answer", () => {
   })
 
   test("a repaint advances the watermark too", async () => {
-    currentStory = tinted({ wordCount: 1000 })
+    currentStory = tinted(passages(10))
     completeImpl = async () => ({
       text: "rose",
       generationId: null,
       usage: null,
     })
     await run()
-    currentStory = tinted({ tintHue: 350, wordCount: 1050 })
+    currentStory = tinted({ tintHue: 350, ...passages(11) })
     await run()
     expect(completeCalls).toHaveLength(1)
   })
@@ -434,14 +502,14 @@ describe("what it refuses to write", () => {
     completeImpl = async () => {
       throw new Error("429")
     }
-    currentStory = tinted({ wordCount: 1000 })
+    currentStory = tinted(passages(10))
     await run()
     completeImpl = async () => ({
       text: "rose",
       generationId: null,
       usage: null,
     })
-    currentStory = tinted({ wordCount: 1010 })
+    currentStory = tinted(passages(11))
     await run()
     expect(completeCalls).toHaveLength(2)
     expect(written).toHaveLength(1)
@@ -476,12 +544,26 @@ describe("what reaches the model", () => {
     expect(completeCalls[0]!.user).toContain('Do not answer "keep"')
   })
 
-  test("a tinted story still gets the abstention, and the bar for using it", async () => {
+  test("a tinted story is asked whether the colour fits, not whether the story moved", async () => {
     currentStory = tinted()
     await run()
     const system = completeCalls[0]!.system as string
-    expect(system).toContain("when in doubt, keep")
+    // The distinction that took a live story to find: a tint can be wrong
+    // without anything having changed, and a question about change cannot
+    // notice that. Observed keeping abyss through several passages of blazing
+    // white sand under a morning sun, correctly, by the old wording.
+    expect(system).toContain("still fits")
+    expect(system).toContain("never keep a colour merely because it is the one")
     expect(system).not.toContain("no colour yet")
+  })
+
+  test("the current tint carries its meaning, not just its id", async () => {
+    currentStory = tinted()
+    await run()
+    // "does abyss still fit" is answerable from the line itself; matching a
+    // bare id against the list in the system turn is a second thing to get
+    // right in a job that is allowed one word.
+    expect(completeCalls[0]!.user).toContain("abyss — night, deep water")
   })
 
   test("the built-in picker is used when Settings names none", async () => {
@@ -565,7 +647,7 @@ describe("giving up", () => {
     await run()
     failNext = false
     await run()
-    currentStory = makeStory({ wordCount: 1200 })
+    currentStory = makeStory(passages(13))
     failNext = true
     await run()
     await run()
@@ -668,7 +750,7 @@ describe("saying what it is doing", () => {
       generationId: null,
       usage: null,
     })
-    currentStory = makeStory({ wordCount: 1200 })
+    currentStory = makeStory(passages(13))
     await run()
     expect(completeCalls).toHaveLength(4)
   })

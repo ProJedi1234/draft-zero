@@ -1,0 +1,1 @@
+ALTER TABLE "app_settings" ADD COLUMN "atmosphere_passages_between_checks" integer DEFAULT 3 NOT NULL;
