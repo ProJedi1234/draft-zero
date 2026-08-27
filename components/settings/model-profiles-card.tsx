@@ -2,7 +2,29 @@
 
 import * as React from "react"
 import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  restrictToParentElement,
+  restrictToVerticalAxis,
+} from "@dnd-kit/modifiers"
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import {
   Copy,
+  GripVertical,
   MoreHorizontal,
   PencilLine,
   Plus,
@@ -33,7 +55,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { setDefaultProfile } from "@/lib/actions/profiles"
+import { reorderProfiles, setDefaultProfile } from "@/lib/actions/profiles"
 import { settingsSummaryWithPrice } from "@/lib/settings-summary"
 import {
   zdrGroupForModel,
@@ -82,8 +104,38 @@ export function ModelProfilesCard({
   )
   const [deleteOpen, setDeleteOpen] = React.useState(false)
 
+  // The dragged order shows immediately and holds until the action's
+  // revalidation delivers the same list back; on failure it snaps back to the
+  // server's order on its own, which is the honest state.
+  const [orderedProfiles, applyOrder] = React.useOptimistic(
+    profiles,
+    (_current, next: ModelProfile[]) => next
+  )
+  const [, startTransition] = React.useTransition()
+
+  // A small distance before a drag starts is what keeps the handle's plain
+  // taps (and the row's own buttons) working on touch.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
   const defaultProfile =
     profiles.find((profile) => profile.id === defaultProfileId) ?? null
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const from = orderedProfiles.findIndex((p) => p.id === active.id)
+    const to = orderedProfiles.findIndex((p) => p.id === over.id)
+    if (from < 0 || to < 0) return
+    const next = arrayMove(orderedProfiles, from, to)
+    startTransition(async () => {
+      applyOrder(next)
+      const result = await reorderProfiles(next.map((p) => p.id))
+      if (!result.ok) toast.error(result.error)
+    })
+  }
 
   function openEditor(target: ProfileEditorTarget) {
     setEditorTarget(target)
@@ -124,30 +176,49 @@ export function ModelProfilesCard({
             No profiles yet. Create one to give new stories a starting point.
           </p>
         ) : (
-          <ul className="-mx-2 divide-y divide-border/60">
-            {profiles.map((profile) => (
-              <ProfileRow
-                key={profile.id}
-                profile={profile}
-                summary={settingsSummaryWithPrice(profile.settings, models)}
-                // Effective, not stored: a profile that says nothing about
-                // retention is still under the app-wide policy — and under its
-                // own model group's account setting, which is why the marks in
-                // a list can differ between two profiles that both say false.
-                zdr={
-                  profile.settings.zdr ||
-                  requireZdr ||
-                  accountPolicies[
-                    zdrGroupForModel(profile.settings.modelId)
-                  ] === "enforced"
-                }
-                isDefault={profile.id === defaultProfileId}
-                onEdit={() => openEditor({ mode: "edit", profile })}
-                onDuplicate={() => openEditor({ mode: "duplicate", profile })}
-                onDelete={() => openDelete(profile)}
-              />
-            ))}
-          </ul>
+          <DndContext
+            // Stable id: the default is a render-order counter, which lands on
+            // different numbers on the server and the client and shows up as a
+            // hydration mismatch on aria-describedby.
+            id="model-profiles-dnd"
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={orderedProfiles.map((profile) => profile.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <ul className="-mx-2 divide-y divide-border/60">
+                {orderedProfiles.map((profile) => (
+                  <ProfileRow
+                    key={profile.id}
+                    profile={profile}
+                    summary={settingsSummaryWithPrice(profile.settings, models)}
+                    // Effective, not stored: a profile that says nothing about
+                    // retention is still under the app-wide policy — and under its
+                    // own model group's account setting, which is why the marks in
+                    // a list can differ between two profiles that both say false.
+                    zdr={
+                      profile.settings.zdr ||
+                      requireZdr ||
+                      accountPolicies[
+                        zdrGroupForModel(profile.settings.modelId)
+                      ] === "enforced"
+                    }
+                    isDefault={profile.id === defaultProfileId}
+                    sortable={orderedProfiles.length > 1}
+                    onEdit={() => openEditor({ mode: "edit", profile })}
+                    onDuplicate={() =>
+                      openEditor({ mode: "duplicate", profile })
+                    }
+                    onDelete={() => openDelete(profile)}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
         )}
         <p className="text-xs text-muted-foreground">
           New stories start from the default (★) profile.
@@ -190,6 +261,7 @@ function ProfileRow({
   summary,
   zdr,
   isDefault,
+  sortable,
   onEdit,
   onDuplicate,
   onDelete,
@@ -199,6 +271,8 @@ function ProfileRow({
   /** Routed only through providers that keep nothing — shown as a mark, not a word. */
   zdr: boolean
   isDefault: boolean
+  /** False hides the handle: a list of one has nowhere to go. */
+  sortable: boolean
   onEdit: () => void
   onDuplicate: () => void
   onDelete: () => void
@@ -226,8 +300,39 @@ function ProfileRow({
     })
   }
 
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: profile.id })
+
   return (
-    <li className="flex items-center gap-1">
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        "flex items-center gap-1",
+        // The moving row rides over its neighbours, on an opaque background so
+        // the rows it crosses don't show through it mid-drag.
+        isDragging && "relative z-10 bg-background shadow-sm"
+      )}
+    >
+      {sortable ? (
+        <button
+          type="button"
+          aria-label={`Reorder ${profile.name}`}
+          // touch-none is the drag: without it the browser claims the gesture
+          // for scrolling and the row never moves on a phone.
+          className="cursor-grab touch-none self-stretch px-1 text-muted-foreground/50 transition-colors hover:text-muted-foreground active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical aria-hidden className="size-3.5" />
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={onEdit}
