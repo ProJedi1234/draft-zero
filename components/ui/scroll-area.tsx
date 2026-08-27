@@ -16,9 +16,15 @@ function ScrollArea({
       className={cn("relative", className)}
       {...props}
     >
+      {/* `relative` is load-bearing: the viewport is what clips, but an
+          absolutely positioned descendant is only clipped by an ancestor that
+          is also its containing block. Left static, every `sr-only` label
+          inside resolved against the Root instead, escaped the clip and
+          lengthened the *document* — settings grew a second scroll with a
+          screenful of dead space under it. */}
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+        className="relative size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
