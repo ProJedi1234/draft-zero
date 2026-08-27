@@ -286,6 +286,28 @@ describe("when it asks at all", () => {
     expect(completeCalls).toHaveLength(1)
   })
 
+  test("a watermark from above the story's own length is not believed", async () => {
+    // Two ways to get here and one right answer. The writer rewound, so the
+    // manuscript really is shorter than the mark — or the mark means something
+    // else than it did when it was written, which is what a hot reload did the
+    // day this counted words and started counting passages: every open story
+    // compared ~100 passages against ~7000 words and the gate declined
+    // forever, with no ledger row and no log line to say so.
+    currentStory = tinted(passages(400))
+    await run()
+    expect(completeCalls).toHaveLength(1)
+
+    currentStory = tinted(passages(12))
+    await run()
+    expect(completeCalls).toHaveLength(2)
+
+    // ...and the mark is re-stamped in the current unit, so the gate closes
+    // again straight away rather than firing on every turn from here on.
+    currentStory = tinted(passages(13))
+    await run()
+    expect(completeCalls).toHaveLength(2)
+  })
+
   test("a story that has been deleted is not asked about", async () => {
     currentStory = null
     await run()
@@ -522,12 +544,26 @@ describe("what reaches the model", () => {
     expect(completeCalls[0]!.user).toContain('Do not answer "keep"')
   })
 
-  test("a tinted story still gets the abstention, and the bar for using it", async () => {
+  test("a tinted story is asked whether the colour fits, not whether the story moved", async () => {
     currentStory = tinted()
     await run()
     const system = completeCalls[0]!.system as string
-    expect(system).toContain("when in doubt, keep")
+    // The distinction that took a live story to find: a tint can be wrong
+    // without anything having changed, and a question about change cannot
+    // notice that. Observed keeping abyss through several passages of blazing
+    // white sand under a morning sun, correctly, by the old wording.
+    expect(system).toContain("still fits")
+    expect(system).toContain("never keep a colour merely because it is the one")
     expect(system).not.toContain("no colour yet")
+  })
+
+  test("the current tint carries its meaning, not just its id", async () => {
+    currentStory = tinted()
+    await run()
+    // "does abyss still fit" is answerable from the line itself; matching a
+    // bare id against the list in the system turn is a second thing to get
+    // right in a job that is allowed one word.
+    expect(completeCalls[0]!.user).toContain("abyss — night, deep water")
   })
 
   test("the built-in picker is used when Settings names none", async () => {

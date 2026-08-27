@@ -47,22 +47,21 @@ const TINT_MOODS: Record<string, string> = {
  *   else as a failed check, so an answer that explains itself is an answer that
  *   spends money and changes nothing. Saying so twice — the format rule here,
  *   the instruction line in the user turn — is cheap next to the alternative.
- * - **"keep" is the default answer — once there is something to keep.** This
- *   runs after every turn for the life of a story. A model that reads "choose a
- *   tint" as "choose a different tint" repaints the room on a paragraph of
- *   weather, and the writer experiences a feature they did not ask for as a
- *   flicker. The bar is a scene that has genuinely moved: a new place, a turn in
- *   the story's mood, not one dark sentence inside a bright chapter.
+ * - **The abstention exists, and it is narrow.** This runs after every turn for
+ *   the life of a story, so a model that reads "choose a tint" as "choose a
+ *   different tint" repaints the room on a paragraph of weather and the writer
+ *   experiences a feature they did not ask for as a flicker. What holds it
+ *   steady is a rule about FIT rather than one about change — see
+ *   ATMOSPHERE_KEEP_RULE for why that distinction cost a real session.
  *
- * The exception is the whole reason this file has two system prompts. On an
- * UNTINTED story "keep" means "leave the room grey", and a model told "when in
- * doubt, keep" will say it about a story it has been handed no colour for —
- * which is a feature that appears not to work at all. Observed, not theorised:
- * three consecutive checks on an untinted story answered keep, including one on
- * a turn that moved the scene to evening. So the abstention is removed from the
- * one case where it has nothing to protect. Choosing a colour that turns out
- * slightly wrong costs a writer one press of a swatch; never choosing costs them
- * the feature.
+ * Which is why there are two closing rules rather than one. On an UNTINTED
+ * story "keep" means "leave the room grey", and a model told to prefer keeping
+ * will say it about a story it has been handed no colour for — a feature that
+ * appears not to work at all. Observed, not theorised: three consecutive checks
+ * on an untinted story answered keep, including one on a turn that moved the
+ * scene to evening. So the abstention is removed from the one case where it has
+ * nothing to protect. Choosing a colour that turns out slightly wrong costs a
+ * writer one press of a swatch; never choosing costs them the feature.
  */
 const ATMOSPHERE_RULES = `you read the mood of a story and name the colour the room it is read in should be.
 
@@ -71,8 +70,22 @@ the available tints are:
 
 answer with EXACTLY one word and nothing else: {answers}. no punctuation, no explanation, no reasoning in your answer.`
 
-/** Appended when the story already wears a colour. */
-const ATMOSPHERE_KEEP_RULE = `answer "keep" unless the story has genuinely moved somewhere else — a new place, a lasting change in what the story feels like. one dark paragraph in a bright story is still a bright story, and a scene that is merely tense is not a scene that has changed colour. you are choosing the light the whole story is read in, not lighting this passage. when in doubt, keep.`
+/**
+ * Appended when the story already wears a colour.
+ *
+ * Asks whether the tint FITS, not whether the story has moved, and the
+ * difference is not academic. The first version asked about movement and was
+ * observed keeping a story on abyss — night, deep water, dread — through
+ * several passages of blazing white sand under a climbing morning sun. It was
+ * answering correctly: nothing had moved, the beach had been there all along.
+ * A tint can be wrong without anything having changed — it was set by a hand,
+ * or by an earlier check, or by a scene the story has long since left — and a
+ * question about change can never notice that, so the room stays wrong forever
+ * and the writer concludes the feature is broken.
+ */
+const ATMOSPHERE_KEEP_RULE = `you are told the tint the story is read in now. answer "keep" only if that tint still fits the story as it currently reads — the place it is in, the light it is under, what it feels like to be there. if it does not fit, answer with the tint that does.
+
+hold steady through a passing moment: one dark scene in a bright story, or a single tense exchange, is not a reason to repaint, and you are choosing the light the whole story is read in rather than lighting the latest passage. but a tint that no longer describes this story is worth correcting however long it has been wrong — never keep a colour merely because it is the one already there.`
 
 /** Appended when it does not. */
 const ATMOSPHERE_FIRST_RULE = `this story has no colour yet, so you must choose one — "keep" is not an answer here. pick the tint that best fits what the story has felt like so far. you are choosing the light the whole story is read in, not lighting the latest passage, so read for the setting and the mood that have lasted rather than the mood of the last sentence. if several fit, choose the closest one anyway.`
@@ -114,8 +127,20 @@ export function renderAtmosphereRequest(input: {
   const blocks: string[] = []
   const memory = input.memory.trim()
   if (memory !== "") blocks.push(`[Memory]\n${memory}`)
+  // The gloss rides along with the id, so "does this still fit" is answerable
+  // from the line itself. Without it the model has to carry the meaning down
+  // from the list in the system turn and match it against a bare word, which
+  // is a second thing to get right in a job that is only allowed one word.
+  const currentMood =
+    input.current === null ? null : (TINT_MOODS[input.current] ?? null)
   blocks.push(
-    `[Current tint]\n${input.current ?? "(none — this story has never been tinted)"}`
+    `[Current tint]\n${
+      input.current === null
+        ? "(none — this story has never been tinted)"
+        : currentMood === null
+          ? input.current
+          : `${input.current} — ${currentMood}`
+    }`
   )
   blocks.push(`[Recent passages]\n${input.tail.trim()}`)
   blocks.push(

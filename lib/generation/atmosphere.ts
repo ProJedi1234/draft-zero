@@ -429,7 +429,24 @@ function shouldCheck(story: Story, passagesBetweenChecks: number): boolean {
   if (!story.tintAuto) return false
   const since = registry.checkedAt.get(story.id)
   if (since === undefined) return true
-  return passageCount(story) - since >= passagesBetweenChecks
+  const grown = passageCount(story) - since
+  // A watermark ABOVE the story's own length is not a story that has shrunk
+  // below its last check — it is a number that no longer means what it meant
+  // when it was written. Both readings want the same answer, which is why one
+  // line covers them:
+  //
+  // - The writer rewound. The manuscript really is shorter, the scene really
+  //   did change, and waiting for it to grow back past a mark set in a future
+  //   that no longer exists would mute the picker for the whole rewritten
+  //   stretch.
+  // - The unit changed under it. This one is not hypothetical: the watermark
+  //   counted words until it counted passages, the registry lives on
+  //   globalThis and survives a hot reload, and every story open at that
+  //   moment was left comparing ~100 passages against ~7000 words. Nothing
+  //   said so — the gate simply declined, forever, with no ledger row and no
+  //   log line.
+  if (grown < 0) return true
+  return grown >= passagesBetweenChecks
 }
 
 /**
