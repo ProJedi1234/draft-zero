@@ -140,6 +140,10 @@ mock.module("@/lib/db/entry-writes", () => ({
       ? { ok: true, data: { entry: { id: `entry-${persists.length}` } } }
       : { ok: false, error: "That passage is no longer in the story." }
   },
+  // Reached through deleteStory → lib/images/live → lib/images/persist; never
+  // called here, but mock.module replaces the whole module, so every export
+  // the import graph touches has to exist.
+  nextStoryPosition: async () => 0,
 }))
 
 mock.module("@/lib/db/client", () => ({

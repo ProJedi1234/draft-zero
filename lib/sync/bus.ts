@@ -16,6 +16,8 @@ import type { RunEndStatus } from "@/lib/sync/types"
 export type BusEvent =
   | { kind: "change"; storyId: string | null }
   | { kind: "run-started"; storyId: string; runId: string }
+  /** An illustration began — the image channel's run-started. See SyncWireEvent. */
+  | { kind: "image-run-started"; storyId: string; runId: string }
   /**
    * A run finished, and HOW it finished. `change` already fires on the same
    * persist, but a refetch can only show that the story is no longer running —

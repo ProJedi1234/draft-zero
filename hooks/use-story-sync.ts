@@ -116,6 +116,17 @@ export function useStorySync(): void {
             scheduleRefresh()
             continue
           }
+          if (event.type === "image-run-started") {
+            // Routed like run-started, to its own attach — and refreshed for
+            // the same reason: the sidebar's status marks read the registries
+            // during the root layout's render, so without a refetch a story
+            // that started drawing never says so.
+            const target = runHandoff.current
+            if (target !== null && event.storyId === target.storyId)
+              target.onImageRunStarted(event.runId)
+            scheduleRefresh()
+            continue
+          }
           if (event.type === "summary-stopped") {
             // The one message this app raises that nobody asked for. It fires
             // once, when the summarizer stops retrying — not on the transient

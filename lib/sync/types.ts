@@ -19,7 +19,7 @@
 // a listener and nothing else. Only stopGeneration() aborts the model.
 
 import type { GenerationEvent, GenerationUsage } from "@/lib/generation/types"
-import type { GenerationRequestKind } from "@/lib/types"
+import type { GenerationRequestKind, ImageAspectRatio } from "@/lib/types"
 
 /** How a finished run ended. Mirrors SettledCallStatus on purpose. */
 export type RunEndStatus = "ok" | "aborted" | "error"
@@ -67,6 +67,47 @@ export type RunWireEvent =
   | { type: "ping" }
   | RunEndFrame
 
+/**
+ * The image run's snapshot frame — the picture-shaped twin of RunFrame, over
+ * its own channel (GET /api/image/subscribe?storyId=…[&runId=…]). The latest
+ * partial preview is compressed into it the way streamed prose is compressed
+ * into `text`: an attacher gets where the draw IS, then watches it sharpen.
+ */
+export interface ImageRunFrame {
+  type: "image-run"
+  runId: string
+  storyId: string
+  /** What is being drawn — the alt text and the retry-after-error payload. */
+  prompt: string
+  /** The frame the manuscript reserves, so nothing moves when pixels land. */
+  aspectRatio: ImageAspectRatio
+  /** The slot a retry is redrawing, or null for a new beat at the end. */
+  imageGroupId: string | null
+  /** The sharpest partial so far, or null before the first one. */
+  previewB64: string | null
+  previewMediaType: string | null
+}
+
+/**
+ * The image run's terminal frame. By the time it is sent the illustration row
+ * is committed (imageId) or there is nothing to commit — same contract as
+ * RunEndFrame: clients act on facts, not predictions.
+ */
+export interface ImageRunEndFrame {
+  type: "end"
+  status: RunEndStatus
+  /** The persisted illustration, when a picture landed. */
+  imageId: string | null
+  /** Provider message worth a toast, error status only. */
+  error: string | null
+}
+
+export type ImageRunWireEvent =
+  | ImageRunFrame
+  | { type: "partial"; b64: string; mediaType: string }
+  | { type: "ping" }
+  | ImageRunEndFrame
+
 export type SyncWireEvent =
   | { type: "hello" }
   | { type: "ping" }
@@ -74,6 +115,13 @@ export type SyncWireEvent =
   | { type: "change"; storyId: string | null }
   /** A run began — devices on that story should attach to the subscribe channel. */
   | { type: "run-started"; storyId: string; runId: string }
+  /**
+   * An illustration began — same handoff as run-started, aimed at the image
+   * subscribe channel. Separate rather than a kind on run-started because the
+   * two runs are independent: a story can stream prose and draw a picture at
+   * once, and a device must attach to both.
+   */
+  | { type: "image-run-started"; storyId: string; runId: string }
   /**
    * A run finished, anywhere. Unlike `run-started` this is for devices that are
    * NOT on that story: it is what lets the library mark a passage that landed
