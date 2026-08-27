@@ -37,6 +37,69 @@ function groupByProvider(models: OpenRouterImageModel[]): ProviderGroup[] {
 }
 
 /**
+ * The searchable, provider-grouped model list — shared by the picker below and
+ * the retry menu (components/story/image-retry-button.tsx), so the two can
+ * never disagree about grouping, search keys, or what a ZDR policy rules out.
+ */
+export function ImageModelCommandList({
+  models,
+  zdr,
+  checkedId,
+  onSelect,
+}: {
+  models: OpenRouterImageModel[]
+  /** The effective retention policy — blocked models collect greyed at the bottom. */
+  zdr: boolean
+  /** The row to mark as the current choice, or null for none. */
+  checkedId: string | null
+  onSelect: (modelId: string) => void
+}) {
+  const allowed = zdr ? models.filter((model) => model.zdr) : models
+  const blocked = zdr ? models.filter((model) => !model.zdr) : []
+  return (
+    <>
+      {groupByProvider(allowed).map(({ provider, models: providerModels }) => (
+        <CommandGroup key={provider} heading={provider}>
+          {providerModels.map((model) => (
+            <CommandItem
+              key={model.id}
+              // Searchable by lab as well as name: "flux" and "black forest"
+              // should both find FLUX, and for images the lab is most of what
+              // the choice means.
+              value={`${model.name} ${provider}`}
+              data-checked={model.id === checkedId}
+              onSelect={() => onSelect(model.id)}
+            >
+              <span className="flex-1 truncate">{model.name}</span>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      ))}
+      {blocked.length > 0 ? (
+        // Kept rather than filtered away, exactly like the text combobox's
+        // blocked rows: a model that vanished from the list reads as a missing
+        // model, and the writer goes looking for it in a search box that no
+        // longer has it.
+        <CommandGroup heading="No zero-retention provider">
+          {blocked.map((model) => (
+            <CommandItem
+              key={model.id}
+              value={`${model.name} ${model.provider}`}
+              disabled
+            >
+              <span className="flex-1 truncate">{model.name}</span>
+              <span className="ml-2 text-xs text-muted-foreground">
+                {model.provider}
+              </span>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      ) : null}
+    </>
+  )
+}
+
+/**
  * Which image model this story draws with — searchable, provider-grouped, and
  * deliberately the same control as the text model picker two rows above it.
  *
@@ -91,8 +154,6 @@ export function ImageModelSelect({
 }) {
   const [open, setOpen] = React.useState(false)
   const allowed = zdr ? models.filter((model) => model.zdr) : models
-  const blocked = zdr ? models.filter((model) => !model.zdr) : []
-  const providers = groupByProvider(allowed)
 
   // Null is "follow the default" — resolved for display rather than shown as a
   // blank, since nothing here makes a routing decision an "Auto" would imply.
@@ -151,46 +212,15 @@ export function ImageModelSelect({
                   </CommandItem>
                 </CommandGroup>
               )}
-              {providers.map(({ provider, models: providerModels }) => (
-                <CommandGroup key={provider} heading={provider}>
-                  {providerModels.map((model) => (
-                    <CommandItem
-                      key={model.id}
-                      // Searchable by lab as well as name: "flux" and "black
-                      // forest" should both find FLUX, and for images the lab
-                      // is most of what the choice means.
-                      value={`${model.name} ${provider}`}
-                      data-checked={model.id === resolved}
-                      onSelect={() => {
-                        onValueChange(model.id)
-                        setOpen(false)
-                      }}
-                    >
-                      <span className="flex-1 truncate">{model.name}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              ))}
-              {blocked.length > 0 ? (
-                // Kept rather than filtered away, exactly like the text
-                // combobox's blocked rows: a model that vanished from the list
-                // reads as a missing model, and the writer goes looking for it
-                // in a search box that no longer has it.
-                <CommandGroup heading="No zero-retention provider">
-                  {blocked.map((model) => (
-                    <CommandItem
-                      key={model.id}
-                      value={`${model.name} ${model.provider}`}
-                      disabled
-                    >
-                      <span className="flex-1 truncate">{model.name}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {model.provider}
-                      </span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              ) : null}
+              <ImageModelCommandList
+                models={models}
+                zdr={zdr}
+                checkedId={resolved}
+                onSelect={(modelId) => {
+                  onValueChange(modelId)
+                  setOpen(false)
+                }}
+              />
             </CommandList>
           </Command>
         </PopoverContent>

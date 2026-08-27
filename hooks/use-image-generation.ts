@@ -13,6 +13,11 @@ export interface IllustrateRequest {
   aspectRatio: ImageAspectRatio
   /** Set only by a retry — names the slot the new draw joins. */
   imageGroupId?: string
+  /**
+   * Set only by the retry menu — draws this one take with the named model,
+   * leaving the story's own choice untouched.
+   */
+  modelId?: string
 }
 
 export interface ImageJob {
@@ -200,6 +205,7 @@ export function useImageGeneration(
             prompt: request.prompt,
             aspectRatio: request.aspectRatio,
             imageGroupId: request.imageGroupId,
+            modelId: request.modelId,
           }),
         })
         const body = (await res.json().catch(() => null)) as {
