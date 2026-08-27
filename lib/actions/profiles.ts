@@ -161,6 +161,46 @@ export async function updateProfile(
   return { ok: true, data: null }
 }
 
+/**
+ * Persists a hand-ordering of the whole list, not a single move: the client
+ * already holds the order the writer just dragged into place, and writing it
+ * wholesale means two devices reordering at once land on one list or the
+ * other — never an interleaving with duplicate positions.
+ *
+ * A list that no longer matches the server's ids is refused rather than
+ * partially applied: it was dragged on a stale view, and a profile created on
+ * another device since then has no position in it.
+ */
+export async function reorderProfiles(
+  orderedIds: string[]
+): Promise<ActionResult> {
+  const db = await getDb()
+  const existing = await db
+    .select({ id: modelProfiles.id })
+    .from(modelProfiles)
+    .then((rows) => new Set(rows.map((row) => row.id)))
+
+  const stale =
+    orderedIds.length !== existing.size ||
+    new Set(orderedIds).size !== orderedIds.length ||
+    orderedIds.some((id) => !existing.has(id))
+  if (stale) {
+    return { ok: false, error: "The profile list changed. Try again." }
+  }
+
+  await db.transaction(async (tx) => {
+    for (const [index, id] of orderedIds.entries()) {
+      await tx
+        .update(modelProfiles)
+        .set({ sortOrder: index })
+        .where(eq(modelProfiles.id, id))
+    }
+  })
+
+  commitChange(null)
+  return { ok: true, data: null }
+}
+
 export async function setDefaultProfile(id: string): Promise<ActionResult> {
   const db = await getDb()
   const profile = await db
