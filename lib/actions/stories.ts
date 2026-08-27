@@ -4,13 +4,38 @@ import { and, asc, eq, isNull } from "drizzle-orm"
 
 import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
-import { getAppSettings } from "@/lib/db/queries"
+import {
+  getAppSettings,
+  listStories,
+  STORY_PAGE_SIZE,
+  type StoryPage,
+} from "@/lib/db/queries"
 import { lorebookEntries, stories, storyEntries } from "@/lib/db/schema"
 import { discardStoryRun } from "@/lib/generation/live"
 import { discardStoryImageRun } from "@/lib/images/live"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import { clampLoreBudget, isContextWindow } from "@/lib/types"
 import type { ActionResult, GenerationSettings } from "@/lib/types"
+
+/**
+ * One more window of the library for the sidebar's "Load more".
+ *
+ * An action rather than a route because the sidebar lives in the root layout:
+ * it has no route of its own to re-render with a wider window, and a search
+ * param would put the sidebar's scroll depth in the URL of whatever page the
+ * writer happens to be on.
+ */
+export async function loadStoryPage(input: {
+  offset: number
+  query?: string
+}): Promise<ActionResult<StoryPage>> {
+  const page = await listStories({
+    limit: STORY_PAGE_SIZE,
+    offset: input.offset,
+    query: input.query,
+  })
+  return { ok: true, data: page }
+}
 
 /**
  * Creates a story with title "Untitled Story" (or given), empty text fields,
