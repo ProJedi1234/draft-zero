@@ -54,6 +54,11 @@ mock.module("@/lib/db/entry-writes", () => ({
     ok: true,
     data: { entry: { id: "entry-1" } },
   }),
+  // Reached through lib/images/persist since the images feature; never called
+  // here, but mock.module replaces the whole module and is process-global, so
+  // an export the import graph touches from ANY test file has to exist — its
+  // absence fails whichever file's imports resolve while this mock is live.
+  nextStoryPosition: async () => 0,
 }))
 const silentDb = {
   insert: () => ({ values: async () => {} }),
