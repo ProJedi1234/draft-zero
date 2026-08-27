@@ -309,7 +309,11 @@ export async function* streamCompletion(opts: {
         ],
         temperature: settings.temperature,
         topP: settings.topP,
-        maxTokens: settings.maxTokens,
+        // No maxTokens, deliberately. Omitting it IS the model's own ceiling,
+        // which is the honest ceiling to run under: passage length is the
+        // system prompt's job, and a numeric cap on top of it only ever fired
+        // as a mid-sentence truncation — or, on a reasoning model, against the
+        // thinking instead of the prose, returning nothing at all.
         frequencyPenalty: settings.frequencyPenalty,
         presencePenalty: settings.presencePenalty,
         seed: context.seed,

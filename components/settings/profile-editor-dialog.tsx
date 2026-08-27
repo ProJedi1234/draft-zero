@@ -139,7 +139,6 @@ function blankSettings(models: OpenRouterModel[]): ProfileSettings {
     zdr: false,
     temperature: null,
     topP: null,
-    maxTokens: null,
     contextWindow: null,
     loreBudget: null,
     frequencyPenalty: null,
@@ -404,14 +403,6 @@ function ProfileEditorForm({
                 max={1}
                 step={0.01}
                 onValueChange={(topP) => patch({ topP })}
-              />
-              <SliderField
-                label="Max tokens"
-                {...inherit("maxTokens")}
-                min={128}
-                max={4096}
-                step={128}
-                onValueChange={(maxTokens) => patch({ maxTokens })}
               />
               <ContextWindowSlider
                 value={contextWindow}

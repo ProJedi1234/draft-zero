@@ -3,18 +3,25 @@
 import * as React from "react"
 
 import type {
-  ActionKind,
+  ComposerMode,
+  ImageAspectRatio,
   LorebookEntry,
   ModelProfile,
+  OpenRouterImageModel,
   OpenRouterModel,
   Story,
   StoryCostProfile,
+  StoryImage,
 } from "@/lib/types"
 import { runHandoff } from "@/lib/sync/client"
 import {
   useGeneration,
   type GenerationController,
 } from "@/hooks/use-generation"
+import {
+  useImageGeneration,
+  useImagePromptDerivation,
+} from "@/hooks/use-image-generation"
 import {
   InspectorContent,
   InspectorPanel,
@@ -53,6 +60,8 @@ export function StoryWorkspace({
   story,
   lorebookEntries,
   models,
+  imageModels,
+  imageModelPrice,
   costProfile,
   profiles,
   defaultProfileId,
@@ -61,6 +70,10 @@ export function StoryWorkspace({
   story: Story
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
+  /** The image catalog — a separate endpoint and a separate shape; see lib/images/models.ts. */
+  imageModels: OpenRouterImageModel[]
+  /** What the story's selected image model costs per image, or null when unknown. */
+  imageModelPrice: string | null
   /** Server-read spend for this story — the header chip's ledger. */
   costProfile: StoryCostProfile
   /** Every profile, in the writer's order — the inspector's switcher list. */
@@ -73,7 +86,8 @@ export function StoryWorkspace({
   const [inspectorOpen, setInspectorOpen] = useInspectorOpen()
   const [inspectorTab, setInspectorTab] = useInspectorTab()
   const [mobileInspectorOpen, setMobileInspectorOpen] = React.useState(false)
-  const [actionKind, setActionKind] = React.useState<ActionKind>("do")
+  // Owned here so switching stories does not reset which mode is armed.
+  const [mode, setMode] = React.useState<ComposerMode>("do")
   const closeMobileInspector = React.useCallback(
     () => setMobileInspectorOpen(false),
     []
@@ -141,14 +155,16 @@ export function StoryWorkspace({
           models={models}
           profiles={profiles}
           defaultProfileId={defaultProfileId}
-          actionKind={actionKind}
-          onActionKindChange={setActionKind}
+          mode={mode}
+          onModeChange={setMode}
           attachRef={attachRef}
         />
         <InspectorPanel
           story={story}
           lorebookEntries={lorebookEntries}
           models={models}
+          imageModels={imageModels}
+          imageModelPrice={imageModelPrice}
           profiles={profiles}
           defaultProfileId={defaultProfileId}
           requireZdr={requireZdr}
@@ -175,6 +191,8 @@ export function StoryWorkspace({
             story={story}
             lorebookEntries={lorebookEntries}
             models={models}
+            imageModels={imageModels}
+            imageModelPrice={imageModelPrice}
             profiles={profiles}
             defaultProfileId={defaultProfileId}
             requireZdr={requireZdr}
@@ -193,8 +211,8 @@ function StoryEditor({
   models,
   profiles,
   defaultProfileId,
-  actionKind,
-  onActionKindChange,
+  mode,
+  onModeChange,
   attachRef,
 }: {
   story: Story
@@ -202,8 +220,8 @@ function StoryEditor({
   models: OpenRouterModel[]
   profiles: ModelProfile[]
   defaultProfileId: string | null
-  actionKind: ActionKind
-  onActionKindChange: (kind: ActionKind) => void
+  mode: ComposerMode
+  onModeChange: (mode: ComposerMode) => void
   /** Bridge from the workspace's sync channel: run-started → attach mid-flight; null = re-probe. */
   attachRef: { current: ((runId: string | null) => void) | null }
 }) {
@@ -211,6 +229,24 @@ function StoryEditor({
   const composerRef = React.useRef<HTMLTextAreaElement>(null)
   const composerBoxRef = React.useRef<HTMLDivElement>(null)
   const shellRef = React.useRef<HTMLDivElement>(null)
+
+  const image = useImageGeneration(story.id, {
+    onRestoreDraft: (prompt) => {
+      // Only into an EMPTY composer. A failed retry (fired from the picture's
+      // own cluster, not from here) must not overwrite a sentence the writer is
+      // halfway through typing — losing live keystrokes to a background failure
+      // is a worse trade than losing a prompt they can regenerate.
+      setDraft((current) => (current === "" ? prompt : current))
+      // Armed for image, because the restored text IS an image prompt: handing
+      // it back under Do would leave the next Send about to file a scene
+      // description as the writer's turn.
+      onModeChange("image")
+    },
+  })
+  const derivation = useImagePromptDerivation(story.id)
+  // Remembered across sends, like the armed mode: a writer working in portrait
+  // is working in portrait until they say otherwise.
+  const [aspectRatio, setAspectRatio] = React.useState<ImageAspectRatio>("16:9")
 
   const generation = useGeneration(story, {
     // The composer clears the moment a move dispatches, so until the server has
@@ -267,7 +303,7 @@ function StoryEditor({
   // while Say is still armed would send You say, "I look around."
   const handleSuggestion = React.useCallback(
     (text: string) => {
-      onActionKindChange("do")
+      onModeChange("do")
       setDraft(text)
       const textarea = composerRef.current
       if (!textarea) return
@@ -277,7 +313,26 @@ function StoryEditor({
         textarea.setSelectionRange(end, end)
       })
     },
-    [onActionKindChange]
+    [onModeChange]
+  )
+
+  // The in-flight preview is held until the revalidated tree delivers the row,
+  // so the finished picture does not blink out and back. This is the handover.
+  const imageCount = story.images.length
+  const settleImage = image.settle
+  React.useEffect(() => {
+    settleImage()
+  }, [imageCount, settleImage])
+
+  /** Hands a picture's prompt back to the composer, armed to redraw it. */
+  const handleEditImagePrompt = React.useCallback(
+    (target: StoryImage) => {
+      onModeChange("image")
+      setAspectRatio(target.aspectRatio)
+      setDraft(target.prompt)
+      composerRef.current?.focus()
+    },
+    [onModeChange]
   )
 
   return (
@@ -291,14 +346,34 @@ function StoryEditor({
           optimisticUserText={generation.optimisticUserText}
           optimisticUserPending={generation.optimisticUserPending}
           removingEntryIds={generation.removingEntryIds}
+          imageJob={image.job}
+          onImageStop={image.stop}
+          onImageRetry={(target) =>
+            void image.generate({
+              prompt: target.prompt,
+              aspectRatio: target.aspectRatio,
+              // Joins the slot, so this is another draw of the same beat rather
+              // than a second picture appended to the end of the story.
+              imageGroupId: target.imageGroupId,
+            })
+          }
+          onImageEditPrompt={handleEditImagePrompt}
           onRetry={handleRetry}
           onSuggestion={handleSuggestion}
         />
         <Composer
           value={draft}
           onValueChange={setDraft}
-          actionKind={actionKind}
-          onActionKindChange={onActionKindChange}
+          mode={mode}
+          onModeChange={onModeChange}
+          aspectRatio={aspectRatio}
+          onAspectRatioChange={setAspectRatio}
+          deriving={derivation.deriving}
+          onDerive={() => void derivation.derive(setDraft)}
+          onGenerateImage={(prompt) =>
+            void image.generate({ prompt, aspectRatio })
+          }
+          imageBusy={image.job !== null}
           textareaRef={composerRef}
           containerRef={composerBoxRef}
           status={generation.status}

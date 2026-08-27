@@ -11,6 +11,11 @@ import {
   listModelProfiles,
 } from "@/lib/db/queries"
 import { listModels } from "@/lib/generation/models"
+import {
+  getImageModelPrice,
+  listImageModels,
+  resolveImageModelId,
+} from "@/lib/images/models"
 
 type StoryPageProps = {
   params: Promise<{ storyId: string }>
@@ -49,11 +54,14 @@ export default async function StoryPage({ params }: StoryPageProps) {
   // The whole profile list, not just the followed one: the switcher is a menu,
   // and there are a handful of these rows at most (see the UX doc) — a second
   // round trip when the writer opens it would be the expensive option.
-  const [story, lorebookEntries, models, costProfile, profiles] =
+  const [story, lorebookEntries, models, imageModels, costProfile, profiles] =
     await Promise.all([
       getStory(storyId),
       listLorebookEntries(storyId),
       listModels(),
+      // Cached an hour in-process like the text catalog, so this is a lookup
+      // rather than a round trip on most requests.
+      listImageModels(),
       getStoryCostProfile(storyId),
       listModelProfiles(),
     ])
@@ -61,6 +69,13 @@ export default async function StoryPage({ params }: StoryPageProps) {
   if (!story) {
     notFound()
   }
+
+  // One request, for the selected model only, and cached an hour — the image
+  // catalog's list endpoint carries no pricing at all, so pricing every row
+  // would be one round trip per row to fill a select nobody has opened.
+  const imageModelPrice = await getImageModelPrice(
+    await resolveImageModelId(story.imageModelId)
+  )
 
   // No key here: the workspace keys its own editor subtree by story id, so
   // per-story state resets while the writer's UI preferences (inspector
@@ -70,6 +85,8 @@ export default async function StoryPage({ params }: StoryPageProps) {
       story={story}
       lorebookEntries={lorebookEntries}
       models={models}
+      imageModels={imageModels}
+      imageModelPrice={imageModelPrice}
       costProfile={costProfile}
       profiles={profiles}
       defaultProfileId={settings.defaultProfileId}

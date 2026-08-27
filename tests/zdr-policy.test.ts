@@ -23,6 +23,7 @@ function model(id: string, prompt = "$1.00"): OpenRouterModel {
     name: id,
     provider: id.split("/")[0],
     contextLength: 8192,
+    maxCompletionTokens: null,
     pricing: { prompt, completion: prompt },
     reasoning: null,
     zdr: false,

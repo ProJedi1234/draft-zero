@@ -1,0 +1,169 @@
+// POST /api/image-prompt — derive an image prompt for where the story is now.
+//
+// A route rather than a server action because the answer STREAMS: the composer
+// shows the prompt writing itself, and a server action can only resolve once.
+// Small enough to own its whole lifecycle here — unlike a story generation,
+// nothing needs to survive the tab closing, since an abandoned prompt is worth
+// nothing and the writer can ask again for a fraction of a cent.
+import { listLorebookEntries, getStory } from "@/lib/db/queries"
+import { composeContext } from "@/lib/generation/context"
+import { recordCallStarted, settleCall } from "@/lib/generation/calls"
+import { resolveOpenRouterKey } from "@/lib/generation/key"
+import { mapOpenRouterError } from "@/lib/generation/openrouter"
+import { streamDerivation } from "@/lib/images/derive-live"
+import { deriveImagePrompt } from "@/lib/images/derive-prompt"
+import { chunkText } from "@/lib/generation/fixtures"
+
+export const runtime = "nodejs"
+
+
+export async function POST(req: Request): Promise<Response> {
+  let storyId: string
+  try {
+    const body = (await req.json()) as { storyId?: unknown }
+    if (typeof body.storyId !== "string" || body.storyId === "") {
+      return Response.json({ error: "storyId is required." }, { status: 400 })
+    }
+    storyId = body.storyId
+  } catch {
+    return Response.json({ error: "Malformed request." }, { status: 400 })
+  }
+
+  const [story, lorebookEntries] = await Promise.all([
+    getStory(storyId),
+    listLorebookEntries(storyId),
+  ])
+  if (!story) {
+    return Response.json({ error: "Story not found." }, { status: 404 })
+  }
+  if (story.entries.length === 0) {
+    // Nothing to describe yet. An honest refusal beats spending a call to have
+    // a model invent an opening scene the story has not written.
+    return Response.json(
+      { error: "Write something first — there's no scene to describe yet." },
+      { status: 409 }
+    )
+  }
+
+  // The narrator's full context, at the story's own window — memory, triggered
+  // lore, the rolling summary and as much manuscript as fits. An earlier slice
+  // capped this at 2,048 tokens to keep the call cheap, and the cap was where
+  // character continuity went to die: a character whose description last
+  // appeared outside the slice was re-invented, differently, every derivation.
+  // renderDerivationPrompt keeps the moment from drowning in the rest — the
+  // final paragraph is split out under its own label — and the cost of the
+  // wider window is a deliberate trade, priced in fractions of a cent and
+  // visible on the ledger.
+  const context = composeContext({
+    story,
+    lorebookEntries,
+    variant: 0,
+    contextWindow: story.settings.contextWindow,
+  })
+
+  const key = resolveOpenRouterKey()
+  const encoder = new TextEncoder()
+
+  // Offline: the keyword stand-in, streamed the same way so the composer cannot
+  // tell the two apart and nothing downstream has a second code path. It costs
+  // nothing and records nothing — see lib/images/derive-prompt.ts.
+  if (!key) {
+    const text = deriveImagePrompt(context.storyText, context.approxTokens)
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        async start(controller) {
+          for (const chunk of chunkText(text, 2)) {
+            controller.enqueue(encoder.encode(chunk))
+            await new Promise((resolve) => setTimeout(resolve, 40))
+          }
+          controller.close()
+        },
+      }),
+      { headers: { "Content-Type": "text/plain; charset=utf-8" } }
+    )
+  }
+
+  const callId = crypto.randomUUID()
+  await recordCallStarted({
+    id: callId,
+    storyId: story.id,
+    origStoryId: story.id,
+    storyTitle: story.title,
+    // Its own kind, so image-prompt spend is separable from prose spend on the
+    // usage page rather than quietly inflating "generate".
+    requestKind: "illustrate-prompt",
+    modelId: story.settings.modelId,
+    // Forced off in streamDerivation, and recorded as what actually happened
+    // rather than as what the story's settings say.
+    thinking: "off",
+    providerName: story.settings.providerTag,
+  })
+
+  const controllerAbort = new AbortController()
+  // The client hanging up should stop the call, not just stop us reading it —
+  // and since 417441a removed the token ceiling, what sits on the other side of
+  // a closed tab is an unbounded completion rather than a bounded 160 of them.
+  req.signal.addEventListener("abort", () => controllerAbort.abort(), {
+    once: true,
+  })
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let settled = false
+      try {
+        for await (const event of streamDerivation({
+          context,
+          settings: story.settings,
+          key,
+          signal: controllerAbort.signal,
+        })) {
+          if (event.type === "text" && event.value) {
+            controller.enqueue(encoder.encode(event.value))
+          } else if (event.type === "done") {
+            settled = true
+            await settleCall(callId, {
+              status: controllerAbort.signal.aborted ? "aborted" : "ok",
+              generationId: event.generationId ?? null,
+              usage: {
+                promptTokens: event.promptTokens ?? 0,
+                completionTokens: event.completionTokens ?? 0,
+                reasoningTokens: 0,
+                costUsd: event.costUsd ?? null,
+                cachedPromptTokens: null,
+                upstreamPromptCostUsd: null,
+                upstreamCompletionCostUsd: null,
+                isByok: null,
+              },
+            })
+          }
+        }
+        // Aborted before the final chunk: real tokens were billed and no usage
+        // ever arrived, so the row settles with a NULL cost rather than a zero.
+        // reconcileCall can still fill it in later from the generation id.
+        if (!settled) {
+          await settleCall(callId, {
+            status: controllerAbort.signal.aborted ? "aborted" : "ok",
+            generationId: null,
+            usage: null,
+          })
+        }
+      } catch (err) {
+        await settleCall(callId, {
+          status: "error",
+          generationId: null,
+          usage: null,
+        })
+        const { message } = mapOpenRouterError(err)
+        // The stream has already started, so an error cannot become a status
+        // code — it goes down the pipe as text the composer shows in a toast.
+        controller.enqueue(encoder.encode(` ${message}`))
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  })
+}

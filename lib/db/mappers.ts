@@ -23,6 +23,7 @@ import type {
   SettledCallStatus,
   Story,
   StoryEntry,
+  StoryImage,
   StoryRecap,
   StorySummary,
 } from "@/lib/types"
@@ -32,6 +33,7 @@ import type {
   LorebookEntryRow,
   ModelProfileRow,
   StoryEntryRow,
+  StoryImageRow,
   StoryRecapRow,
   StoryRow,
 } from "./schema"
@@ -96,6 +98,22 @@ function toEntryGeneration(row: StoryEntryRow): EntryGeneration | null {
  * passages written before the ledger existed, and for anything the recorder
  * failed to open a row for — all three are "we do not know", never zero.
  */
+/**
+ * A picture's money, from the ledger.
+ *
+ * `slotCostUsd` is the whole slot — every draw of this illustration, including
+ * the takes the writer moved on from. Retrying a picture spends again, and a
+ * chip that only ever showed the visible take would under-report a slot three
+ * draws deep by exactly the amount that surprises people.
+ */
+export interface ImageCost {
+  costUsd: string | null
+  status: SettledCallStatus
+  slotCostUsd: string | null
+  /** Settled draws of this slot with no price — the "+" in "$0.12+". */
+  slotUnpricedCalls: number
+}
+
 export interface EntryCost {
   /** Decimal string from Postgres `numeric`, or null when the call went unpriced. */
   costUsd: string | null
@@ -137,6 +155,7 @@ export function toStoryEntry(
 ): StoryEntry {
   return {
     id: row.id,
+    position: row.position,
     source: row.source,
     text: row.text,
     actionKind: row.actionKind,
@@ -153,6 +172,39 @@ export function toStoryEntry(
   }
 }
 
+/**
+ * `slot` is this illustration's position among its takes, resolved once in
+ * `toStory` for the same reason a passage's is — it is a fact about the group,
+ * not about the row.
+ *
+ * `cost` is absent for any picture with no ledger row — every illustration the
+ * offline mock produced, which bills nothing and records nothing.
+ */
+export function toStoryImage(
+  row: StoryImageRow,
+  slot: { index: number; count: number },
+  cost: ImageCost | null = null
+): StoryImage {
+  return {
+    id: row.id,
+    position: row.position,
+    imageGroupId: row.imageGroupId,
+    imageIndex: slot.index,
+    imageCount: slot.count,
+    prompt: row.prompt,
+    derivedPrompt: row.derivedPrompt,
+    modelId: row.modelId,
+    aspectRatio: row.aspectRatio,
+    seed: row.seed,
+    mediaType: row.mediaType,
+    costUsd: cost?.costUsd ?? null,
+    callStatus: cost?.status ?? null,
+    slotCostUsd: cost?.slotCostUsd ?? null,
+    slotUnpricedCalls: cost?.slotUnpricedCalls ?? 0,
+    createdAt: row.createdAt,
+  }
+}
+
 /** A story's own columns, which are always concrete — Custom or not. */
 export function toGenerationSettings(row: StoryRow): GenerationSettings {
   return {
@@ -162,7 +214,6 @@ export function toGenerationSettings(row: StoryRow): GenerationSettings {
     zdr: row.zdr,
     temperature: row.temperature,
     topP: row.topP,
-    maxTokens: row.maxTokens,
     contextWindow: row.contextWindow,
     loreBudget: row.loreBudget,
     frequencyPenalty: row.frequencyPenalty,
@@ -183,7 +234,6 @@ export function toProfileSettings(row: ModelProfileRow): ProfileSettings {
     zdr: row.zdr,
     temperature: row.temperature,
     topP: row.topP,
-    maxTokens: row.maxTokens,
     contextWindow: row.contextWindow,
     loreBudget: row.loreBudget,
     frequencyPenalty: row.frequencyPenalty,
@@ -330,6 +380,7 @@ export function toStory(
   profileRow: ModelProfileRow | null,
   activeEntryRows: StoryEntryRow[],
   slots: ReadonlyMap<string, SlotMeta>,
+  imageRows: StoryImageRow[],
   lorebookRows: LorebookEntryRow[],
   history: HistoryState,
   /** The resolved recap text, or "" when this story has none. */
@@ -340,6 +391,8 @@ export function toStory(
    */
   baseline: GenerationBaseline,
   costs: ReadonlyMap<string, EntryCost> = new Map(),
+  /** Settled ledger cost per illustration id; absent means no row. */
+  imageCosts: ReadonlyMap<string, ImageCost> = new Map(),
   window: ManuscriptWindow | null = null
 ): Story {
   const entries = activeEntryRows.map((entryRow) =>
@@ -349,6 +402,25 @@ export function toStory(
       costs.get(entryRow.id) ?? null
     )
   )
+  // Same grouping the passages get, for the same reason: the switcher needs to
+  // know where in its slot a take sits, and only the whole slot can say.
+  const imageSlots = new Map<string, StoryImageRow[]>()
+  for (const imageRow of imageRows) {
+    const slot = imageSlots.get(imageRow.imageGroupId)
+    if (slot) slot.push(imageRow)
+    else imageSlots.set(imageRow.imageGroupId, [imageRow])
+  }
+  const images = imageRows
+    .filter((imageRow) => imageRow.isActive)
+    .map((imageRow) => {
+      const slot = imageSlots.get(imageRow.imageGroupId) ?? [imageRow]
+      return toStoryImage(
+        imageRow,
+        { index: slot.indexOf(imageRow), count: slot.length },
+        imageCosts.get(imageRow.id) ?? null
+      )
+    })
+
   const lorebookEntries = lorebookRows.map(toLorebookEntry)
   const matches = matchActiveLorebookEntries(
     lorebookEntries,
@@ -374,6 +446,7 @@ export function toStory(
     hasMoreBefore: window?.hasMoreBefore,
     windowStartPosition: window?.windowStartPosition ?? undefined,
     generatedSpan: window ? window.generatedSpan : undefined,
+    images,
     profileId: profileRow ? row.profileId : null,
     settings: resolveGenerationSettings(
       toGenerationSettings(row),
@@ -387,6 +460,7 @@ export function toStory(
     systemPrompt: row.systemPrompt,
     tintHue: row.tintHue,
     tintStrength: row.tintStrength,
+    imageModelId: row.imageModelId,
     activeLorebookEntryIds: matches.map((match) => match.entry.id),
     canUndo: history.canUndo,
     canRedo: history.canRedo,
@@ -419,7 +493,6 @@ export function toGenerationDefaults(row: AppSettingsRow): GenerationDefaults {
   return {
     temperature: row.defaultTemperature,
     topP: row.defaultTopP,
-    maxTokens: row.defaultMaxTokens,
     contextWindow: row.defaultContextWindow,
     loreBudget: row.defaultLoreBudget,
     frequencyPenalty: row.defaultFrequencyPenalty,

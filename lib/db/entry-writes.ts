@@ -17,7 +17,12 @@ import { getDb } from "@/lib/db/client"
 import { recordOp } from "@/lib/db/journal"
 import { slotProfilesMixed, toStoryEntry } from "@/lib/db/mappers"
 import type { StoryEntryRow } from "@/lib/db/schema"
-import { generationCalls, stories, storyEntries } from "@/lib/db/schema"
+import {
+  generationCalls,
+  stories,
+  storyEntries,
+  storyImages,
+} from "@/lib/db/schema"
 import type {
   ActionKind,
   ActionResult,
@@ -59,18 +64,33 @@ export async function touchStoryRow(db: Handle, storyId: string, now: string) {
 }
 
 /**
- * The next free position, counting EVERY row — soft-deleted and inactive takes
- * included. They keep their `position`, so reusing a number would put two live
- * passages in one slot the moment one came back.
+ * The next free position in the manuscript, counting EVERY row — soft-deleted
+ * rows and inactive takes included. They keep their `position`, so reusing a
+ * number would put two live passages in one slot the moment one came back.
+ *
+ * Spans story_entries AND story_images, because a picture is a beat in the
+ * story rather than an ornament on one: the two tables share a single ordering
+ * sequence so the canvas can merge them by position alone, with no tie to
+ * break and no second sort key that could disagree with the first.
  */
-async function nextPosition(db: Handle, storyId: string): Promise<number> {
-  const row = await db
-    .select({ max: sql<number | null>`MAX(${storyEntries.position})` })
-    .from(storyEntries)
-    .where(eq(storyEntries.storyId, storyId))
-    .then((rows) => rows[0])
-  const max = row?.max
-  return max === null || max === undefined ? 0 : max + 1
+export async function nextStoryPosition(
+  db: Handle,
+  storyId: string
+): Promise<number> {
+  const [entryRow, imageRow] = await Promise.all([
+    db
+      .select({ max: sql<number | null>`MAX(${storyEntries.position})` })
+      .from(storyEntries)
+      .where(eq(storyEntries.storyId, storyId))
+      .then((rows) => rows[0]),
+    db
+      .select({ max: sql<number | null>`MAX(${storyImages.position})` })
+      .from(storyImages)
+      .where(eq(storyImages.storyId, storyId))
+      .then((rows) => rows[0]),
+  ])
+  const max = Math.max(entryRow?.max ?? -1, imageRow?.max ?? -1)
+  return max + 1
 }
 
 /**
@@ -172,7 +192,7 @@ export async function appendEntryCore(
   const row: StoryEntryRow = {
     id,
     storyId,
-    position: await nextPosition(db, storyId),
+    position: await nextStoryPosition(db, storyId),
     source,
     text: trimmed,
     actionKind: opts.action?.kind ?? null,

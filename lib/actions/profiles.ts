@@ -132,7 +132,6 @@ export async function updateProfile(
   if (settings.temperature !== undefined)
     values.temperature = settings.temperature
   if (settings.topP !== undefined) values.topP = settings.topP
-  if (settings.maxTokens !== undefined) values.maxTokens = settings.maxTokens
   if (settings.contextWindow !== undefined)
     values.contextWindow = settings.contextWindow
   // Null is "inherit the global default", so only a real number is clamped.

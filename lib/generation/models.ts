@@ -69,6 +69,8 @@ function toDomainModel(m: Model, zdrSlugs: Set<string>): OpenRouterModel {
     name: rest.length > 0 ? rest.join(": ") : m.name,
     provider: rest.length > 0 ? provider : m.id.split("/")[0].replace(/^~/, ""),
     contextLength: m.contextLength ?? 0,
+    // Null rather than 0 when absent: "not published" is not "no output".
+    maxCompletionTokens: m.topProvider?.maxCompletionTokens ?? null,
     pricing: {
       prompt: per1M(m.pricing.prompt),
       completion: per1M(m.pricing.completion),

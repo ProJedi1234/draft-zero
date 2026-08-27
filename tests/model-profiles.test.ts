@@ -30,7 +30,6 @@ const CUSTOM: GenerationSettings = {
   zdr: false,
   temperature: 1.2,
   topP: 0.8,
-  maxTokens: 512,
   contextWindow: 4096,
   loreBudget: 25,
   frequencyPenalty: 0.4,
@@ -42,7 +41,6 @@ const BASELINE: GenerationBaseline = {
   defaults: {
     temperature: 0.5,
     topP: 0.5,
-    maxTokens: 256,
     contextWindow: 2048,
     loreBudget: 25,
     frequencyPenalty: -1,
@@ -61,7 +59,6 @@ const PROFILE_SETTINGS: GenerationSettings = {
   zdr: false,
   temperature: 0.9,
   topP: 0.95,
-  maxTokens: 2048,
   contextWindow: 8192,
   loreBudget: 25,
   frequencyPenalty: 0,
@@ -96,7 +93,6 @@ describe("resolveProfileSettings", () => {
       zdr: false,
       temperature: null,
       topP: null,
-      maxTokens: null,
       contextWindow: null,
       loreBudget: null,
       frequencyPenalty: null,
@@ -163,7 +159,7 @@ describe("resolveGenerationSettings", () => {
   test("a Custom story ignores the global defaults entirely", () => {
     const resolved = resolveGenerationSettings(CUSTOM, null, BASELINE)
     expect(resolved.temperature).toBe(CUSTOM.temperature)
-    expect(resolved.maxTokens).toBe(CUSTOM.maxTokens)
+    expect(resolved.contextWindow).toBe(CUSTOM.contextWindow)
   })
 
   test("the story's columns survive the profile untouched", () => {

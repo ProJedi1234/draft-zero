@@ -67,14 +67,6 @@ export function GenerationDefaultsCard({
           max={1}
           step={0.01}
         />
-        <DefaultSlider
-          field="maxTokens"
-          label="Max tokens"
-          serverValue={defaults.maxTokens}
-          min={128}
-          max={4096}
-          step={128}
-        />
         <DefaultContextWindow serverValue={defaults.contextWindow} />
         <DefaultSlider
           field="loreBudget"

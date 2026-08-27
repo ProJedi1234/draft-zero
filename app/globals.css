@@ -298,6 +298,50 @@
   }
 }
 
+/*
+ * The illustration placeholder (ImageBlock): a survey being plotted.
+ *
+ * Two line layers drifting UPWARD at different speeds and spacings, under a
+ * band travelling DOWN with a bright leading edge. The parallax is what stops
+ * it reading as a static hatch, and the leading edge is what makes it a scanner
+ * rather than a gradient — without that one bright rule it is just a soft blob
+ * sliding over stripes.
+ *
+ * It has to hold up for 20-40 seconds directly under prose someone is reading,
+ * so every value here is slower and fainter than it wants to be. Nothing
+ * pulses, nothing has a hard edge, and the whole thing sits under 12% opacity.
+ */
+@keyframes contour-drift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 -100px;
+  }
+}
+
+@keyframes contour-scan {
+  0% {
+    transform: translateY(-60%);
+  }
+  100% {
+    transform: translateY(160%);
+  }
+}
+
+@utility animate-contour-near {
+  animation: contour-drift 7s linear infinite;
+}
+
+/* Half the speed of the near layer, so the two never resolve into one grid. */
+@utility animate-contour-far {
+  animation: contour-drift 14s linear infinite;
+}
+
+@utility animate-contour-scan {
+  animation: contour-scan 4.5s cubic-bezier(0.45, 0, 0.3, 1) infinite;
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: var(--font-sans);

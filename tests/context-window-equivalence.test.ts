@@ -89,6 +89,8 @@ function story(over: Partial<Story> = {}): Story {
     tintHue: null,
     tintStrength: 1,
     entries: [],
+    images: [],
+    imageModelId: null,
     profileId: null,
     settings: {
       modelId: "test/model",
@@ -97,7 +99,6 @@ function story(over: Partial<Story> = {}): Story {
       zdr: false,
       temperature: 0.9,
       topP: 0.95,
-      maxTokens: 512,
       contextWindow: 2048,
       loreBudget: 25,
       frequencyPenalty: 0,

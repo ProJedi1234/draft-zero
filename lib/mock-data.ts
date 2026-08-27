@@ -7,6 +7,7 @@ import type {
   LorebookCategory,
   LorebookEntry,
   ModelEndpoint,
+  OpenRouterImageModel,
   OpenRouterModel,
   Story,
   StoryEntry,
@@ -69,12 +70,76 @@ function proseEntry(
  * aliases keep pointing at whatever is current, so `aliasTarget` below records
  * what each one redirected to when the fixture was written, not a promise.
  */
+/**
+ * The image catalog's offline fallback — real OpenRouter ids, the same
+ * convention MOCK_MODELS follows for text. Prices live in MOCK_IMAGE_PRICES,
+ * mirroring the live catalog, which does not carry them either.
+ *
+ * Kept short deliberately: it is a fallback for a picker, not a mirror of the
+ * catalog, and a stale list of thirty entries would be thirty chances to offer
+ * a model that no longer exists. These are the families the API documents.
+ *
+ * Note what selecting one of these does OFFLINE: nothing but change the seed.
+ * The mock provider draws every picture itself (see lib/images/mock-provider.ts),
+ * so the id is recorded as what was ASKED for, and the surfaces that show a
+ * picture's provenance say when the offline provider served it instead.
+ */
+export const MOCK_IMAGE_MODELS: OpenRouterImageModel[] = [
+  {
+    id: "black-forest-labs/flux-1.1-pro",
+    name: "FLUX 1.1 Pro",
+    provider: "Black Forest Labs",
+  },
+  {
+    id: "bytedance-seed/seedream-4.5",
+    name: "Seedream 4.5",
+    provider: "ByteDance",
+  },
+  {
+    id: "google/gemini-3-pro-image",
+    name: "Gemini 3 Pro Image",
+    provider: "Google",
+  },
+  {
+    id: "openai/gpt-image-1",
+    name: "GPT Image 1",
+    provider: "OpenAI",
+  },
+  {
+    id: "recraft/recraft-v3",
+    name: "Recraft V3",
+    provider: "Recraft",
+  },
+  {
+    id: "x-ai/grok-imagine",
+    name: "Grok Imagine",
+    provider: "xAI",
+  },
+]
+
+/**
+ * Offline prices for MOCK_IMAGE_MODELS, keyed by id.
+ *
+ * Separate from the catalog entries because live pricing is separate too: it
+ * comes from a per-model endpoints resource, not from the list. Keeping the
+ * shapes parallel means getImageModelPrice has one contract in both modes.
+ */
+export const MOCK_IMAGE_PRICES: Record<string, string> = {
+  "black-forest-labs/flux-1.1-pro": "$0.0400 / image",
+  "bytedance-seed/seedream-4.5": "$0.0300 / image",
+  "google/gemini-3-pro-image": "$0.0600 / image",
+  "openai/gpt-image-1": "$0.0800 / image",
+  "recraft/recraft-v3": "$0.0400 / image",
+  "x-ai/grok-imagine": "$0.0200 / image",
+}
+
 export const MOCK_MODELS: OpenRouterModel[] = [
   {
     id: "~anthropic/claude-sonnet-latest",
     name: "Claude Sonnet Latest",
     provider: "Anthropic",
     contextLength: 1_000_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$2.00", completion: "$10.00" },
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh", "max"],
@@ -88,6 +153,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Claude Opus Latest",
     provider: "Anthropic",
     contextLength: 1_000_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$5.00", completion: "$25.00" },
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh", "max"],
@@ -101,6 +167,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Claude Haiku Latest",
     provider: "Anthropic",
     contextLength: 200_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$1.00", completion: "$5.00" },
     reasoning: {
       efforts: ["minimal", "low", "medium", "high", "xhigh", "max"],
@@ -114,6 +181,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "GPT Latest",
     provider: "OpenAI",
     contextLength: 1_050_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$5.00", completion: "$30.00" },
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh", "max"],
@@ -127,6 +195,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "GPT Mini Latest",
     provider: "OpenAI",
     contextLength: 400_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$0.75", completion: "$4.50" },
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh"],
@@ -140,6 +209,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Gemini Pro Latest",
     provider: "Google",
     contextLength: 1_048_576,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$2.00", completion: "$12.00" },
     reasoning: { efforts: ["low", "medium", "high"], mandatory: true },
     zdr: true,
@@ -150,6 +220,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Gemini Flash Latest",
     provider: "Google",
     contextLength: 1_048_576,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$1.50", completion: "$7.50" },
     reasoning: {
       efforts: ["minimal", "low", "medium", "high"],
@@ -163,6 +234,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Grok Latest",
     provider: "xAI",
     contextLength: 500_000,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$2.00", completion: "$6.00" },
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh"],
@@ -176,6 +248,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "Kimi Latest",
     provider: "MoonshotAI",
     contextLength: 1_048_576,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$2.80", completion: "$14.00" },
     reasoning: { efforts: ["low", "high", "max"], mandatory: false },
     zdr: false,
@@ -186,6 +259,7 @@ export const MOCK_MODELS: OpenRouterModel[] = [
     name: "DeepSeek V4 Flash Latest",
     provider: "DeepSeek",
     contextLength: 1_048_576,
+    maxCompletionTokens: 65_536,
     pricing: { prompt: "$0.08", completion: "$0.25" },
     reasoning: { efforts: ["low", "high", "max"], mandatory: false },
     zdr: false,
@@ -373,13 +447,6 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   // The share the lorebook may claim of the free context — what the old
   // hard-coded constant was, so a new story composes as stories always have.
   loreBudget: DEFAULT_LORE_BUDGET,
-  // A hard ceiling on the runaway case, not a target. The system prompt asks
-  // for a single paragraph; this is what stops a model that ignores it from
-  // filling most of a page before the writer can reach Stop. Sized for a
-  // thinking model rather than for the paragraph: reasoning tokens are billed
-  // against the same budget, so a ceiling tight enough to fit only the prose
-  // truncates the answer before the prose starts.
-  maxTokens: 1024,
   // Roughly 30k characters of assembled context: enough for memory, the active
   // lore and several pages of recent prose without making every continuation
   // an expensive re-read of the whole draft.
@@ -763,11 +830,12 @@ export const MOCK_STORIES: Story[] = [
       temperature: 0.9,
       topP: 0.95,
       loreBudget: DEFAULT_LORE_BUDGET,
-      maxTokens: 1024,
       contextWindow: 16384,
       frequencyPenalty: 0.15,
       presencePenalty: 0.1,
     },
+    images: [],
+    imageModelId: null,
     entries: [
       proseEntry({
         id: "entry-cart-1",
@@ -833,11 +901,12 @@ export const MOCK_STORIES: Story[] = [
       temperature: 1.1,
       topP: 0.9,
       loreBudget: DEFAULT_LORE_BUDGET,
-      maxTokens: 800,
       contextWindow: 8192,
       frequencyPenalty: 0.3,
       presencePenalty: 0.2,
     },
+    images: [],
+    imageModelId: null,
     entries: [
       proseEntry({
         id: "entry-static-1",
@@ -897,11 +966,12 @@ export const MOCK_STORIES: Story[] = [
       temperature: 0.8,
       topP: 0.98,
       loreBudget: DEFAULT_LORE_BUDGET,
-      maxTokens: 1200,
       contextWindow: 12288,
       frequencyPenalty: 0.1,
       presencePenalty: 0.05,
     },
+    images: [],
+    imageModelId: null,
     entries: [
       proseEntry({
         id: "entry-light-1",
@@ -945,6 +1015,8 @@ export const MOCK_STORIES: Story[] = [
     redoSummary: null,
     profileId: null,
     settings: { ...DEFAULT_GENERATION_SETTINGS },
+    images: [],
+    imageModelId: null,
     entries: [],
   },
 
@@ -997,11 +1069,12 @@ export const MOCK_STORIES: Story[] = [
       temperature: 0.9,
       topP: 0.95,
       loreBudget: DEFAULT_LORE_BUDGET,
-      maxTokens: 1024,
       contextWindow: 8192,
       frequencyPenalty: 0.15,
       presencePenalty: 0.1,
     },
+    images: [],
+    imageModelId: null,
     entries: [
       proseEntry({
         id: "entry-mer-1",

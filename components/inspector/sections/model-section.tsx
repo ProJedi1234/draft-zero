@@ -3,6 +3,7 @@
 import { ChevronsUpDown } from "lucide-react"
 
 import { ContextWindowSlider } from "@/components/inspector/context-window-slider"
+import { ImageModelSelect } from "@/components/inspector/image-model-select"
 import { ModelPicker, ProfileCard } from "@/components/inspector/model-picker"
 import { SaveProfileDialog } from "@/components/inspector/save-profile-dialog"
 import { SettingSlider } from "@/components/inspector/setting-slider"
@@ -19,9 +20,11 @@ import {
   LORE_BUDGET_MIN,
   LORE_BUDGET_STEP,
   type ModelProfile,
+  type OpenRouterImageModel,
   type OpenRouterModel,
   type Story,
 } from "@/lib/types"
+import { setStoryImageModel } from "@/lib/actions/stories"
 
 /**
  * What runs the story: the profile it follows, or — in Custom mode — the model,
@@ -33,6 +36,8 @@ import {
 export function ModelSection({
   story,
   models,
+  imageModels,
+  imageModelPrice,
   profiles,
   defaultProfileId,
   requireZdr,
@@ -41,6 +46,9 @@ export function ModelSection({
 }: {
   story: Story
   models: OpenRouterModel[]
+  imageModels: OpenRouterImageModel[]
+  /** What the SELECTED image model costs per image, or null when unknown. */
+  imageModelPrice: string | null
   profiles: ModelProfile[]
   defaultProfileId: string | null
   /** The app-wide retention policy; a story can add to it, never lower it. */
@@ -130,16 +138,6 @@ export function ModelSection({
                 max={1}
                 step={0.01}
               />
-              <SettingSlider
-                storyId={story.id}
-                version={story.updatedAt}
-                field="maxTokens"
-                label="Max tokens"
-                serverValue={story.settings.maxTokens}
-                min={128}
-                max={4096}
-                step={128}
-              />
               <ContextWindowSlider
                 value={settings.contextWindow}
                 contextLength={settings.contextLength}
@@ -214,6 +212,22 @@ export function ModelSection({
           </div>
         </div>
       ) : null}
+
+      {/* Outside the profile branch above, and deliberately: a model profile
+          bundles the settings that shape PROSE, and the image model is not one
+          of them — so a story following a profile still gets to choose what it
+          draws with. It sits in this segment rather than another because it has
+          a vendor on it, which is what the Model segment is for. */}
+      <ImageModelSelect
+        models={imageModels}
+        value={story.imageModelId}
+        price={imageModelPrice}
+        onValueChange={(next) => {
+          // Immediate, never debounced — the same rule the model combobox
+          // follows. A picker commits on choice; there is nothing to batch.
+          void setStoryImageModel(story.id, next)
+        }}
+      />
 
       <SaveProfileDialog
         storyId={story.id}

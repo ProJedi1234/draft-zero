@@ -1,0 +1,95 @@
+# compose.images.yaml — the image-generation branch, up on its own so it can be
+# looked at beside whatever else is running on this box.
+#
+#   docker compose -f compose.images.yaml up -d --build
+#   docker compose -f compose.images.yaml down
+#
+# Its own project name, its own volume, its own ports: `draft-zero` (5433/3000)
+# and `draft-zero-composer` (5435/3003) already exist on argos, and a stack that
+# shared any of the three would take one of them over rather than sit alongside.
+#
+# 3005 binds to 0.0.0.0, unlike the base stack's 127.0.0.1 — the point of this
+# one is to be reachable from a phone on the LAN.
+name: draft-zero-images
+
+services:
+  postgres:
+    # 18, not the base stack's 17: this database is a COPY of devpg, and devpg
+    # runs 18.4 — a 17 server cannot read an 18 dump's newer catalog features,
+    # and restoring across the gap fails in the middle rather than up front.
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: draft_zero
+      POSTGRES_PASSWORD: draft_zero
+      POSTGRES_DB: draft_zero
+    ports:
+      - "127.0.0.1:5437:5432"
+    volumes:
+      # /var/lib/postgresql, NOT .../data — the 18 image refuses a mount at the
+      # data directory itself. Its own volume name too, so the 17-format volume
+      # from the seeded stack is left alone rather than failing to start under a
+      # newer server.
+      - postgres-18:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U draft_zero -d draft_zero"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: ["bun", "run", "db:migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    # The real key, read from the main checkout rather than copied into this
+    # file or typed on a command line.
+    #
+    # OPENROUTER_API_KEY is deliberately ABSENT from `environment:` below —
+    # `environment` outranks `env_file`, so leaving even an empty one there
+    # would shadow the real key and silently drop generation back to the offline
+    # mock, which looks like a bug in the feature rather than a config mistake.
+    #
+    # It buys the wand's prompt derivation (a real, cents-scale call to the
+    # story's own text model). IMAGE generation stays on the offline mock
+    # regardless — there is no live image provider on this branch — so the key
+    # cannot run up an image bill.
+    env_file:
+      - /home/adityadhar/repos/draft-zero/.env.local
+    environment:
+      # Stated here precisely BECAUSE environment outranks env_file: the file
+      # above also carries a DATABASE_URL, and that one points at the shared
+      # devpg. This line is what guarantees the app talks to the copy in this
+      # network and never to the instance with no backups.
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "0.0.0.0:3005:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-18:

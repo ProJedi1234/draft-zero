@@ -10,9 +10,26 @@ export type EntrySource = "user" | "generated"
  */
 export type ActionKind = "say" | "do"
 
+/**
+ * What the composer is currently armed to do.
+ *
+ * "image" is not a third ActionKind: the two moves are things a CHARACTER does,
+ * translated into second person and written into the manuscript as prose, and
+ * an image is none of that. Keeping it out of ActionKind is what stops an
+ * illustration ever being handed to translateAction or stored as a passage.
+ */
+export type ComposerMode = ActionKind | "image"
+
 /** One contiguous block of prose in a story (a "passage"). */
 export interface StoryEntry {
   id: string
+  /**
+   * Slot position in the manuscript's shared ordering sequence — the counter
+   * StoryImage.position also draws from, which is what makes prose and
+   * pictures sortable into one timeline. Optional only for fixtures that build
+   * entries by hand; rows always carry it.
+   */
+  position?: number
   source: EntrySource
   /**
    * Prose text, paragraphs separated by "\n\n". For a player action this is
@@ -102,17 +119,30 @@ export interface EntryGeneration {
 }
 
 /**
- * What a generation request was for.
+ * Which move sent a generation request.
  *
  * "summarize" is the odd one and deliberately so: it is the only kind the
  * writer never asked for and never watches, and the only one that produces no
  * passage. It is in this union because the spend ledger is keyed by it and a
  * billed call that no aggregate can see is worse than one recorded oddly — see
- * REQUEST_KINDS in lib/actions/generation.ts, which keeps the three the client
- * is allowed to name separate from the four that exist.
+ * REQUEST_KINDS in lib/actions/generation.ts, which keeps the kinds the client
+ * is allowed to name separate from the ones that only the server raises.
+ *
+ * "illustrate-prompt" is a TEXT call like the others — it asks the story's own
+ * model to describe the current scene as an image prompt. The picture that
+ * prompt goes on to produce is billed separately and in a different currency
+ * (per-image, not per-token), which is exactly why the two are distinct kinds
+ * rather than one "image" bucket: summing them would add dollars-per-megapixel
+ * to dollars-per-token and call the result a model's cost.
  */
 export type GenerationRequestKind =
-  "generate" | "retry" | "continue" | "summarize"
+  | "generate"
+  | "retry"
+  | "continue"
+  | "summarize"
+  | "illustrate-prompt"
+  /** The picture itself. Billed per image or per megapixel, never per token. */
+  | "illustrate"
 
 /**
  * A ledger row's lifecycle. The row is written as "streaming" before anything
@@ -344,14 +374,18 @@ export interface GenerationDefaults {
   temperature: number
   /** Range 0–1. */
   topP: number
-  /** Max tokens generated per continuation. */
-  maxTokens: number
   /**
    * Token budget for the assembled INPUT context — the ceiling composeContext
    * (lib/generation/context.ts) trims memory, lore and story prose down to.
-   * Deliberately distinct from maxTokens, which caps OUTPUT: a writer wants a
-   * long memory of the story without paying for long continuations, and vice
-   * versa. Always one of CONTEXT_WINDOWS.
+   *
+   * The only token budget a writer sets. There is deliberately no OUTPUT
+   * counterpart: passage length is the system prompt's job ("write ONE
+   * paragraph, roughly 40 to 100 words"), and a max_tokens ceiling on top of
+   * that was never a length control — it was a truncation that fired only when
+   * the model overran, mid-sentence, and on a reasoning model fired against the
+   * thinking rather than the prose and returned nothing at all.
+   *
+   * Always one of CONTEXT_WINDOWS.
    */
   contextWindow: number
   /**
@@ -375,7 +409,6 @@ export interface GenerationDefaults {
 export const GENERATION_DEFAULT_KEYS = [
   "temperature",
   "topP",
-  "maxTokens",
   "contextWindow",
   "loreBudget",
   "frequencyPenalty",
@@ -523,6 +556,12 @@ export interface Story {
   /** min/max createdAt over ALL live generated entries, windowed or not. */
   generatedSpan?: { firstIso: string; lastIso: string } | null
   /**
+   * Illustrations, keyed by the passage SLOT they hang under. Only the active
+   * take of each image slot is present, exactly as `entries` holds only the
+   * active take of each passage slot.
+   */
+  images: StoryImage[]
+  /**
    * The profile this story follows, or null for Custom. When set, `settings`
    * below is the profile's; the story's own columns stay untouched underneath,
    * holding the custom settings it will return to.
@@ -564,6 +603,13 @@ export interface Story {
   tintHue: number | null
   /** How far toward that hue the palette travels, 0..1. Ignored when untinted. */
   tintStrength: number
+  /**
+   * Which image model this story draws with, or null to follow the catalog's
+   * first entry. Deliberately NOT part of a model profile: profiles bundle the
+   * settings that shape prose, and there are few enough image models that a
+   * named bundle around one would be ceremony rather than a feature.
+   */
+  imageModelId: string | null
   /** LorebookEntry ids currently "triggered" for this story (mocked). */
   activeLorebookEntryIds: string[]
   canUndo: boolean
@@ -711,6 +757,111 @@ export interface AppSettings {
 export type ActionResult<T = null> =
   { ok: true; data: T } | { ok: false; error: string }
 
+/**
+ * The frames an illustration may be asked for, in the order the aspect button
+ * cycles them.
+ *
+ * A ladder rather than a free field for the same reason CONTEXT_WINDOWS is one:
+ * the control is a single icon button, and every value it can land on has to be
+ * a frame a writer would actually choose. Landscape first because a manuscript
+ * column is wider than it is tall, so 16:9 is the shape that reads as
+ * "illustration" rather than "inserted photo".
+ *
+ * OpenRouter's per-model capability descriptors advertise which of these a
+ * given image model accepts; the cycle filters against that list, so this is
+ * the superset we know how to render, not a promise every model honours it.
+ */
+export const IMAGE_ASPECT_RATIOS = ["16:9", "1:1", "9:16"] as const
+
+export type ImageAspectRatio = (typeof IMAGE_ASPECT_RATIOS)[number]
+
+/** width / height for an aspect ratio — what the placeholder reserves. */
+export function aspectRatioValue(ratio: ImageAspectRatio): number {
+  const [w, h] = ratio.split(":").map(Number)
+  return w / h
+}
+
+/**
+ * One illustration: a beat in the story, not an ornament on a passage.
+ *
+ * Positioned in the same sequence as passages rather than attached to one, so
+ * asking for a picture is a move the writer makes at the end of the manuscript
+ * — the same place every other move is made — and a picture is never orphaned
+ * by an edit to prose that happens to sit above it.
+ *
+ * Takes work the same way passages' do: retrying an illustration inserts a
+ * sibling into `imageGroupId` rather than overwriting, and `imageIndex` /
+ * `imageCount` drive the same "‹ 2 / 3 ›" switcher.
+ */
+export interface StoryImage {
+  id: string
+  /**
+   * Where this sits in the manuscript. Shares a counter with StoryEntry.position,
+   * so passages and pictures merge into one ordered timeline.
+   */
+  position: number
+  /** This image's own take slot; every alternative take shares it. */
+  imageGroupId: string
+  /** 0-based position among the slot's takes, in imageIndex order. */
+  imageIndex: number
+  /** How many takes the slot holds. 1 for an illustration never retried. */
+  imageCount: number
+  /**
+   * The scene prompt that was sent, WITHOUT the image profile's style line —
+   * the writer edits scene, the profile owns art direction, and mixing the two
+   * back together here would make a re-open of the editor show them words they
+   * never typed.
+   */
+  prompt: string
+  /**
+   * What derivation produced before the writer touched it, or null when the
+   * prompt was never derived. Kept as provenance: it is the only way to tell a
+   * prompt the writer wrote from one they accepted.
+   */
+  derivedPrompt: string | null
+  modelId: string
+  aspectRatio: ImageAspectRatio
+  /** Drives the mock's composition; sent as `seed` to a real provider. */
+  seed: number
+  /** "image/svg+xml" offline, "image/png" from a real provider. */
+  mediaType: string
+  /**
+   * What this take cost, USD, as a decimal string. Null means "we do not
+   * know" — which is every image the offline mock produced, since nothing was
+   * billed and a number here would be indistinguishable from a record.
+   */
+  costUsd: string | null
+  /** How the draw that produced this take ended. Null when there is no ledger row. */
+  callStatus: SettledCallStatus | null
+  /**
+   * What the whole slot has cost — every draw, including the takes no longer
+   * showing. Retrying spends again, and this is the figure that says so.
+   */
+  slotCostUsd: string | null
+  /** Settled draws of this slot with no price, so a total can be marked a floor. */
+  slotUnpricedCalls: number
+  createdAt: string
+}
+
+/**
+ * An entry from OpenRouter's image catalog (GET /api/v1/images/models).
+ *
+ * Much thinner than OpenRouterModel because almost nothing carries over: an
+ * image model has no context window, no reasoning, and no prompt/completion
+ * token split.
+ *
+ * Price is NOT here, and that is the catalog's doing rather than a choice: the
+ * list endpoint carries no pricing at all — each entry's `endpoints` field is a
+ * URL to fetch, and the cost per image lives behind it. Pricing one model costs
+ * one request, so it is fetched for the SELECTED model only; see
+ * getImageModelPrice.
+ */
+export interface OpenRouterImageModel {
+  id: string
+  name: string
+  provider: string
+}
+
 /** A model's reasoning support, straight from the OpenRouter catalog. */
 export interface ModelReasoning {
   /** Efforts this model accepts, lowest first. Never empty, never has "off". */
@@ -731,6 +882,16 @@ export interface OpenRouterModel {
   /** Provider display name, e.g. "Anthropic". */
   provider: string
   contextLength: number
+  /**
+   * Most tokens this model will generate in one reply, from the catalog's
+   * `top_provider`. Null when OpenRouter does not publish one (~12% of the
+   * catalog), which is not a small limit but an unknown one.
+   *
+   * Displayed, never sent: omitting `max_tokens` already gets the model's own
+   * ceiling, and sending this number instead could exceed what a PINNED
+   * endpoint serves, turning a routing choice into a rejected request.
+   */
+  maxCompletionTokens: number | null
   /** Display strings, USD per 1M tokens, e.g. { prompt: "$3.00", completion: "$15.00" }. */
   pricing: {
     prompt: string

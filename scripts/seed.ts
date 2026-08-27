@@ -45,7 +45,6 @@ async function seed() {
       providerTag: story.settings.providerTag,
       temperature: story.settings.temperature,
       topP: story.settings.topP,
-      maxTokens: story.settings.maxTokens,
       contextWindow: story.settings.contextWindow,
       loreBudget: story.settings.loreBudget,
       frequencyPenalty: story.settings.frequencyPenalty,

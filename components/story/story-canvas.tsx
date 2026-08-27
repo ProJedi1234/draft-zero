@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react"
 
 import { loadOlderEntries } from "@/lib/actions/entries"
 import { mergeWindowedEntries } from "@/lib/story-window"
-import type { Story, StoryEntry } from "@/lib/types"
+import type { Story, StoryEntry, StoryImage } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { formatDateShort } from "@/lib/format"
 import { Badge } from "@/components/ui/badge"
@@ -14,8 +14,10 @@ import { Separator } from "@/components/ui/separator"
 import { CanvasEmptyState } from "@/components/story/canvas-empty-state"
 import { Prose } from "@/components/story/prose"
 import { StoryEntryBlock } from "@/components/story/story-entry-block"
+import { ImageBlock } from "@/components/story/image-block"
 import { StreamingBlock } from "@/components/story/streaming-block"
 import type { GenerationStatus } from "@/hooks/use-generation"
+import type { ImageJob } from "@/hooks/use-image-generation"
 
 /** How close to the bottom the reader must be for streaming to keep scrolling. */
 const STICK_THRESHOLD_PX = 120
@@ -49,6 +51,10 @@ export function StoryCanvas({
   optimisticUserText,
   optimisticUserPending,
   removingEntryIds,
+  imageJob,
+  onImageStop,
+  onImageRetry,
+  onImageEditPrompt,
   onRetry,
   onSuggestion,
 }: {
@@ -59,6 +65,13 @@ export function StoryCanvas({
   optimisticUserText: string | null
   optimisticUserPending: boolean
   removingEntryIds: string[]
+  /** The illustration being drawn right now, or null. Rendered at the live edge. */
+  imageJob: ImageJob | null
+  onImageStop: () => void
+  /** Another draw of an existing picture — the slot it joins comes from the image. */
+  onImageRetry: (image: StoryImage) => void
+  /** Loads a picture's prompt back into the composer. */
+  onImageEditPrompt: (image: StoryImage) => void
   /** Regenerates the last passage. It takes no id: nothing else is retryable. */
   onRetry: () => void
   onSuggestion: (text: string) => void
@@ -128,8 +141,32 @@ export function StoryCanvas({
     (entry) => !removing.has(entry.id)
   )
   const moreAbove = hasMoreOlder ?? story.hasMoreBefore ?? false
+
+  // Passages and pictures share one ordering sequence (see nextStoryPosition),
+  // so the manuscript is a single list sorted by position — no interleaving
+  // rules, no tie-breaks, and an image sits exactly where it was asked for.
+  // Fixtures that build entries without positions fall back to array index,
+  // which is only comparable to image positions because those fixtures append
+  // their images after the prose.
+  const timeline: (
+    | { kind: "entry"; at: number; index: number; entry: StoryEntry }
+    | { kind: "image"; at: number; image: StoryImage }
+  )[] = [
+    ...entries.map((entry, index) => ({
+      kind: "entry" as const,
+      at: entry.position ?? index,
+      index,
+      entry,
+    })),
+    ...story.images.map((image) => ({
+      kind: "image" as const,
+      at: image.position,
+      image,
+    })),
+  ].sort((a, b) => a.at - b.at)
+
   const hasContent =
-    entries.length > 0 || optimisticUserText !== null || showTail
+    timeline.length > 0 || optimisticUserText !== null || showTail
 
   const getViewport = React.useCallback(
     () =>
@@ -553,24 +590,39 @@ export function StoryCanvas({
               {moreAbove && (
                 <div ref={olderSentinelRef} aria-hidden className="h-px" />
               )}
-              {/* `followingCount` is measured against the FILTERED list — the
-                  one being rendered — so Retry always sits on the block the
-                  reader can actually see at the end of the manuscript, and a
-                  rewind offers to remove the number of passages they can
-                  actually count. While a retry is in flight its own passage is
-                  hidden and the block above inherits the action, which is
-                  harmless: everything in the cluster is disabled by `busy` for
-                  the whole of it. */}
-              {entries.map((entry, index) => (
-                <StoryEntryBlock
-                  key={entry.id}
-                  entry={entry}
-                  storyId={story.id}
-                  busy={busy}
-                  followingCount={entries.length - 1 - index}
-                  onRetry={onRetry}
-                />
-              ))}
+              {/* `followingCount` is measured against the FILTERED entry
+                  list — the one being rendered — so Retry always sits on the
+                  block the reader can actually see at the end of the
+                  manuscript, and a rewind offers to remove the number of
+                  passages they can actually count. Images are not passages
+                  and do not count: the arithmetic runs on the item's index
+                  among the entries, not its manuscript position. While a
+                  retry is in flight its own passage is hidden and the block
+                  above inherits the action, which is harmless: everything in
+                  the cluster is disabled by `busy` for the whole of it. */}
+              {timeline.map((item) =>
+                item.kind === "entry" ? (
+                  <StoryEntryBlock
+                    key={item.entry.id}
+                    entry={item.entry}
+                    storyId={story.id}
+                    busy={busy}
+                    followingCount={entries.length - 1 - item.index}
+                    onRetry={onRetry}
+                  />
+                ) : (
+                  <ImageBlock
+                    key={item.image.id}
+                    storyId={story.id}
+                    image={item.image}
+                    job={null}
+                    busy={busy}
+                    onStop={onImageStop}
+                    onRetry={() => onImageRetry(item.image)}
+                    onEditPrompt={() => onImageEditPrompt(item.image)}
+                  />
+                )
+              )}
 
               {/* Optimistic echo: the passage the reader just wrote, shown
                   from the moment they send it until revalidation hands back the
@@ -590,6 +642,24 @@ export function StoryCanvas({
                 >
                   <Prose text={optimisticUserText} />
                 </div>
+              )}
+
+              {/* The picture being drawn, at the live edge — where it will
+                  land. Not inside a passage: an image is its own beat. */}
+              {imageJob !== null && (
+                <ImageBlock
+                  storyId={story.id}
+                  image={null}
+                  job={imageJob}
+                  busy={busy}
+                  onStop={onImageStop}
+                  // An in-flight picture has no row yet, so it has neither a
+                  // slot to redraw nor a prompt to hand back. Both are
+                  // unreachable: ImageBlock renders no action cluster while a
+                  // job is running.
+                  onRetry={() => {}}
+                  onEditPrompt={() => {}}
+                />
               )}
 
               {showTail && (

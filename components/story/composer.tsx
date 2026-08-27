@@ -4,19 +4,28 @@ import * as React from "react"
 import {
   ArrowUp,
   FastForward,
+  ImagePlus,
   Loader2,
+  MessageSquareQuote,
+  RectangleHorizontal,
   Redo2,
   RotateCcw,
   Square,
+  Swords,
   Undo2,
+  WandSparkles,
 } from "lucide-react"
 
-import type { ActionKind } from "@/lib/types"
+import {
+  IMAGE_ASPECT_RATIOS,
+  type ComposerMode,
+  type ImageAspectRatio,
+} from "@/lib/types"
 import type { GenerationStatus } from "@/hooks/use-generation"
+import { cn } from "@/lib/utils"
 import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { KindSwitcher, kindMeta } from "@/components/story/kind-switcher"
 import { RetryButton } from "@/components/story/retry-profile-menu"
 import {
   Tooltip,
@@ -24,11 +33,55 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
+/**
+ * What the composer can be armed to do. A segmented row rather than a dropdown
+ * because which one is armed changes what every keystroke means, and that has
+ * to be readable without opening anything.
+ *
+ * Image sits beside the two moves rather than somewhere else entirely because
+ * it is the same gesture — type, send, something appears at the end of the
+ * manuscript — and a picture is a beat in the story, not a property of a
+ * passage.
+ */
+const MODES = [
+  {
+    value: "do",
+    label: "Do",
+    icon: Swords,
+    placeholder: "What do you do?",
+  },
+  {
+    value: "say",
+    label: "Say",
+    icon: MessageSquareQuote,
+    placeholder: "What do you say?",
+  },
+  {
+    value: "image",
+    label: "Image",
+    icon: ImagePlus,
+    placeholder: "Describe the image…",
+  },
+] as const
+
+/** The icon rotation that shows a frame's shape rather than naming it. */
+const ASPECT_ICON_ROTATION: Record<ImageAspectRatio, string> = {
+  "16:9": "",
+  "1:1": "scale-x-75",
+  "9:16": "rotate-90",
+}
+
 export function Composer({
   value,
   onValueChange,
-  actionKind,
-  onActionKindChange,
+  mode,
+  onModeChange,
+  aspectRatio,
+  onAspectRatioChange,
+  deriving,
+  onDerive,
+  onGenerateImage,
+  imageBusy,
   textareaRef,
   containerRef,
   status,
@@ -48,8 +101,19 @@ export function Composer({
   value: string
   onValueChange: (value: string) => void
   /** Owned by the workspace so switching stories doesn't reset it. */
-  actionKind: ActionKind
-  onActionKindChange: (kind: ActionKind) => void
+  mode: ComposerMode
+  onModeChange: (mode: ComposerMode) => void
+  /** The frame the next image is asked for in. Remembered across sends. */
+  aspectRatio: ImageAspectRatio
+  onAspectRatioChange: (ratio: ImageAspectRatio) => void
+  /** True while the wand's model call is streaming into the draft. */
+  deriving: boolean
+  /** Asks the story's model for a prompt. A real, billed call — never automatic. */
+  onDerive: () => void
+  /** Sends the draft to the image provider. */
+  onGenerateImage: (prompt: string) => void
+  /** True while an illustration is being drawn. */
+  imageBusy: boolean
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   /** The floating panel, measured by the workspace to reserve canvas padding. */
   containerRef?: React.RefObject<HTMLDivElement | null>
@@ -68,14 +132,15 @@ export function Composer({
   undoLabel: string
   redoLabel: string
   /** Returns true when the text was accepted — the textarea clears on true. */
-  onSend: (text: string, kind: ActionKind) => boolean
+  onSend: (text: string, kind: "say" | "do") => boolean
   onContinue: () => void
   onRetry: () => void
   onUndo: () => void
   onRedo: () => void
   onStop: () => void
 }) {
-  const active = kindMeta(actionKind)
+  const active = MODES.find((m) => m.value === mode) ?? MODES[0]
+  const isImage = mode === "image"
   const markdownShortcuts = useMarkdownShortcuts()
 
   // Stoppable is not the same question as what the button shows. A run is
@@ -107,13 +172,41 @@ export function Composer({
 
   const swapKind = React.useCallback(() => {
     setAnnounceKind(true)
-    onActionKindChange(actionKind === "do" ? "say" : "do")
-  }, [actionKind, onActionKindChange])
+    // Tab swaps the two WRITING moves and never reaches Image. Tab is a
+    // mid-sentence reflex, and a reflex that can land the writer in a different
+    // medium — where the next keystrokes become an image prompt rather than
+    // their turn — is a trap. Image is a deliberate choice: click it, or cycle
+    // with Cmd/Ctrl+/.
+    onModeChange(mode === "say" ? "do" : "say")
+  }, [mode, onModeChange])
+
+  /** Cmd/Ctrl+/ reaches everything, Image included. */
+  const cycleMode = React.useCallback(() => {
+    setAnnounceKind(true)
+    const index = MODES.findIndex((m) => m.value === mode)
+    onModeChange(MODES[(index + 1) % MODES.length].value)
+  }, [mode, onModeChange])
 
   const handleSend = React.useCallback(() => {
     if (busy || !hasText) return
-    if (onSend(value, actionKind)) onValueChange("")
-  }, [actionKind, busy, hasText, onSend, onValueChange, value])
+    if (isImage) {
+      // No round-trip to check: an image is appended at the end of the
+      // manuscript and cannot fail validation the way a turn can.
+      onGenerateImage(value.trim())
+      onValueChange("")
+      return
+    }
+    if (onSend(value, mode)) onValueChange("")
+  }, [
+    busy,
+    hasText,
+    isImage,
+    mode,
+    onGenerateImage,
+    onSend,
+    onValueChange,
+    value,
+  ])
 
   // Autofocus only where a hardware keyboard is likely: on touch devices it
   // would pop the software keyboard over the prose on every story open.
@@ -160,7 +253,7 @@ export function Composer({
         event.preventDefault()
         if (busy) return
         if (hasText) handleSend()
-        else onContinue()
+        else if (!isImage) onContinue()
         return
       }
 
@@ -208,7 +301,7 @@ export function Composer({
     }
     if ((event.metaKey || event.ctrlKey) && event.key === "/") {
       event.preventDefault()
-      swapKind()
+      cycleMode()
     }
   }
 
@@ -232,7 +325,11 @@ export function Composer({
             // field, which is what summoned the AutoFill Contact bar and turned
             // autocorrect off. The guidance is worth keeping; it just cannot be
             // phrased that way here.
-            aria-label={`${active.label} — write your next move`}
+            aria-label={
+              isImage
+                ? "Image — describe the picture"
+                : `${active.label} — write your next move`
+            }
             // Belt and braces, not the fix — the aria-label above is what
             // actually stopped Safari classifying this as a name field, and
             // `autocomplete="off"` alone did nothing there, because WebKit
@@ -252,7 +349,46 @@ export function Composer({
             {announceKind ? `${active.label} — ${active.placeholder}` : ""}
           </span>
           <div className="flex items-center gap-1 px-2 pb-2">
-            <KindSwitcher value={active.value} onChange={onActionKindChange} />
+            <div className="flex items-center gap-0.5">
+              {MODES.map((kind) => {
+                const selected = kind.value === active.value
+                return (
+                  <Tooltip key={kind.value}>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant={selected ? "secondary" : "ghost"}
+                          size="icon-sm"
+                          // --secondary and --muted are the same value, so a
+                          // secondary fill alone is exactly what ghost:hover
+                          // looks like: hovering the unarmed move would make
+                          // both buttons identical at the moment of choosing.
+                          // The border and the full-contrast icon are the cues
+                          // hover cannot imitate.
+                          className={cn(
+                            selected
+                              ? "border-border text-foreground"
+                              : "text-muted-foreground"
+                          )}
+                          aria-label={kind.label}
+                          aria-pressed={selected}
+                          onClick={() => onModeChange(kind.value)}
+                        />
+                      }
+                    >
+                      <kind.icon />
+                    </TooltipTrigger>
+                    {/* Tab takes you to the other WRITING move, so only an
+                        unarmed Do/Say advertises it — Image is not on Tab. */}
+                    <TooltipContent>
+                      {selected || kind.value === "image"
+                        ? kind.label
+                        : `${kind.label} (Tab)`}
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              })}
+            </div>
 
             <div className="flex-1" />
 
@@ -294,37 +430,96 @@ export function Composer({
               <TooltipContent>{redoLabel}</TooltipContent>
             </Tooltip>
 
-            <RetryButton
-              icon={RotateCcw}
-              label="Retry last generation"
-              size="sm"
-              disabled={!canRetry}
-              onRetry={onRetry}
-              revealCaret
-            />
+            {/* Retry and Continue are moves on PROSE — there is no "continue"
+                for a picture, and retrying one is done on the picture itself.
+                In image mode the two slots become the frame and the wand, so
+                the toolbar keeps its width and nothing shifts on a mode swap. */}
+            {isImage ? (
+              <>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Frame: ${aspectRatio}`}
+                        onClick={() =>
+                          onAspectRatioChange(
+                            IMAGE_ASPECT_RATIOS[
+                              (IMAGE_ASPECT_RATIOS.indexOf(aspectRatio) + 1) %
+                                IMAGE_ASPECT_RATIOS.length
+                            ]
+                          )
+                        }
+                      />
+                    }
+                  >
+                    <RectangleHorizontal
+                      className={ASPECT_ICON_ROTATION[aspectRatio]}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent>Frame {aspectRatio}</TooltipContent>
+                </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="secondary"
-                    size="icon-sm"
-                    aria-label="Continue"
-                    disabled={busy}
-                    onClick={onContinue}
-                  />
-                }
-              >
-                <FastForward />
-              </TooltipTrigger>
-              <TooltipContent>Continue (⌘↵)</TooltipContent>
-            </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="secondary"
+                        size="icon-sm"
+                        aria-label="Write a prompt from the story"
+                        disabled={deriving || imageBusy}
+                        onClick={onDerive}
+                      />
+                    }
+                  >
+                    <WandSparkles className={cn(deriving && "animate-pulse")} />
+                  </TooltipTrigger>
+                  {/* Says outright that this spends money. The wand exists
+                      instead of auto-deriving on mode switch precisely so the
+                      writer is the one who decides to pay for it. */}
+                  <TooltipContent>
+                    Write a prompt from the story · costs a call
+                  </TooltipContent>
+                </Tooltip>
+              </>
+            ) : (
+              <>
+                <RetryButton
+                  icon={RotateCcw}
+                  label="Retry last generation"
+                  size="sm"
+                  disabled={!canRetry}
+                  onRetry={onRetry}
+                  revealCaret
+                />
+
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="secondary"
+                        size="icon-sm"
+                        aria-label="Continue"
+                        disabled={busy}
+                        onClick={onContinue}
+                      />
+                    }
+                  >
+                    <FastForward />
+                  </TooltipTrigger>
+                  <TooltipContent>Continue (⌘↵)</TooltipContent>
+                </Tooltip>
+              </>
+            )}
 
             {/* One slot, three states — Send, then a spinner, then Stop — all
                 the same size and variant, so the sequence never shifts the row.
                 No tooltip on the spinner: it is disabled, so it would never
-                open one, and the canvas already announces the generation. */}
-            {waiting ? (
+                open one, and the canvas already announces the generation.
+                Both waiting states are about a PROSE run; a picture reports
+                its own progress in the placeholder it draws into. */}
+            {waiting && !isImage ? (
               <Button
                 variant="default"
                 size="icon-sm"
@@ -337,7 +532,7 @@ export function Composer({
               >
                 <Loader2 aria-hidden className="animate-spin" />
               </Button>
-            ) : stoppable ? (
+            ) : stoppable && !isImage ? (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -360,15 +555,21 @@ export function Composer({
                     <Button
                       variant="default"
                       size="icon-sm"
-                      aria-label="Send"
-                      disabled={busy || !hasText}
+                      aria-label={isImage ? "Generate image" : "Send"}
+                      disabled={
+                        isImage
+                          ? imageBusy || deriving || !hasText
+                          : busy || !hasText
+                      }
                       onClick={handleSend}
                     />
                   }
                 >
                   <ArrowUp />
                 </TooltipTrigger>
-                <TooltipContent>Send (Enter)</TooltipContent>
+                <TooltipContent>
+                  {isImage ? "Generate image (Enter)" : "Send (Enter)"}
+                </TooltipContent>
               </Tooltip>
             )}
           </div>
