@@ -147,6 +147,25 @@ export function AtmosphereCard({
         </div>
         <div className="mt-6">
           <SliderField
+            label="Passages between checks"
+            value={draft.passagesBetweenChecks}
+            min={1}
+            max={20}
+            step={1}
+            onValueChange={(next) =>
+              synced.setLocal({ ...draft, passagesBetweenChecks: next })
+            }
+            onValueCommitted={(next) =>
+              save({ ...draft, passagesBetweenChecks: next })
+            }
+            formatReadout={(value) =>
+              value === 1 ? "every passage" : `every ${value}`
+            }
+            hint="How much has to happen before it looks again. A story of short exchanges moves slower than this number suggests; one of long passages, faster."
+          />
+        </div>
+        <div className="mt-6">
+          <SliderField
             label="Max tokens"
             value={draft.maxTokens}
             min={64}

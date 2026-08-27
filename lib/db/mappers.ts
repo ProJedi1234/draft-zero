@@ -492,6 +492,7 @@ export function toAppSettings(row: AppSettingsRow): AppSettings {
       zdr: row.atmosphereZdr,
       temperature: row.atmosphereTemperature,
       maxTokens: row.atmosphereMaxTokens,
+      passagesBetweenChecks: row.atmospherePassagesBetweenChecks,
     },
     requireZdr: row.requireZdr,
     defaultImageModelId: row.defaultImageModelId,

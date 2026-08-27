@@ -78,8 +78,15 @@ export async function updateAppSettings(
     values.summaryMaxTokens = maxTokens
   }
   if (patch.atmosphere !== undefined) {
-    const { modelId, thinking, providerTag, zdr, temperature, maxTokens } =
-      patch.atmosphere
+    const {
+      modelId,
+      thinking,
+      providerTag,
+      zdr,
+      temperature,
+      maxTokens,
+      passagesBetweenChecks,
+    } = patch.atmosphere
     // Same three guards as the summarizer above, and for the same reason: an
     // unknown thinking level or an out-of-range temperature is a provider 400,
     // and this call is invisible — it would reach the writer as a story that
@@ -106,6 +113,20 @@ export async function updateAppSettings(
     values.atmosphereZdr = zdr
     values.atmosphereTemperature = temperature
     values.atmosphereMaxTokens = maxTokens
+    // One is "after every passage", which is a real answer. Zero would be "ask
+    // again before anything has happened", which is a per-turn call for a
+    // question whose input has not changed.
+    if (
+      !Number.isInteger(passagesBetweenChecks) ||
+      !inRange(passagesBetweenChecks, 1, 50)
+    ) {
+      return {
+        ok: false,
+        error:
+          "Passages between checks must be a whole number between 1 and 50.",
+      }
+    }
+    values.atmospherePassagesBetweenChecks = passagesBetweenChecks
     // A bundle that has been edited is a different bundle, and the breaker's
     // three strikes were against the old one. Without this, the Settings
     // change that FIXES a broken picker cannot revive a story that already

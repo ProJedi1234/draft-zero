@@ -521,6 +521,22 @@ export type AtmosphereSettings = Omit<GenerationIdentity, "modelId"> & {
    * raise.
    */
   maxTokens: number
+  /**
+   * Passages that must land before the story is worth asking about again.
+   *
+   * The cost control and the hysteresis in one number, and the writer's rather
+   * than ours: a story of terse exchanges and one of long narration move at
+   * completely different speeds, and only the person reading it knows which
+   * this is. 1 asks after every passage; the high end is for a story whose
+   * mood is settled and whose author would rather not pay to be told so.
+   *
+   * Counted in passages rather than words because a passage is the unit the
+   * writer can see. Words track "how much story happened" more faithfully — a
+   * one-line Say and a page of narration are both one passage — and that is
+   * the trade: a number that is slightly less accurate and considerably more
+   * legible than "150 words".
+   */
+  passagesBetweenChecks: number
 }
 
 /** The model half of a bundle — what a profile always states for itself. */

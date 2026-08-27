@@ -169,15 +169,15 @@ export const liveIo: AtmosphereIo = {
  */
 const TAIL_WORDS = 500
 /**
- * New words before the story is worth asking about again.
+ * How often to ask is a SETTING (AtmosphereSettings.passagesBetweenChecks),
+ * not a constant here, and this note is what used to be one.
  *
- * The cost control and the hysteresis in one number: at roughly two or three
- * passages it is short enough that a real scene change is recoloured within a
- * few turns, and long enough that a writer retrying the same paragraph six
- * times pays for nothing. Only a story this process has never looked at
- * bypasses it — see shouldCheck.
+ * It was 150 words, chosen as "about two or three passages" — a number picked
+ * for the writer, out of their reach, in a unit they never see. The cadence a
+ * story wants is not knowable from here: terse exchanges and long narration
+ * move at completely different speeds. Only a story this process has never
+ * looked at bypasses it — see shouldCheck.
  */
-const NEW_WORDS_BEFORE_RECHECK = 150
 /**
  * The output cap is a SETTING (AtmosphereSettings.maxTokens), not a constant
  * here, and this note is what used to be a constant.
@@ -292,9 +292,13 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
 
   const story = await io.getStory(storyId)
   if (story === null) return
-  if (!shouldCheck(story)) return
 
+  // Read before the gate rather than after it, because the gate's threshold is
+  // now one of the settings. Costs a single-row indexed read on turns that
+  // decline, against a generation that just cost seconds and cents.
   const { atmosphere } = await io.settings()
+  if (!shouldCheck(story, atmosphere.passagesBetweenChecks)) return
+
   const modelId = atmosphere.modelId ?? DEFAULT_ATMOSPHERE_MODEL_ID
   // Announced here rather than at the top of the function: everything above is
   // the gate, and the gate declining is not work — a spinner for it would
@@ -382,7 +386,7 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
     // was "has this story moved", and "no" is an answer — re-asking it every
     // turn until it says yes is how a hysteresis gate turns into a per-turn
     // call with extra steps.
-    registry.checkedAt.set(storyId, story.wordCount)
+    registry.checkedAt.set(storyId, passageCount(story))
     registry.failures.delete(storyId)
     io.announcePhase(storyId, painted ? "painted" : "kept", null)
   } catch (err) {
@@ -410,22 +414,33 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
  *
  * Two gates, and they are the whole cost story. `tintAuto` is the writer's
  * answer to "may you choose at all" — a hue they picked by hand turns it off,
- * and nothing here may overrule that. The word watermark is the answer to "has
- * anything happened since you last looked": a writer polishing one paragraph
- * moves the manuscript by a few words and the mood not at all.
+ * and nothing here may overrule that. The passage watermark is the answer to
+ * "has anything happened since you last looked", and its threshold is the
+ * writer's too (AtmosphereSettings.passagesBetweenChecks): a story of terse
+ * exchanges and one of long narration move at completely different speeds.
  *
  * The first look this process takes at a story is eager — for a new story that
  * is the difference between the feature existing and the room staying grey —
- * but only the first. An untinted story whose model answered "keep" waits for
- * new words like any other: "no tint yet" is that model's standing answer, and
- * a bypass keyed on the hue would re-ask it after every single turn until it
- * changed its mind, at full price each time.
+ * but only the first. An untinted story whose model answered "keep" waits like
+ * any other: a bypass keyed on the hue would re-ask after every single turn
+ * until it changed its mind, at full price each time.
  */
-function shouldCheck(story: Story): boolean {
+function shouldCheck(story: Story, passagesBetweenChecks: number): boolean {
   if (!story.tintAuto) return false
   const since = registry.checkedAt.get(story.id)
   if (since === undefined) return true
-  return story.wordCount - since >= NEW_WORDS_BEFORE_RECHECK
+  return passageCount(story) - since >= passagesBetweenChecks
+}
+
+/**
+ * Active passages in the whole manuscript, not just the loaded window.
+ *
+ * `entries` is a tail when the story is long, so its length alone would answer
+ * "how far has this story come" with the size of a viewport — and a watermark
+ * that shrinks makes the gate fire on a story that has not moved.
+ */
+function passageCount(story: Story): number {
+  return (story.entriesBefore ?? 0) + story.entries.length
 }
 
 /** The tint id the story is wearing, or null when it is untinted or off-palette. */
