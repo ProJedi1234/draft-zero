@@ -137,6 +137,26 @@ export type SyncWireEvent =
     }
   /** The summarizer gave up on this story. See BusEvent's note on why it toasts. */
   | { type: "summary-stopped"; storyId: string }
+  /**
+   * Where the atmosphere picker is on this story. Unlike every other event
+   * here this one is not "go and refetch" — a repaint already sends its own
+   * `change` — it is the only account the writer gets of a job whose failures
+   * are otherwise indistinguishable from its successes.
+   */
+  | {
+      type: "atmosphere"
+      storyId: string
+      phase: AtmospherePhase
+      message: string | null
+    }
+
+/**
+ * Where a check is. "kept" and "painted" are both successes, split because one
+ * changed the room and the other did not: for a kept scene, a spinner that
+ * stops is the entire feedback there is to give.
+ */
+export type AtmospherePhase =
+  "checking" | "kept" | "painted" | "failed" | "stopped"
 
 /**
  * A run in flight right now, as the library sees it. Not a database row —

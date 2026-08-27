@@ -26,10 +26,16 @@ const FALLBACK_ERROR = "Couldn't save the atmosphere model."
 /**
  * What chooses a story's tint, for the stories that let it.
  *
- * The summarizer's card without its Advanced section, because there is nothing
- * under there to offer: the answer is one word from a closed list, so there is
- * no length to aim for and no cap worth exposing. Temperature stays, and stays
- * low — this is a reading of a scene, not a contribution to it.
+ * The summarizer's card without its target-length control: the answer is one
+ * word from a closed list, so there is no length to aim for. Temperature
+ * stays, and stays low — this is a reading of a scene, not a contribution to
+ * it.
+ *
+ * The cap DOES stay, and it is the least decorative control on this card. A
+ * model that reasons spends the cap thinking before it answers, and a cap it
+ * cannot finish inside returns nothing at all, which reaches the writer as a
+ * picker that has quietly stopped working. The writer chooses the model, so
+ * the writer needs the number that makes their model usable.
  *
  * App-wide for the same reason the summarizer is: naming the mood of a passage
  * is one job with one right answer, and it runs after turns for as long as a
@@ -137,6 +143,20 @@ export function AtmosphereCard({
             }
             onValueCommitted={(next) => save({ ...draft, temperature: next })}
             hint="Low is right for this: there are eight answers and a shrug, and warmth only makes the shrug rarer."
+          />
+        </div>
+        <div className="mt-6">
+          <SliderField
+            label="Max tokens"
+            value={draft.maxTokens}
+            min={64}
+            max={8192}
+            step={64}
+            onValueChange={(next) =>
+              synced.setLocal({ ...draft, maxTokens: next })
+            }
+            onValueCommitted={(next) => save({ ...draft, maxTokens: next })}
+            hint="A ceiling, not a spend: the answer is one word, and the rest is room for a model that thinks first. Raise it if this model keeps answering nothing."
           />
         </div>
       </CardContent>

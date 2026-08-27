@@ -93,6 +93,42 @@ export const runEndings = {
   },
 }
 
+/** The `atmosphere` frame, narrowed out of the union for subscribers. */
+export type AtmosphereEvent = Extract<SyncWireEvent, { type: "atmosphere" }>
+
+/**
+ * Where the atmosphere picker is, per story, for whoever is showing it — the
+ * sparkle in the inspector and the chip in the header, which are never both
+ * on screen but are both fed from here.
+ *
+ * A module singleton like runEndings, and for the same reason: the channel is
+ * held by the root layout while the indicators live deep in the story subtree.
+ * Unlike runEndings it also REMEMBERS the last phase per story, because the
+ * indicator mounts and unmounts as the inspector opens and closes — a
+ * subscribe-only fan-out would leave a panel opened one second after a failure
+ * showing nothing at all.
+ */
+export const atmosphereStatus = {
+  last: new Map<string, AtmosphereEvent>(),
+  listeners: new Set<(event: AtmosphereEvent) => void>(),
+  subscribe(listener: (event: AtmosphereEvent) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  },
+  publish(event: AtmosphereEvent): void {
+    this.last.set(event.storyId, event)
+    for (const listener of this.listeners) {
+      try {
+        listener(event)
+      } catch {
+        // One broken subscriber must not mute the rest, same as the bus.
+      }
+    }
+  },
+}
+
 /**
  * One NDJSON response to a stream of parsed records.
  *

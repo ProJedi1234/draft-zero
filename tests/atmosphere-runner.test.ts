@@ -24,13 +24,15 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 
+import type { GenerationUsage } from "@/lib/generation/types"
+import type { AtmospherePhase } from "@/lib/sync/types"
 import type { AtmosphereSettings, Story, StoryEntry } from "@/lib/types"
 
 mock.module("server-only", () => ({}))
 
 import type { AtmosphereIo } from "@/lib/generation/atmosphere"
 
-const { runAtmosphereForStory, resetAtmosphereState } =
+const { runAtmosphereForStory, resetAtmosphereState, clearAtmosphereBreaker } =
   await import("@/lib/generation/atmosphere")
 
 // ---------------------------------------------------------------------------
@@ -115,7 +117,8 @@ function tinted(over: Partial<Story> = {}): Story {
 type CompleteResult = {
   text: string
   generationId: string | null
-  usage: null
+  /** Only the empty-reply diagnosis reads this; every other case sends null. */
+  usage: GenerationUsage | null
 }
 
 let currentStory: Story | null = makeStory()
@@ -126,6 +129,7 @@ const BASE_ATMOSPHERE: AtmosphereSettings = {
   providerTag: null,
   zdr: false,
   temperature: 0.2,
+  maxTokens: 2048,
 }
 let atmosphere: AtmosphereSettings = BASE_ATMOSPHERE
 let completeImpl: () => Promise<CompleteResult> = async () => ({
@@ -140,6 +144,11 @@ let writeResult: () => boolean = () => true
 
 const written: { storyId: string; hue: number; strength: number }[] = []
 const announced: string[] = []
+const phases: {
+  storyId: string
+  phase: AtmospherePhase
+  message: string | null
+}[] = []
 const settled: { id: string; status: string }[] = []
 const started: Record<string, unknown>[] = []
 const completeCalls: Record<string, unknown>[] = []
@@ -165,6 +174,9 @@ const io: AtmosphereIo = {
   announceChanged(storyId) {
     announced.push(storyId)
   },
+  announcePhase(storyId, phase, message) {
+    phases.push({ storyId, phase, message })
+  },
 }
 
 const run = () => runAtmosphereForStory("story-1", io)
@@ -172,6 +184,7 @@ const run = () => runAtmosphereForStory("story-1", io)
 beforeEach(() => {
   written.length = 0
   announced.length = 0
+  phases.length = 0
   settled.length = 0
   started.length = 0
   completeCalls.length = 0
@@ -475,17 +488,14 @@ describe("what reaches the model", () => {
     expect(started[0]!.thinking).toBe("medium")
   })
 
-  test("the cap fits the answer until the model is asked to think", async () => {
+  test("the cap is the writer's number, not one derived from the thinking level", async () => {
+    // Sizing the cap from the thinking LEVEL was the version of this that
+    // looked right and was wrong: a model can reason with thinking off (gpt-
+    // oss-20b does), spend the cap thinking, and answer nothing.
+    atmosphere = { ...BASE_ATMOSPHERE, maxTokens: 4096 }
     await run()
-    expect(completeCalls[0]!.maxTokens).toBe(200)
-
-    // Reasoning spends against the same cap as the answer, so a cap sized to
-    // one word would starve a thinking model to an empty reply — which the
-    // parser reads as failure and the breaker turns into a permanent trip.
-    resetAtmosphereState()
-    atmosphere = { ...BASE_ATMOSPHERE, thinking: "medium" }
-    await run()
-    expect(completeCalls[1]!.maxTokens).toBe(8_000)
+    expect(completeCalls[0]!.maxTokens).toBe(4096)
+    expect(completeCalls[0]!.thinking).toBe("off")
   })
 
   test("the picker's own retention setting reaches the provider", async () => {
@@ -541,6 +551,106 @@ describe("giving up", () => {
     await run()
     await run()
     expect(completeCalls).toHaveLength(6)
+  })
+})
+
+describe("saying what it is doing", () => {
+  test("a check that repaints announces checking then painted", async () => {
+    completeImpl = async () => ({
+      text: "lagoon",
+      generationId: null,
+      usage: null,
+    })
+    await run()
+    expect(phases.map((p) => p.phase)).toEqual(["checking", "painted"])
+    expect(phases.every((p) => p.message === null)).toBe(true)
+  })
+
+  test("a kept scene is a success with its own phase", async () => {
+    completeImpl = async () => ({
+      text: "keep",
+      generationId: null,
+      usage: null,
+    })
+    await run()
+    // Distinct from "painted": nothing moved, so the spinner stopping is the
+    // whole of the feedback there is to give.
+    expect(phases.map((p) => p.phase)).toEqual(["checking", "kept"])
+  })
+
+  test("the gate declining announces nothing at all", async () => {
+    currentStory = tinted({ tintAuto: false })
+    await run()
+    // A spinner for a check that never ran would blink after every turn and
+    // mean nothing.
+    expect(phases).toHaveLength(0)
+  })
+
+  test("a model that thinks past its cap is told so by name", async () => {
+    atmosphere = { ...BASE_ATMOSPHERE, modelId: "openai/gpt-oss-20b" }
+    completeImpl = async () => ({
+      text: "",
+      generationId: "gen-1",
+      // The signature of the real failure: the whole budget went to reasoning
+      // and no content came back.
+      usage: {
+        promptTokens: 581,
+        completionTokens: 200,
+        reasoningTokens: 200,
+        costUsd: null,
+        cachedPromptTokens: null,
+        upstreamPromptCostUsd: null,
+        upstreamCompletionCostUsd: null,
+        isByok: null,
+      },
+    })
+    await run()
+    const failure = phases.at(-1)!
+    expect(failure.phase).toBe("failed")
+    expect(failure.message).toContain("openai/gpt-oss-20b")
+    expect(failure.message).toContain("Max tokens")
+  })
+
+  test("only the first failure of a streak carries a message, and then the trip", async () => {
+    completeImpl = async () => {
+      throw new Error("blip")
+    }
+    await run()
+    await run()
+    await run()
+    const failures = phases.filter((p) => p.phase !== "checking")
+    expect(failures.map((p) => p.phase)).toEqual([
+      "failed",
+      "failed",
+      "stopped",
+    ])
+    // Told once when it starts going wrong, once when it gives up, and never
+    // twice for the same news.
+    expect(failures[0]!.message).not.toBeNull()
+    expect(failures[1]!.message).toBeNull()
+    expect(failures[2]!.message).toContain("stopped")
+  })
+
+  test("editing the bundle revives a story that had given up", async () => {
+    completeImpl = async () => {
+      throw new Error("model retired")
+    }
+    await run()
+    await run()
+    await run()
+    expect(completeCalls).toHaveLength(3)
+
+    // The Settings change that FIXES a broken picker has to be able to undo
+    // the breaker it tripped — otherwise only a server restart could.
+    clearAtmosphereBreaker()
+    completeImpl = async () => ({
+      text: "keep",
+      generationId: null,
+      usage: null,
+    })
+    currentStory = makeStory({ wordCount: 1200 })
+    await run()
+    expect(completeCalls).toHaveLength(4)
   })
 })
 

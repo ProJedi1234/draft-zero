@@ -10,11 +10,13 @@ import {
   Minimize2,
   NotebookText,
   PanelRight,
+  Sparkles,
 } from "lucide-react"
 
 import type { Story, StoryCostProfile } from "@/lib/types"
 import { formatWordCount } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { useAtmosphereStatus } from "@/hooks/use-atmosphere-status"
 import { useSaveStatus } from "@/hooks/use-autosave"
 import { CostChip } from "@/components/cost/cost-chip"
 import { StoryDetailsDialog } from "@/components/story/story-details-dialog"
@@ -62,6 +64,55 @@ function SaveStatusChip() {
         </>
       )}
     </span>
+  )
+}
+
+/**
+ * The atmosphere picker, when the inspector that normally shows it is shut.
+ *
+ * Beside the save chip because it is the same kind of fact — a background
+ * write the writer did not ask for and should not have to wonder about — and
+ * because that corner is already where this app puts them. It renders nothing
+ * at rest: a permanent chip for a job that runs for two seconds after a turn
+ * would be chrome claiming to be status.
+ */
+function AtmosphereChip({ storyId }: { storyId: string }) {
+  const status = useAtmosphereStatus(storyId)
+  const phase = status?.phase ?? null
+  if (phase !== "checking" && phase !== "stopped") return null
+
+  const stopped = phase === "stopped"
+  const label = stopped ? "Atmosphere stopped" : "Reading the scene…"
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-live="polite"
+            className={cn(
+              "hidden items-center gap-1.5 text-xs md:flex",
+              stopped ? "text-destructive" : "text-muted-foreground"
+            )}
+          />
+        }
+      >
+        <span className="relative flex size-3.5 items-center justify-center">
+          <Sparkles className="size-3.5" />
+          {stopped ? null : (
+            <span
+              aria-hidden
+              className="atmosphere-scan pointer-events-none absolute -inset-1 border border-foreground/60"
+            />
+          )}
+        </span>
+        {label}
+      </TooltipTrigger>
+      <TooltipContent>
+        {stopped
+          ? "The atmosphere picker gave up on this story. Change the model in Settings to start it again."
+          : "Choosing the colour this story is read in."}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -230,6 +281,10 @@ export function StoryHeader({
         {formatWordCount(story.wordCount)}
       </span>
       <div className="flex-1" />
+      {/* Only while the inspector is shut. Open, the sparkle in the atmosphere
+          row is saying the same thing in the place the writer would look for
+          it, and two indicators for one job is one too many. */}
+      {inspectorOpen ? null : <AtmosphereChip storyId={story.id} />}
       <SaveStatusChip />
       <CostChip profile={costProfile} span={span} />
       <Tooltip>

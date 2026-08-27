@@ -11,7 +11,7 @@
 // route) forward them to clients, and clients respond with router.refresh() —
 // the refetch is the sync, so the bus never has to serialize story state.
 
-import type { RunEndStatus } from "@/lib/sync/types"
+import type { AtmospherePhase, RunEndStatus } from "@/lib/sync/types"
 
 export type BusEvent =
   | { kind: "change"; storyId: string | null }
@@ -38,6 +38,23 @@ export type BusEvent =
    * it retried for free every turn, after it nothing will happen at all.
    */
   | { kind: "summary-stopped"; storyId: string }
+  /**
+   * The atmosphere picker started, finished, or gave up on this story.
+   *
+   * The one background job that reports itself, and the reason is the one
+   * thing that makes it different from the summarizer: its whole output is a
+   * colour, so a check that fails looks EXACTLY like a check that decided the
+   * scene had not moved, which looks exactly like a check that never ran. The
+   * summarizer's product is text a writer can go and read; this one's absence
+   * is invisible by construction, so it has to say so out loud.
+   */
+  | {
+      kind: "atmosphere"
+      storyId: string
+      phase: AtmospherePhase
+      /** Set on "failed" and "stopped" — what to tell the writer. */
+      message: string | null
+    }
 
 type BusListener = (event: BusEvent) => void
 

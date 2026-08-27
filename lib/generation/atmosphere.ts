@@ -7,9 +7,17 @@
 // story's memory and must not be lost, this one is the room's light and may be
 // skipped for a week without anybody being able to name what is missing.
 //
-// That asymmetry is why this file is quieter than its sibling. It writes
-// nothing on a bad answer, it says nothing when it gives up, and it declines to
-// run at all far more often than it runs — see the gate in shouldCheck.
+// That asymmetry is why this file writes nothing on a bad answer and declines
+// to run at all far more often than it runs — see the gate in shouldCheck.
+//
+// It is LOUDER than its sibling in exactly one way, and the same asymmetry is
+// why: the summarizer's product is prose a writer can go and read, so a
+// summary that never arrived is discoverable. This one's product is a colour,
+// so a check that failed, a check that decided the scene had not moved, and a
+// check that never ran are the same non-event from the outside. Every check
+// therefore reports where it got to (announcePhase), and the two moments worth
+// interrupting a sentence for — the first failure of a streak, and giving up —
+// carry a message the client turns into a toast.
 //
 // NOTHING IN HERE MAY THROW INTO THE GENERATION PATH, for the same reason
 // nothing in calls.ts or summarize.ts may: losing a tint is a decoration
@@ -35,7 +43,8 @@ import { resolveOpenRouterKey } from "@/lib/generation/key"
 import { completeOnce, mapOpenRouterError } from "@/lib/generation/openrouter"
 import type { GenerationUsage } from "@/lib/generation/types"
 import { STORY_TINTS } from "@/lib/story-tint"
-import { touchStory } from "@/lib/sync/bus"
+import { publishBus, touchStory } from "@/lib/sync/bus"
+import type { AtmospherePhase } from "@/lib/sync/types"
 import type {
   AtmosphereSettings,
   GenerationRequestKind,
@@ -96,6 +105,17 @@ export interface AtmosphereIo {
     tint: { hue: number; strength: number }
   ): Promise<boolean>
   announceChanged(storyId: string): void
+  /**
+   * Where this check is, for the sparkle in the inspector and the chip in the
+   * header. Every check that announces "checking" announces exactly one
+   * terminal phase afterwards — a spinner with no ending is worse than no
+   * spinner, because it is a lie about work that is still happening.
+   */
+  announcePhase(
+    storyId: string,
+    phase: AtmospherePhase,
+    message: string | null
+  ): void
 }
 
 export const liveIo: AtmosphereIo = {
@@ -134,6 +154,9 @@ export const liveIo: AtmosphereIo = {
   // — and here it does not, because a tint that arrives unexplained is exactly
   // the feature.
   announceChanged: touchStory,
+  announcePhase(storyId, phase, message) {
+    publishBus({ kind: "atmosphere", storyId, phase, message })
+  },
 }
 
 /**
@@ -156,18 +179,17 @@ const TAIL_WORDS = 500
  */
 const NEW_WORDS_BEFORE_RECHECK = 150
 /**
- * Output cap when the model is not asked to think: one word plus slack.
+ * The output cap is a SETTING (AtmosphereSettings.maxTokens), not a constant
+ * here, and this note is what used to be a constant.
+ *
+ * Reasoning tokens spend against the same cap as the answer, and a model can
+ * reason whether or not this app asked it to — gpt-oss-20b reasons past a
+ * 200-token cap with thinking off, returns no content at all, and reads to the
+ * parser below as a model that will not answer. Sizing the cap from the
+ * thinking LEVEL was the version of this that looked right and was wrong: the
+ * level says what we asked for, not what the model does. The writer picks the
+ * model, so the writer gets the number.
  */
-const ATMOSPHERE_MAX_TOKENS = 200
-/**
- * Output cap when it is. Reasoning tokens spend against the same cap as the
- * answer, so the 200 that is generous for one word starves a model told to
- * think at high before it emits any content at all — every check comes back
- * empty and reads to the breaker as a model that will not answer. A cap is a
- * ceiling, not a spend: a model that thinks briefly costs the same under
- * either number.
- */
-const ATMOSPHERE_THINKING_MAX_TOKENS = 8_000
 /** How long one check may take before it is abandoned as hung. */
 const ATMOSPHERE_TIMEOUT_MS = 30_000
 /**
@@ -252,7 +274,9 @@ export async function runAtmosphereForStory(
     await checkOnce(storyId, io)
   } catch (err) {
     console.error("[atmosphere] failed", err)
-    noteFailure(storyId)
+    // noteFailure is terminal for the spinner as well as for the breaker:
+    // checkOnce may have already announced "checking" before whatever threw.
+    noteFailure(storyId, io, "The atmosphere check didn't finish.")
   } finally {
     registry.inFlight.delete(storyId)
   }
@@ -272,6 +296,10 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
 
   const { atmosphere } = await io.settings()
   const modelId = atmosphere.modelId ?? DEFAULT_ATMOSPHERE_MODEL_ID
+  // Announced here rather than at the top of the function: everything above is
+  // the gate, and the gate declining is not work — a spinner for it would
+  // blink after every turn and mean nothing.
+  io.announcePhase(storyId, "checking", null)
   const callId = crypto.randomUUID()
   const requestKind: GenerationRequestKind = "atmosphere"
   // Opened before the request for the same reason a generation's row is: a call
@@ -301,10 +329,7 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
       thinking: atmosphere.thinking,
       providerTag: atmosphere.providerTag,
       temperature: atmosphere.temperature,
-      maxTokens:
-        atmosphere.thinking === "off"
-          ? ATMOSPHERE_MAX_TOKENS
-          : ATMOSPHERE_THINKING_MAX_TOKENS,
+      maxTokens: atmosphere.maxTokens,
       // Both, ORed — see the same line in summarize.ts. It is the story's prose
       // on the wire, and a manuscript that requires zero retention does not
       // stop requiring it because a different bundle sent it.
@@ -324,7 +349,11 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
         generationId: result.generationId,
         usage: result.usage,
       })
-      noteFailure(storyId)
+      noteFailure(
+        storyId,
+        io,
+        refusalMessage(modelId, result.text, result.usage)
+      )
       return
     }
 
@@ -336,12 +365,13 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
     // A model naming the colour the story is already wearing means keep, and
     // writing it would push a change event at every open device to tell them
     // nothing changed.
+    let painted = false
     if (choice !== "keep" && choice.id !== currentTintId(story)) {
-      const wrote = await io.writeTint(storyId, {
+      painted = await io.writeTint(storyId, {
         hue: choice.hue,
         strength: choice.strength,
       })
-      if (wrote) io.announceChanged(storyId)
+      if (painted) io.announceChanged(storyId)
     }
     await io.settle(callId, {
       status: "ok",
@@ -354,6 +384,7 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
     // call with extra steps.
     registry.checkedAt.set(storyId, story.wordCount)
     registry.failures.delete(storyId)
+    io.announcePhase(storyId, painted ? "painted" : "kept", null)
   } catch (err) {
     // A refusal and a fault settle the row identically: both are billed at zero
     // and both leave the story wearing what it was wearing.
@@ -364,7 +395,11 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
     })
     const { message } = mapOpenRouterError(err)
     console.error("[atmosphere]", message)
-    noteFailure(storyId)
+    noteFailure(
+      storyId,
+      io,
+      abort.signal.aborted ? "The atmosphere check timed out." : message
+    )
   } finally {
     clearTimeout(timer)
   }
@@ -452,20 +487,69 @@ function manuscriptTail(entries: StoryEntry[], maxWords: number): string {
 /**
  * Count a failure, and trip once they stop looking transient.
  *
- * Silent, which is the one real departure from the summarizer. That bus event
- * earns its interruption by being the moment a story stops remembering itself;
- * this one would be an unprompted toast about a colour, sent to a writer
- * mid-sentence, about a job they may not know exists. The log line is for
- * whoever is looking, and the restart that fixes a bad key clears it anyway.
+ * The only place failure is reported, which is why the diagnosis is passed in
+ * rather than assembled here: the caller knows whether the model refused, timed
+ * out, or spent its budget thinking, and that sentence is the difference
+ * between a writer changing a setting and a writer wondering what broke.
+ *
+ * Two of the three failures in a streak are silent on purpose. The middle one
+ * is the same news as the first, delivered to somebody mid-sentence who has
+ * already been told.
  */
-function noteFailure(storyId: string): void {
+function noteFailure(storyId: string, io: AtmosphereIo, why: string): void {
   const count = (registry.failures.get(storyId) ?? 0) + 1
   registry.failures.set(storyId, count)
-  if (count < FAILURE_LIMIT) return
+  if (count < FAILURE_LIMIT) {
+    // Every failure ends the spinner; only the FIRST of a streak carries a
+    // message. The second says the same thing the first did, to a writer who
+    // has been told once and is mid-sentence.
+    io.announcePhase(storyId, "failed", count === 1 ? why : null)
+    return
+  }
   registry.tripped.add(storyId)
   console.error(
     `[atmosphere] giving up on ${storyId} after ${FAILURE_LIMIT} failures`
   )
+  io.announcePhase(
+    storyId,
+    "stopped",
+    `${why} The atmosphere picker has stopped for this story — change the model in Settings to start it again.`
+  )
+}
+
+/**
+ * What to tell the writer about a reply that was not one word.
+ *
+ * The empty-reply case is worth its own sentence because it is the one that
+ * looks like nothing at all and has a specific fix: a model that reasons
+ * spends the output cap thinking, hits it, and returns no content — which is
+ * indistinguishable from a broken key or a bad prompt unless somebody says so.
+ * The usage block is how we know that is what happened.
+ */
+function refusalMessage(
+  modelId: string,
+  text: string,
+  usage: GenerationUsage | null
+): string {
+  if (text.trim() === "") {
+    return (usage?.reasoningTokens ?? 0) > 0
+      ? `${modelId} used its whole token budget thinking and answered nothing. Raise Max tokens in Settings, or pick a model that doesn't reason.`
+      : `${modelId} returned an empty answer for the atmosphere check.`
+  }
+  return `${modelId} didn't answer the atmosphere check with a colour.`
+}
+
+/**
+ * Forget every story that gave up.
+ *
+ * Called when the atmosphere bundle is edited: the strikes were against the
+ * old settings, and the writer changing them is the writer fixing the thing
+ * the breaker was protecting against. Failure counts go too — a story one
+ * strike from tripping should not trip on the new model's first blip.
+ */
+export function clearAtmosphereBreaker(): void {
+  registry.tripped.clear()
+  registry.failures.clear()
 }
 
 /** Test seam: forget every story's failure history and watermark. */

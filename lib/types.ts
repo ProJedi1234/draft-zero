@@ -511,6 +511,16 @@ export type SummarizerSettings = Omit<GenerationIdentity, "modelId"> & {
 export type AtmosphereSettings = Omit<GenerationIdentity, "modelId"> & {
   modelId: string | null
   temperature: number
+  /**
+   * Hard output cap. Required rather than nullable — unlike the summarizer's
+   * there is nothing to derive it from, and unlike a length it is not really
+   * about the answer at all: the answer is one word, and everything above that
+   * is room for a model that reasons before it speaks. A model whose reasoning
+   * outruns this cap returns no content, which reaches the writer as a picker
+   * that has silently stopped working, so the number has to be the writer's to
+   * raise.
+   */
+  maxTokens: number
 }
 
 /** The model half of a bundle — what a profile always states for itself. */
