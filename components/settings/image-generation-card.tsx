@@ -21,10 +21,7 @@ import {
 } from "@/components/ui/select"
 import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { updateAppSettings } from "@/lib/actions/settings"
-import {
-  IMAGE_CONTEXT_OPTIONS,
-  type OpenRouterImageModel,
-} from "@/lib/types"
+import { IMAGE_CONTEXT_OPTIONS, type OpenRouterImageModel } from "@/lib/types"
 
 /** "1k" reads at a glance where "1,024 tokens" has to be parsed. */
 function contextLabel(tokens: number): string {

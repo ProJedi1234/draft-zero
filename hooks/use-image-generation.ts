@@ -140,7 +140,11 @@ export function useImageGeneration(
             } else if (event.type === "partial") {
               setJob((prev) =>
                 prev
-                  ? { ...prev, previewB64: event.b64, mediaType: event.mediaType }
+                  ? {
+                      ...prev,
+                      previewB64: event.b64,
+                      mediaType: event.mediaType,
+                    }
                   : prev
               )
             } else if (event.type === "end") {
