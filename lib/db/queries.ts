@@ -19,6 +19,7 @@ import {
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type {
   AppSettings,
+  GalleryImage,
   GenerationBaseline,
   LorebookEntry,
   ModelProfile,
@@ -109,6 +110,35 @@ export async function listStoriesWithCounts(): Promise<StorySummary[]> {
     .groupBy(stories.id)
     .orderBy(desc(stories.updatedAt))
   return rows.map((row) => toStorySummary(row.story, Number(row.wordCount)))
+}
+
+/**
+ * Every illustration in the library, newest first, for the gallery's photo
+ * wall. The same visibility rule as the word count above: only the active take
+ * of a live slot counts, because the gallery is a view over what the
+ * manuscripts actually show, not over everything the disk retains. The story
+ * join is for captions and grouping — title and tint are the only pieces of a
+ * story the wall needs.
+ */
+export async function listGalleryImages(): Promise<GalleryImage[]> {
+  const db = await getDb()
+  return db
+    .select({
+      id: storyImages.id,
+      prompt: storyImages.prompt,
+      aspectRatio: storyImages.aspectRatio,
+      mediaType: storyImages.mediaType,
+      modelId: storyImages.modelId,
+      createdAt: storyImages.createdAt,
+      storyId: storyImages.storyId,
+      storyTitle: stories.title,
+      tintHue: stories.tintHue,
+      tintStrength: stories.tintStrength,
+    })
+    .from(storyImages)
+    .innerJoin(stories, eq(storyImages.storyId, stories.id))
+    .where(and(isNull(storyImages.deletedAt), eq(storyImages.isActive, true)))
+    .orderBy(desc(storyImages.createdAt), desc(storyImages.id))
 }
 
 /**
@@ -504,66 +534,73 @@ export async function getStory(
     baseline
   )
 
-  const [manuscript, imageRows, lorebookRows, history, recap, costRows, imageCostRows] =
-    await Promise.all([
-      opts.full
-        ? readFullManuscript(db, id)
-        : readManuscriptTail(db, id, effective.contextWindow),
-      // Every non-deleted illustration, alternatives included: toStory derives
-      // imageIndex/imageCount from the whole slot, and a query that returned
-      // only the active take could not tell a picture that has been retried
-      // twice from one that never has. All of them, not just the window's —
-      // pictures are few, and a windowed read would drop the beats above the
-      // fold.
-      db
-        .select()
-        .from(storyImages)
-        .where(and(eq(storyImages.storyId, id), isNull(storyImages.deletedAt)))
-        .orderBy(asc(storyImages.imageIndex)),
-      db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
-      readHistoryState(db, id),
-      resolveStoryRecap(id),
-      // The story's spend, as a second small SELECT rather than a join onto the
-      // entries above. A join is the same rows, but a ledger that somehow held
-      // two calls for one take would silently DUPLICATE a passage in the
-      // manuscript — a bookkeeping oddity has no business being able to do
-      // that. Indexed on (story_id, created_at); in-flight calls are excluded
-      // because they have no cost yet and no take.
-      db
-        .select({
-          storyEntryId: generationCalls.storyEntryId,
-          costUsd: generationCalls.costUsd,
-          reasoningTokens: generationCalls.reasoningTokens,
-          status: generationCalls.status,
-        })
-        .from(generationCalls)
-        .where(
-          and(
-            eq(generationCalls.storyId, id),
-            isNotNull(generationCalls.storyEntryId),
-            ne(generationCalls.status, "streaming")
-          )
-        ),
-      // The same read for pictures — see the imageCosts map below. A separate
-      // SELECT rather than a UNION: they key by different columns, and an
-      // image billed per megapixel has no business being summed with a
-      // passage billed per token.
-      db
-        .select({
-          storyImageId: generationCalls.storyImageId,
-          origImageGroupId: generationCalls.origImageGroupId,
-          costUsd: generationCalls.costUsd,
-          status: generationCalls.status,
-        })
-        .from(generationCalls)
-        .where(
-          and(
-            eq(generationCalls.storyId, id),
-            isNotNull(generationCalls.storyImageId),
-            ne(generationCalls.status, "streaming")
-          )
-        ),
-    ])
+  const [
+    manuscript,
+    imageRows,
+    lorebookRows,
+    history,
+    recap,
+    costRows,
+    imageCostRows,
+  ] = await Promise.all([
+    opts.full
+      ? readFullManuscript(db, id)
+      : readManuscriptTail(db, id, effective.contextWindow),
+    // Every non-deleted illustration, alternatives included: toStory derives
+    // imageIndex/imageCount from the whole slot, and a query that returned
+    // only the active take could not tell a picture that has been retried
+    // twice from one that never has. All of them, not just the window's —
+    // pictures are few, and a windowed read would drop the beats above the
+    // fold.
+    db
+      .select()
+      .from(storyImages)
+      .where(and(eq(storyImages.storyId, id), isNull(storyImages.deletedAt)))
+      .orderBy(asc(storyImages.imageIndex)),
+    db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
+    readHistoryState(db, id),
+    resolveStoryRecap(id),
+    // The story's spend, as a second small SELECT rather than a join onto the
+    // entries above. A join is the same rows, but a ledger that somehow held
+    // two calls for one take would silently DUPLICATE a passage in the
+    // manuscript — a bookkeeping oddity has no business being able to do
+    // that. Indexed on (story_id, created_at); in-flight calls are excluded
+    // because they have no cost yet and no take.
+    db
+      .select({
+        storyEntryId: generationCalls.storyEntryId,
+        costUsd: generationCalls.costUsd,
+        reasoningTokens: generationCalls.reasoningTokens,
+        status: generationCalls.status,
+      })
+      .from(generationCalls)
+      .where(
+        and(
+          eq(generationCalls.storyId, id),
+          isNotNull(generationCalls.storyEntryId),
+          ne(generationCalls.status, "streaming")
+        )
+      ),
+    // The same read for pictures — see the imageCosts map below. A separate
+    // SELECT rather than a UNION: they key by different columns, and an
+    // image billed per megapixel has no business being summed with a
+    // passage billed per token.
+    db
+      .select({
+        storyImageId: generationCalls.storyImageId,
+        origImageGroupId: generationCalls.origImageGroupId,
+        costUsd: generationCalls.costUsd,
+        status: generationCalls.status,
+      })
+      .from(generationCalls)
+      .where(
+        and(
+          eq(generationCalls.storyId, id),
+          isNotNull(generationCalls.storyImageId),
+          ne(generationCalls.status, "streaming")
+        )
+      ),
+  ])
 
   const costs = new Map<string, EntryCost>()
   for (const row of costRows) {

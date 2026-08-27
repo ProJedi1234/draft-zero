@@ -865,6 +865,27 @@ export interface StoryImage {
 }
 
 /**
+ * One tile on the gallery's photo wall: an illustration plus just enough of its
+ * story to caption and group it. Flat rather than nested under a story because
+ * the wall's default order is cross-story by recency, and takes/positions are
+ * the manuscript's concern — the gallery only ever shows what the manuscript
+ * shows, so slot mechanics never reach it.
+ */
+export interface GalleryImage {
+  id: string
+  prompt: string
+  aspectRatio: ImageAspectRatio
+  mediaType: string
+  modelId: string
+  createdAt: string
+  storyId: string
+  storyTitle: string
+  /** The story's tint, so a grouped section can wear it. See Story.tintHue. */
+  tintHue: number | null
+  tintStrength: number
+}
+
+/**
  * An entry from OpenRouter's image catalog (GET /api/v1/images/models).
  *
  * Much thinner than OpenRouterModel because almost nothing carries over: an
