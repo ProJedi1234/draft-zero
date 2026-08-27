@@ -91,7 +91,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const stories = await listStories()
+  const storyPage = await listStories()
   // Synchronous and in-process — the registries are Maps on globalThis, not
   // queries. Read here rather than inside listStories because it is not
   // database state: a run lives and dies with this server, and folding it into
@@ -118,7 +118,7 @@ export default async function RootLayout({
             {/* Inside the provider: it tints the status bar from the sheet's
                 open state, which only exists in this context. */}
             <StatusBarTint />
-            <AppSidebar stories={stories} activeRuns={activeRuns} />
+            <AppSidebar storyPage={storyPage} activeRuns={activeRuns} />
             <SidebarInset>{children}</SidebarInset>
           </SidebarProvider>
           <Toaster />

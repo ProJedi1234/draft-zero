@@ -9,10 +9,12 @@ import {
   eq,
   gte,
   inArray,
+  ilike,
   isNotNull,
   isNull,
   lt,
   ne,
+  or,
   sql,
 } from "drizzle-orm"
 
@@ -64,15 +66,54 @@ import {
   stories,
 } from "./schema"
 
-/** All stories, ordered updated_at DESC. No word counts — the sidebar never
- * shows them, and this runs on every request via the root layout. */
-export async function listStories(): Promise<StorySummary[]> {
+/** How many stories the sidebar asks for at a time. */
+export const STORY_PAGE_SIZE = 20
+
+/** One window of the library, plus whether the next one exists. */
+export interface StoryPage {
+  stories: StorySummary[]
+  hasMore: boolean
+}
+
+/**
+ * A window of stories, ordered updated_at DESC, optionally narrowed by a
+ * search needle matched against title, genre and description.
+ *
+ * Paged rather than exhaustive because this runs on every request via the root
+ * layout, and the sidebar only ever shows a screenful: an unbounded read put
+ * the whole library into every RSC payload to render twenty rows. `hasMore`
+ * comes from asking for one row more than the caller wants and throwing it
+ * away — one query, no separate count.
+ *
+ * No word counts — the sidebar never shows them.
+ */
+export async function listStories(
+  options: { limit?: number; offset?: number; query?: string } = {}
+): Promise<StoryPage> {
+  const { limit = STORY_PAGE_SIZE, offset = 0, query = "" } = options
   const db = await getDb()
+  // Escape the LIKE metacharacters so a literal % or _ in the box searches for
+  // itself rather than matching everything.
+  const needle = query.trim().replace(/[\\%_]/g, "\\$&")
+  const where =
+    needle === ""
+      ? undefined
+      : or(
+          ilike(stories.title, `%${needle}%`),
+          ilike(stories.genre, `%${needle}%`),
+          ilike(stories.description, `%${needle}%`)
+        )
   const storyRows = await db
     .select()
     .from(stories)
+    .where(where)
     .orderBy(desc(stories.updatedAt))
-  return storyRows.map((row) => toStorySummary(row))
+    .limit(limit + 1)
+    .offset(offset)
+  return {
+    stories: storyRows.slice(0, limit).map((row) => toStorySummary(row)),
+    hasMore: storyRows.length > limit,
+  }
 }
 
 /**
