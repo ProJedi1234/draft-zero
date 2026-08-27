@@ -19,6 +19,7 @@ import {
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type {
   AppSettings,
+  GalleryImage,
   GenerationBaseline,
   LorebookEntry,
   ModelProfile,
@@ -109,6 +110,35 @@ export async function listStoriesWithCounts(): Promise<StorySummary[]> {
     .groupBy(stories.id)
     .orderBy(desc(stories.updatedAt))
   return rows.map((row) => toStorySummary(row.story, Number(row.wordCount)))
+}
+
+/**
+ * Every illustration in the library, newest first, for the gallery's photo
+ * wall. The same visibility rule as the word count above: only the active take
+ * of a live slot counts, because the gallery is a view over what the
+ * manuscripts actually show, not over everything the disk retains. The story
+ * join is for captions and grouping — title and tint are the only pieces of a
+ * story the wall needs.
+ */
+export async function listGalleryImages(): Promise<GalleryImage[]> {
+  const db = await getDb()
+  return db
+    .select({
+      id: storyImages.id,
+      prompt: storyImages.prompt,
+      aspectRatio: storyImages.aspectRatio,
+      mediaType: storyImages.mediaType,
+      modelId: storyImages.modelId,
+      createdAt: storyImages.createdAt,
+      storyId: storyImages.storyId,
+      storyTitle: stories.title,
+      tintHue: stories.tintHue,
+      tintStrength: stories.tintStrength,
+    })
+    .from(storyImages)
+    .innerJoin(stories, eq(storyImages.storyId, stories.id))
+    .where(and(isNull(storyImages.deletedAt), eq(storyImages.isActive, true)))
+    .orderBy(desc(storyImages.createdAt), desc(storyImages.id))
 }
 
 /**

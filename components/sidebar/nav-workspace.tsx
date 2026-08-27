@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Gauge, Library, Settings2 } from "lucide-react"
+import { Gauge, Images, Library, Settings2 } from "lucide-react"
 
 import {
   SidebarGroup,
@@ -20,6 +20,9 @@ const items = [
   // a way back from inside one — on a phone the sidebar is the only chrome
   // there is, and an installed copy has no browser back button at all.
   { title: "Library", href: "/", icon: Library },
+  // Cross-story on purpose, like the library itself: a per-story gallery is a
+  // different (future) surface, reached from the story rather than from here.
+  { title: "Gallery", href: "/gallery", icon: Images },
   // A gauge, not a coin: this row sits in the chrome permanently, and a
   // currency glyph in a monochrome sidebar is a standing nag about money.
   { title: "Usage", href: "/usage", icon: Gauge },
