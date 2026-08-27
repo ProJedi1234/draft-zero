@@ -77,6 +77,9 @@ export function SpendBars({
           >
             {formatBarDay(hovered.day, locale)} · {formatUsd(hovered.costUsd)} ·{" "}
             {hovered.calls} {hovered.calls === 1 ? "generation" : "generations"}
+            {hovered.imageValue > 0
+              ? ` · ${formatUsd(hovered.imageUsd)} pictures`
+              : ""}
           </div>
         ) : null}
       </div>
@@ -100,16 +103,36 @@ export function SpendBars({
               peak > 0 && bar.value > 0
                 ? Math.max(STUB, (bar.value / peak) * HEIGHT)
                 : STUB
+            // The picture slice, as a share of the DRAWN height rather than of
+            // the peak, so the two segments meet exactly and a stubbed bar
+            // still splits instead of overflowing itself.
+            const imageHeight =
+              bar.value > 0 && bar.imageValue > 0
+                ? Math.min(height, (bar.imageValue / bar.value) * height)
+                : 0
             return (
-              <rect
-                key={bar.day}
-                x={index * PITCH}
-                y={HEIGHT - height}
-                width={BAR}
-                height={height}
-                fill="currentColor"
-                opacity={index === active ? 0.6 : 0.25}
-              />
+              <g key={bar.day}>
+                {height - imageHeight > 0 ? (
+                  <rect
+                    x={index * PITCH}
+                    y={HEIGHT - height + imageHeight}
+                    width={BAR}
+                    height={height - imageHeight}
+                    fill="currentColor"
+                    opacity={index === active ? 0.6 : 0.25}
+                  />
+                ) : null}
+                {imageHeight > 0 ? (
+                  <rect
+                    x={index * PITCH}
+                    y={HEIGHT - height}
+                    width={BAR}
+                    height={imageHeight}
+                    fill="currentColor"
+                    opacity={index === active ? 0.95 : 0.55}
+                  />
+                ) : null}
+              </g>
             )
           })}
         </svg>

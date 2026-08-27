@@ -11,6 +11,7 @@ import {
 import {
   getGlobalCostSummary,
   getSpendByDay,
+  getSpendByImageModel,
   getSpendByModel,
   getSpendByStory,
   getSpendSince,
@@ -34,13 +35,15 @@ export default async function UsagePage() {
   // those are already-rounded decimal strings, and adding thirty of them as
   // floats would drift in the digit someone is checking against a credit
   // balance. Postgres does the arithmetic, here as everywhere else.
-  const [summary, days, byStory, byModel, window] = await Promise.all([
-    getGlobalCostSummary(timeZone),
-    getSpendByDay(timeZone, WINDOW_DAYS),
-    getSpendByStory(),
-    getSpendByModel(),
-    getSpendSince(zonedDayStart(WINDOW_DAYS - 1, timeZone)),
-  ])
+  const [summary, days, byStory, byModel, byImageModel, window] =
+    await Promise.all([
+      getGlobalCostSummary(timeZone),
+      getSpendByDay(timeZone, WINDOW_DAYS),
+      getSpendByStory(),
+      getSpendByModel(),
+      getSpendByImageModel(),
+      getSpendSince(zonedDayStart(WINDOW_DAYS - 1, timeZone)),
+    ])
 
   return (
     <UsageView
@@ -48,6 +51,7 @@ export default async function UsagePage() {
       bars={buildSpendWindow(days, WINDOW_DAYS, today)}
       byStory={byStory}
       byModel={byModel}
+      byImageModel={byImageModel}
       windowDays={WINDOW_DAYS}
       windowUsd={window.costUsd}
       windowUnpricedCalls={window.unpricedCalls}

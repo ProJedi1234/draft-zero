@@ -24,6 +24,7 @@ import { zonedDayStart } from "@/lib/time-zone"
 import type {
   EntrySpendRow,
   GlobalCostSummary,
+  ImageModelSpendRow,
   ModelShareRow,
   ModelSpendRow,
   SpendDay,
@@ -36,6 +37,17 @@ import { generationCalls, storyEntries, stories } from "./schema"
 
 /** Rows that have resolved — the only ones any figure is built from. */
 const settled = ne(generationCalls.status, "streaming")
+
+/**
+ * The picture itself, and only it. "illustrate-prompt" is deliberately on the
+ * other side of this line: it is a token-billed text call like any other, and
+ * the whole reason the kinds are distinct is so dollars-per-image and
+ * dollars-per-token never end up in one figure (see GenerationRequestKind).
+ */
+const imageCall = eq(generationCalls.requestKind, "illustrate")
+
+/** The filtered-sum twin of `totalUsd`, for the picture slice of a window. */
+const imageUsd = sql<string>`coalesce(sum(${generationCalls.costUsd}) filter (where ${generationCalls.requestKind} = 'illustrate'), 0)::text`
 
 /** `coalesce(sum(cost_usd), 0)::text` — the house total. */
 const totalUsd = sql<string>`coalesce(sum(${generationCalls.costUsd}), 0)::text`
@@ -149,12 +161,18 @@ export async function getGlobalCostSummary(
       todayUsd: sql<string>`coalesce(sum(${generationCalls.costUsd}) filter (where ${generationCalls.createdAt} >= ${today}), 0)::text`,
       weekUsd: sql<string>`coalesce(sum(${generationCalls.costUsd}) filter (where ${generationCalls.createdAt} >= ${weekStart}), 0)::text`,
       allTimeUsd: totalUsd,
+      todayImageUsd: sql<string>`coalesce(sum(${generationCalls.costUsd}) filter (where ${generationCalls.requestKind} = 'illustrate' and ${generationCalls.createdAt} >= ${today}), 0)::text`,
+      weekImageUsd: sql<string>`coalesce(sum(${generationCalls.costUsd}) filter (where ${generationCalls.requestKind} = 'illustrate' and ${generationCalls.createdAt} >= ${weekStart}), 0)::text`,
+      allTimeImageUsd: imageUsd,
       unpricedCalls: unpricedCount,
       // Counted per window for the same reason the sums are: a "+" on today's
       // figure has to mean "today contains something unpriced", not "the ledger
       // does somewhere".
       todayUnpricedCalls: sql<number>`count(*) filter (where ${generationCalls.costUsd} is null and ${generationCalls.createdAt} >= ${today})::int`,
       weekUnpricedCalls: sql<number>`count(*) filter (where ${generationCalls.costUsd} is null and ${generationCalls.createdAt} >= ${weekStart})::int`,
+      todayImageUnpricedCalls: sql<number>`count(*) filter (where ${generationCalls.costUsd} is null and ${generationCalls.requestKind} = 'illustrate' and ${generationCalls.createdAt} >= ${today})::int`,
+      weekImageUnpricedCalls: sql<number>`count(*) filter (where ${generationCalls.costUsd} is null and ${generationCalls.requestKind} = 'illustrate' and ${generationCalls.createdAt} >= ${weekStart})::int`,
+      allTimeImageUnpricedCalls: sql<number>`count(*) filter (where ${generationCalls.costUsd} is null and ${generationCalls.requestKind} = 'illustrate')::int`,
     })
     .from(generationCalls)
     .where(settled)
@@ -164,9 +182,15 @@ export async function getGlobalCostSummary(
     todayUsd: row?.todayUsd ?? "0",
     weekUsd: row?.weekUsd ?? "0",
     allTimeUsd: row?.allTimeUsd ?? "0",
+    todayImageUsd: row?.todayImageUsd ?? "0",
+    weekImageUsd: row?.weekImageUsd ?? "0",
+    allTimeImageUsd: row?.allTimeImageUsd ?? "0",
     unpricedCalls: row?.unpricedCalls ?? 0,
     todayUnpricedCalls: row?.todayUnpricedCalls ?? 0,
     weekUnpricedCalls: row?.weekUnpricedCalls ?? 0,
+    todayImageUnpricedCalls: row?.todayImageUnpricedCalls ?? 0,
+    weekImageUnpricedCalls: row?.weekImageUnpricedCalls ?? 0,
+    allTimeImageUnpricedCalls: row?.allTimeImageUnpricedCalls ?? 0,
   }
 }
 
@@ -191,7 +215,12 @@ export async function getSpendByDay(
   // repeating it emits $1 in the SELECT and $2 in the GROUP BY, which Postgres
   // rejects as different expressions. The ordinal needs `day` to stay first.
   return db
-    .select({ day: dayKey(timeZone), costUsd: totalUsd, calls: callCount })
+    .select({
+      day: dayKey(timeZone),
+      costUsd: totalUsd,
+      imageUsd,
+      calls: callCount,
+    })
     .from(generationCalls)
     .where(and(settled, sql`${generationCalls.createdAt} >= ${since}`))
     .groupBy(sql`1`)
@@ -233,9 +262,12 @@ export async function getSpendByStory(): Promise<StorySpendRow[]> {
 }
 
 /**
- * All-time spend per model, biggest first. No index on model_id and none
- * wanted: this groups a few thousand rows in memory, which is free, and an
- * index would be write cost on every generation for it.
+ * All-time spend per TEXT model, biggest first. Image models are excluded and
+ * get their own query below: a row here is read in tokens, and an image call
+ * has none — it would sit in this list as "0/0" and drag per-image dollars
+ * into a per-token ranking. No index on model_id and none wanted: this groups
+ * a few thousand rows in memory, which is free, and an index would be write
+ * cost on every generation for it.
  */
 export async function getSpendByModel(): Promise<ModelSpendRow[]> {
   const db = await getDb()
@@ -249,7 +281,33 @@ export async function getSpendByModel(): Promise<ModelSpendRow[]> {
       completionTokens: sql<number>`coalesce(sum(${generationCalls.completionTokens}), 0)::int`,
     })
     .from(generationCalls)
-    .where(settled)
+    .where(and(settled, ne(generationCalls.requestKind, "illustrate")))
+    .groupBy(generationCalls.modelId)
+    .orderBy(sql`sum(${generationCalls.costUsd}) desc nulls last`)
+}
+
+/**
+ * All-time spend per image model, biggest first, in the units a picture is
+ * billed in: a count of images and an average price per image.
+ *
+ * The average is over PRICED pictures only — `avg` skips NULLs on its own —
+ * and comes back NULL when none were, which the formatter renders as "—"
+ * rather than a made-up $0. Computed in SQL like every other money figure:
+ * dividing two floats in JS would drift in the digit being read.
+ */
+export async function getSpendByImageModel(): Promise<ImageModelSpendRow[]> {
+  const db = await getDb()
+
+  return db
+    .select({
+      modelId: generationCalls.modelId,
+      costUsd: totalUsd,
+      images: callCount,
+      avgUsd: sql<string | null>`avg(${generationCalls.costUsd})::text`,
+      unpricedImages: unpricedCount,
+    })
+    .from(generationCalls)
+    .where(and(settled, imageCall))
     .groupBy(generationCalls.modelId)
     .orderBy(sql`sum(${generationCalls.costUsd}) desc nulls last`)
 }
