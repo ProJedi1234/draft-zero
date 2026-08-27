@@ -61,6 +61,8 @@ export function SpendBars({
   }
 
   const hovered = active === null ? null : (bars[active] ?? null)
+  /** The hovered bar's center as a fraction of the strip, 0–1. */
+  const anchor = ((active ?? 0) + 0.5) / bars.length
 
   return (
     <div className={cn("relative", className)}>
@@ -70,10 +72,18 @@ export function SpendBars({
       <div className="pointer-events-none absolute inset-x-0 -top-1 h-6">
         {hovered ? (
           <div
-            className="absolute -translate-x-1/2 bg-foreground px-2 py-1 font-mono text-[0.6875rem] whitespace-nowrap text-background tabular-nums"
-            style={{
-              left: `${(((active ?? 0) + 0.5) / bars.length) * 100}%`,
-            }}
+            className={cn(
+              "absolute bg-foreground px-2 py-1 font-mono text-[0.6875rem] whitespace-nowrap text-background tabular-nums",
+              // Anchored by thirds so the label never crosses the card edge,
+              // where the Card's overflow-hidden would clip it: near the left
+              // it grows rightward, near the right leftward, centered between.
+              anchor < 1 / 3
+                ? "translate-x-0"
+                : anchor > 2 / 3
+                  ? "-translate-x-full"
+                  : "-translate-x-1/2"
+            )}
+            style={{ left: `${anchor * 100}%` }}
           >
             {formatBarDay(hovered.day, locale)} · {formatUsd(hovered.costUsd)} ·{" "}
             {hovered.calls} {hovered.calls === 1 ? "generation" : "generations"}
