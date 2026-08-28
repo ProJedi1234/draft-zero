@@ -16,6 +16,7 @@ import { countLivePassages, getStoryTitle } from "@/lib/db/queries"
 import {
   acceptedContent,
   inputRequired,
+  inputResponse,
   type CallToolResult,
 } from "@modelcontextprotocol/server"
 
@@ -228,24 +229,39 @@ export const registerDeleteStory: RegisterTool = (server, deps) => {
     async (args, ctx) =>
       runTool("delete_story", async () => {
         const state = ctx.mcpReq.requestState<RequestStatePayload>()
+        // A seal is this call's own only if it names this tool AND this story:
+        // only the sealed id was ever shown to the writer, so a retry that
+        // swaps `args.storyId` must not ride an old confirmation.
+        const sealed =
+          state &&
+          state.tool === "delete_story" &&
+          typeof state.storyId === "string" &&
+          state.storyId === args.storyId
+            ? { storyId: state.storyId, title: state.title }
+            : null
         const answer = acceptedContent(
           ctx.mcpReq.inputResponses,
           "confirm",
           confirmSchema
         )
 
-        // Round 1 — no verified state yet, a seal from a different tool, a
-        // seal for a different story than this call names, or the writer has
-        // not yet given an accepted answer: ask. The id check matters because
-        // only the sealed id was ever shown to the writer; a retry that swaps
-        // `args.storyId` must not ride an old confirmation.
-        if (
-          !state ||
-          state.tool !== "delete_story" ||
-          typeof state.storyId !== "string" ||
-          state.storyId !== args.storyId ||
-          !answer
-        ) {
+        // Round 2, refused. `acceptedContent` collapses decline, cancel and
+        // "not asked yet" into undefined, so the raw view is the only thing
+        // that tells them apart — and it has to, because a decline that fell
+        // through to round 1 would re-ask the writer the same destructive
+        // question on every "no" until the round cap turned it into an error.
+        const view = inputResponse(ctx.mcpReq.inputResponses, "confirm")
+        if (sealed && view.kind === "elicit" && view.action !== "accept") {
+          return structured("Cancelled. Nothing was deleted.", {
+            id: sealed.storyId,
+            title: typeof sealed.title === "string" ? sealed.title : "",
+            deleted: false,
+          })
+        }
+
+        // Round 1 — no seal of this call's own, or one whose answer has not
+        // arrived (or arrived malformed): ask.
+        if (!sealed || !answer) {
           const info = await getDeleteConfirmationInfo(args.storyId)
           if (!info) {
             throw new ToolInputError(`No story with id ${args.storyId}.`)
@@ -276,11 +292,11 @@ export const registerDeleteStory: RegisterTool = (server, deps) => {
 
         // Everything below acts on the sealed id, not the retry's argument:
         // the id in the seal is the one the writer was asked about.
-        const storyId = state.storyId
-        const title = typeof state.title === "string" ? state.title : ""
+        const storyId = sealed.storyId
+        const title = typeof sealed.title === "string" ? sealed.title : ""
 
-        // Round 2, declined: the seal verified and named this tool, but the
-        // writer answered "no" — nothing is deleted.
+        // Accepted, but answered "no" — the client rendered the boolean
+        // rather than a decline button. Same outcome.
         if (!answer.confirm) {
           return structured("Cancelled. Nothing was deleted.", {
             id: storyId,

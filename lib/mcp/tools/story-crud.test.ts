@@ -271,7 +271,42 @@ describe("delete_story", () => {
     })
   })
 
-  test("declining leaves the story untouched", async () => {
+  test.each([["decline"], ["cancel"]])(
+    "a %s ends the call instead of asking again",
+    async (action) => {
+      // The bug this pins: acceptedContent reports decline, cancel and
+      // "not asked yet" all as undefined, so a "no" that falls through to
+      // round 1 re-issues the same destructive prompt on every refusal.
+      const { server, handlers } = makeFakeServer()
+      registerDeleteStory(server as never, deps as never)
+      const handler = handlers.get("delete_story")!
+
+      const result = (await handler(
+        { storyId: "story-1" },
+        makeCtx({
+          requestState: {
+            tool: "delete_story",
+            storyId: "story-1",
+            title: "Doomed Story",
+          },
+          inputResponses: { confirm: { action } },
+        })
+      )) as {
+        structuredContent?: { id: string; title: string; deleted: boolean }
+        inputRequests?: unknown
+      }
+
+      expect(deleteStoryMock).not.toHaveBeenCalled()
+      expect(result.inputRequests).toBeUndefined()
+      expect(result.structuredContent).toEqual({
+        id: "story-1",
+        title: "Doomed Story",
+        deleted: false,
+      })
+    }
+  )
+
+  test("answering the confirmation with false leaves the story untouched", async () => {
     const { server, handlers } = makeFakeServer()
     registerDeleteStory(server as never, deps as never)
     const handler = handlers.get("delete_story")!
