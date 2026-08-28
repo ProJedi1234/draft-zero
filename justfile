@@ -21,17 +21,25 @@ default:
 
 # ── everyday ────────────────────────────────────────────────────────────────
 
+# A no-op install costs ~20ms, so every recipe that runs project code depends
+# on this rather than letting a stale node_modules surface later as a
+# missing-module stack trace from next or drizzle-kit.
+
+# Sync node_modules with package.json and bun.lock.
+[group('everyday')]
+deps:
+    bun install
+
 # First run on a fresh clone: database, deps, .env.local, schema.
 [group('everyday')]
-setup: db-up
-    bun install
+setup: db-up deps
     @test -f .env.local || { cp .env.example .env.local; echo "wrote .env.local"; }
     bun run db:migrate
     @printf "\nready — 'just dev' to start\n"
 
 # Apply pending migrations, then the dev server (HMR, host toolchain).
 [group('everyday')]
-dev: migrate
+dev: deps migrate
     bun run dev
 
 # Production build served locally: build, migrate, start.
@@ -41,12 +49,12 @@ serve: build migrate
 
 # Production build only.
 [group('everyday')]
-build:
+build: deps
     bun run build
 
 # The pre-PR gate: types, lint, format and tests.
 [group('everyday')]
-check:
+check: deps
     #!/usr/bin/env bash
     # All four run even when one fails: a round trip that reports every problem
     # beats one that stops at the first.
@@ -59,7 +67,7 @@ check:
 
 # Fix what `check` can fix by itself.
 [group('everyday')]
-fix:
+fix: deps
     bun run format
     bun run lint --fix
 
@@ -77,17 +85,17 @@ db-url:
 
 # Apply pending migrations.
 [group('database')]
-migrate:
+migrate: deps
     bun run db:migrate
 
 # Write a migration from lib/db/schema.ts changes.
 [group('database')]
-generate:
+generate: deps
     bun run db:generate
 
 # DESTRUCTIVE: wipe every story, entry, lorebook entry and setting, reload fixtures.
 [group('database')]
-seed:
+seed: deps
     @just _confirm-db "reseed"
     bun run db:seed
 
