@@ -116,7 +116,7 @@ export const registerContextBreakdown: RegisterTool = (server) => {
     {
       title: "Context breakdown",
       description:
-        "What a passage was actually shown to compose it: which recap version resolved, which lore triggered on which keys, memory/author's note presence, and per-section token counts against the story's contextWindow and loreBudget. Defaults to the newest passage. Use it when output looks like it is missing something.",
+        "Why the model wrote what it wrote: exactly what a passage was shown. Answers which lore entries fired and on which keys, how many triggered but were DROPPED for want of budget, which recap version resolved, whether memory and the author's note were present, and per-section token counts against the story's contextWindow and lore budget. Defaults to the newest passage. This is the tool for \"my lore did not seem to apply\" and for anything else the writer cannot see from the manuscript.",
       inputSchema,
       outputSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
