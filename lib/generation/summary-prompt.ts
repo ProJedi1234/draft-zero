@@ -14,11 +14,13 @@
  * A default, not a hard-coded answer. The job is mechanical — compress prose
  * without losing names — and the model that is good at it is not the one the
  * writer picked to write their book: a story on a frontier model would
- * otherwise pay frontier prices, silently, every few passages. Haiku is cheap,
- * fast enough that nobody notices it running, and has providers that retain
- * nothing, which is what keeps the zero-retention path satisfiable.
+ * otherwise pay frontier prices, silently, every few passages. V4 Flash is
+ * cheap, fast enough that nobody notices it running, follows length and
+ * keep/drop instructions more literally than Haiku does, and has providers
+ * that retain nothing, which is what keeps the zero-retention path
+ * satisfiable.
  */
-export const DEFAULT_SUMMARIZER_MODEL_ID = "~anthropic/claude-haiku-latest"
+export const DEFAULT_SUMMARIZER_MODEL_ID = "~deepseek/deepseek-v4-flash-latest"
 
 /**
  * The summarizer's standing brief, sent as a real system turn for the same
@@ -26,24 +28,45 @@ export const DEFAULT_SUMMARIZER_MODEL_ID = "~anthropic/claude-haiku-latest"
  * and an instruct-tuned model reads that as a document to reformat unless it is
  * told out of band what the job is.
  *
- * Three of these rules are load-bearing and were not obvious:
+ * Written as a compaction brief for a small flash model, which follows a
+ * decision procedure far better than a judgment call. The load-bearing choices:
  *
- * - **Hard facts over color.** A prose summary's natural failure is to keep the
- *   mood and lose the name, and a name lost here is lost permanently — the
- *   prose it came from is already out of the window.
- * - **Fold, do not append.** Without this the recap becomes a changelog that
- *   grows until it is trimmed, and the oldest events (which need compressing
- *   most) are the ones written most verbosely.
+ * - **The old summary is protected input.** Each pass rewrites the whole recap,
+ *   so an old fact survives only by being re-emitted every time — a lossy chain
+ *   unless carrying it forward is the rule rather than a judgment. "Compress
+ *   the oldest hardest," the previous brief's rule, was the license models used
+ *   to forget.
+ * - **Keep and dump are exhaustive lists, plus one tiebreaker.** "Keep what
+ *   matters" asks a flash model to know what matters; it answers with whatever
+ *   is vivid. Naming the five kinds of fact that persist — and what a resolved
+ *   episode collapses into — is what stops the recap being an event ledger.
+ * - **The length rule is paragraphs, not words.** Models hold a paragraph
+ *   budget far better than a word budget, and an unheld word budget ends at
+ *   the token cap, mid-sentence. The word target stays as calibration only.
  * - **Do not restate memory.** Memory is permanently in front of the model
  *   already. Words spent repeating it are words not spent on the story, and it
  *   is the writer's own text being crowded out by a machine paraphrase of it.
  */
-export const SUMMARY_SYSTEM_PROMPT = `you are the story's memory. the reader of your output is the model that continues this story; everything older than the excerpt it can see survives only through what you write. rewrite the running summary so it covers everything through the end of the new passages. follow these rules:
-- write past tense, second person ("you arrived in Vess…"), continuous prose in the story's own voice. no headings, no lists, no brackets, no meta-commentary. output the summary text and nothing else
-- keep every hard fact that still matters: names, places, debts owed, injuries carried, promises made, deadlines, objects held, who knows what. these are what summaries lose; a fact dropped here is gone for good
-- fold the new passages into the summary rather than appending them. compress the oldest events hardest and keep the recent ones sharpest
-- the [Memory] block is permanently in front of the model already. never restate its facts — spend your words on what it does not say
-- aim for about {target} words. when something must go, cut color before facts`
+export const SUMMARY_SYSTEM_PROMPT = `you are the story's memory. the reader of your output is the model that continues this story; everything older than the excerpt it can see survives only through what you write. your job is compaction: fold the new passages into the running summary.
+
+the running summary is protected. every fact in it carries forward — tighten the wording if you must, but never drop one. only the new passages are being compressed for the first time.
+
+from the new passages, keep exactly these kinds of fact:
+- people: each named character still in play — who they are to you, whether they live, where you last left them
+- open obligations: debts, promises, threats and deadlines not yet settled
+- carried state: injuries not yet healed, objects still held, resources still owned
+- secrets: who knows what that others do not
+- the present situation: where you are, what you are doing, what you want next. this alone stays detailed
+
+dump the rest:
+- a resolved episode collapses to its outcome — one clause for what changed, none for how it happened
+- dialogue, scenery, weather and feelings go, unless one changed a relationship or a decision
+- characters and places that appeared once and touch no open thread
+- anything the [Memory] block already states; it is permanently in front of the model
+
+when unsure, one test decides: keep a fact only if a later scene could contradict it or the narrator would need it. if losing it changes nothing, drop it.
+
+form: one or two paragraphs, never three — roughly {target} words. past tense, second person ("you arrived in Vess…"), continuous prose in the story's own voice. no headings, no lists, no brackets, no meta-commentary. output the summary text and nothing else`
 
 /**
  * The user turn: what the story already knows, what just happened, and how long

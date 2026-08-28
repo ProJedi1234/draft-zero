@@ -106,6 +106,9 @@ function makeStory(over: Partial<Story> = {}): Story {
 
 type CompleteResult = {
   text: string
+  // Optional so the many happy-path fakes stay terse; the io shim below
+  // defaults it, the way the real client always answers the field.
+  truncated?: boolean
   generationId: string | null
   usage: null
 }
@@ -142,7 +145,7 @@ const io: SummaryIo = {
   apiKey: () => apiKey,
   async complete(opts) {
     completeCalls.push(opts as unknown as Record<string, unknown>)
-    return completeImpl()
+    return { truncated: false, ...(await completeImpl()) }
   },
   async openCall(call) {
     started.push(call as unknown as Record<string, unknown>)
@@ -206,7 +209,9 @@ describe("what it writes", () => {
   test("tells the model the story's memory, so it does not restate it", async () => {
     await run()
     expect(completeCalls[0]!.user).toContain("Maren owes the river a map.")
-    expect(completeCalls[0]!.system).toContain("never restate its facts")
+    expect(completeCalls[0]!.system).toContain(
+      "anything the [Memory] block already states"
+    )
   })
 
   test("the summarizer's own retention setting reaches the provider", async () => {
@@ -229,8 +234,8 @@ describe("the settings actually reach it", () => {
 
   test("the built-in summarizer is used when Settings names none", async () => {
     await run()
-    expect(completeCalls[0]!.modelId).toBe("~anthropic/claude-haiku-latest")
-    expect(inserted[0]!.genModelId).toBe("~anthropic/claude-haiku-latest")
+    expect(completeCalls[0]!.modelId).toBe("~deepseek/deepseek-v4-flash-latest")
+    expect(inserted[0]!.genModelId).toBe("~deepseek/deepseek-v4-flash-latest")
   })
 
   test("a pinned provider and thinking level reach the request and the ledger", async () => {
@@ -326,6 +331,18 @@ describe("what it refuses to write", () => {
   test("an empty reply does not overwrite a good version", async () => {
     completeImpl = async () => ({
       text: "   ",
+      generationId: "gen-1",
+      usage: null,
+    })
+    await run()
+    expect(inserted).toHaveLength(0)
+    expect(settled[0]!.status).toBe("error")
+  })
+
+  test("a reply cut off at maxTokens is a failure, not a recap", async () => {
+    completeImpl = async () => ({
+      text: "You crossed the Graywater and",
+      truncated: true,
       generationId: "gen-1",
       usage: null,
     })

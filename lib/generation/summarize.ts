@@ -80,6 +80,7 @@ export interface SummaryIo {
     signal?: AbortSignal
   }): Promise<{
     text: string
+    truncated: boolean
     generationId: string | null
     usage: GenerationUsage | null
   }>
@@ -295,9 +296,14 @@ async function summarizeOnce(storyId: string, io: SummaryIo): Promise<void> {
       signal: abort.signal,
     })
     const text = result.text.trim()
-    if (text === "") {
+    if (text === "" || result.truncated) {
       // A model that answered with nothing is a failed refine, not a summary
       // that says nothing — writing it would erase a good previous version.
+      // Truncation is the same failure wearing prose: the provider stopped at
+      // maxTokens mid-sentence, and since the recap is written oldest-first,
+      // the missing tail is exactly the new passages this pass was folding in.
+      // Store it and the watermark advances past prose the recap never
+      // absorbed.
       status = "error"
       await io.settle(callId, {
         status,

@@ -31,7 +31,7 @@ mock.module("@/lib/generation/openrouter", () => ({
   // Present so the module's surface matches the real one: lib/generation/
   // summarize.ts imports it, and a mock missing an export fails the IMPORT,
   // which surfaces as an unrelated file refusing to load.
-  completeOnce: async () => ({ text: "", generationId: null, usage: null }),
+  completeOnce: async () => ({ text: "", truncated: false, generationId: null, usage: null }),
   streamCompletion: (opts: { key: string }) => {
     streamCalls.push({ key: opts.key })
     return (async function* (): AsyncGenerator<GenerationEvent> {

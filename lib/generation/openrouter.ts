@@ -188,6 +188,8 @@ export async function completeOnce(opts: {
   signal?: AbortSignal
 }): Promise<{
   text: string
+  /** The provider stopped at maxTokens — the tail of the answer is missing. */
+  truncated: boolean
   generationId: string | null
   usage: GenerationUsage | null
 }> {
@@ -227,7 +229,8 @@ export async function completeOnce(opts: {
   }
 
   const result = res.value
-  const content = result.choices[0]?.message.content
+  const choice = result.choices[0]
+  const content = choice?.message.content
   // The content union allows structured parts; a summarizer never produces
   // them, and silently stringifying an unexpected shape would put JSON in the
   // manuscript's memory. Empty is handled by the caller as "wrote nothing".
@@ -235,6 +238,7 @@ export async function completeOnce(opts: {
   const usage = result.usage
   return {
     text,
+    truncated: choice?.finishReason === "length",
     generationId: result.id ?? null,
     usage: usage
       ? {

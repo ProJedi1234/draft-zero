@@ -46,7 +46,7 @@ let script: Script = async function* () {
 mock.module("@/lib/generation/openrouter", () => ({
   // See the note in tests/provider-routing.test.ts — the mock has to mirror
   // the module's exports, not just the ones this file exercises.
-  completeOnce: async () => ({ text: "", generationId: null, usage: null }),
+  completeOnce: async () => ({ text: "", truncated: false, generationId: null, usage: null }),
   streamCompletion: (opts: { signal: AbortSignal }) => script(opts.signal),
   mapOpenRouterError: (err: unknown) => ({
     status: 500,

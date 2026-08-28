@@ -251,7 +251,7 @@ describe("summaryWordTarget", () => {
 describe("what the summarizer is asked", () => {
   test("the word target reaches the model as a number, not a placeholder", () => {
     const system = renderSummarySystemPrompt(307)
-    expect(system).toContain("about 307 words")
+    expect(system).toContain("roughly 307 words")
     expect(system).not.toContain("{target}")
   })
 
