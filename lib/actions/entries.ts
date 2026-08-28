@@ -81,23 +81,33 @@ export async function appendActionEntry(
 // directly and no request-scoped caller remained, so the wrapper is gone.
 
 /**
- * Appends plain narration prose — no player-action translation, no
- * actionKind — to the end of the manuscript. The UI has no direct caller for
- * this: every composer send is a Say or Do (appendActionEntry) or a
- * generation settling (persistGeneratedEntry). The MCP write tool's
- * narration mode is the first caller that types prose in as-is, on the
- * writer's behalf, without going through either of those.
+ * Appends on behalf of a caller that does NOT own the story's run — today,
+ * the MCP write tool. Narration is prose as-is with no actionKind (the UI has
+ * no direct caller for that: every composer send is a Say or Do, or a
+ * generation settling); do/say goes through appendActionEntry's translation
+ * exactly as the composer's does.
+ *
+ * The guard lives here rather than in appendActionEntry because
+ * appendActionEntry's other caller is startGeneration, which reserves the
+ * story's run slot BEFORE it appends — the run owner would be refused by its
+ * own check. Every other mutator below carries the guard directly; this is
+ * the entry point that lets an append carry it too, instead of racing the run
+ * loop for a position and losing a billed passage to the unique index.
  *
  * Deliberately does NOT call commitChange — same reasoning as
- * appendActionEntry above: this is a thin pass-through to appendEntryCore,
- * and the caller is in the best position to decide when the request-scoped
- * revalidate and the sync-bus touch should land.
+ * appendActionEntry above: the caller is in the best position to decide when
+ * the request-scoped revalidate and the sync-bus touch should land.
  */
-export async function appendNarrationEntry(
+export async function appendEntryOutsideRun(
   storyId: string,
+  mode: "narration" | ActionKind,
   text: string
 ): Promise<ActionResult<{ entry: StoryEntry }>> {
-  return appendEntryCore(storyId, text, "user", {})
+  const running = refuseDuringRun(storyId)
+  if (running) return running
+  return mode === "narration"
+    ? appendEntryCore(storyId, text, "user", {})
+    : appendActionEntry(storyId, mode, text)
 }
 
 /**

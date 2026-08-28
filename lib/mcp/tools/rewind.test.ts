@@ -13,6 +13,7 @@ import {
   resetActionMocks,
   rewindToEntry,
 } from "@/lib/mcp/tools/test-mocks"
+import { stubQueries } from "@/lib/mcp/tools/test-queries"
 
 installMocks()
 const { registerRewind } = await import("@/lib/mcp/tools/rewind")
@@ -51,6 +52,31 @@ describe("rewind", () => {
       lastPosition: 10,
       removed: 6,
     })
+  })
+
+  test("reports the tail read back after the cut, not the anchor", async () => {
+    // Rewind only touches story_entries, but both tables share one position
+    // counter — a live image past the anchor survives and is still the last
+    // slot. Answering `lastPosition: 10` here would contradict the next read.
+    anchorAt("e10", 6)
+    stubQueries({
+      getLivePassageAtPosition,
+      countLivePassagesAfter,
+      getManuscriptBounds: async () => ({ first: 0, last: 14, empty: false }),
+    })
+    const call = capture(registerRewind)
+
+    const result = (await call({ storyId: "s1", toPosition: 10 })) as {
+      content: { text: string }[]
+      structuredContent: Record<string, unknown>
+    }
+
+    expect(result.structuredContent).toEqual({
+      storyId: "s1",
+      lastPosition: 14,
+      removed: 6,
+    })
+    expect(result.content[0]?.text).toContain("images kept, tail now 14")
   })
 
   test("no live passage at toPosition becomes a model-actionable failure", async () => {

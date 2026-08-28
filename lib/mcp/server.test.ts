@@ -20,8 +20,7 @@ import { installQueryMocks } from "@/lib/mcp/tools/test-queries"
 installQueryMocks()
 mock.module("@/lib/actions/commit", () => ({ commitChange: mock(() => {}) }))
 mock.module("@/lib/actions/entries", () => ({
-  appendActionEntry: mock(async () => ({ ok: true, data: null })),
-  appendNarrationEntry: mock(async () => ({ ok: true, data: null })),
+  appendEntryOutsideRun: mock(async () => ({ ok: true, data: null })),
   updateEntryText: mock(async () => ({ ok: true, data: null })),
   rewindToEntry: mock(async () => ({ ok: true, data: null })),
 }))

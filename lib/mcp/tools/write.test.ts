@@ -12,8 +12,7 @@ import { beforeEach, describe, expect, test } from "bun:test"
 
 import type { RegisterTool } from "@/lib/mcp/helpers"
 import {
-  appendActionEntry,
-  appendNarrationEntry,
+  appendEntryOutsideRun,
   commitChange,
   installMocks,
   resetActionMocks,
@@ -37,8 +36,8 @@ function capture(register: RegisterTool) {
 describe("write", () => {
   beforeEach(resetActionMocks)
 
-  test("narration goes through appendNarrationEntry, not appendActionEntry", async () => {
-    appendNarrationEntry.mockImplementationOnce(async () => ({
+  test("narration appends as narration, through the run-guarded entry point", async () => {
+    appendEntryOutsideRun.mockImplementationOnce(async () => ({
       ok: true,
       data: { entry: { position: 5, text: "The door creaks open." } as never },
     }))
@@ -49,8 +48,11 @@ describe("write", () => {
       text: "The door creaks open.",
     })) as { structuredContent: Record<string, unknown> }
 
-    expect(appendNarrationEntry).toHaveBeenCalledTimes(1)
-    expect(appendActionEntry).not.toHaveBeenCalled()
+    expect(appendEntryOutsideRun).toHaveBeenCalledWith(
+      "s1",
+      "narration",
+      "The door creaks open."
+    )
     expect(commitChange).toHaveBeenCalledWith("s1")
     expect(result.structuredContent).toEqual({
       storyId: "s1",
@@ -60,8 +62,8 @@ describe("write", () => {
     })
   })
 
-  test("do/say goes through appendActionEntry with the given mode", async () => {
-    appendActionEntry.mockImplementationOnce(async () => ({
+  test("do/say appends with the given mode", async () => {
+    appendEntryOutsideRun.mockImplementationOnce(async () => ({
       ok: true,
       data: { entry: { position: 12, text: "You open the door." } as never },
     }))
@@ -73,13 +75,16 @@ describe("write", () => {
       text: "open the door",
     })) as { structuredContent: Record<string, unknown> }
 
-    expect(appendActionEntry).toHaveBeenCalledWith("s1", "do", "open the door")
-    expect(appendNarrationEntry).not.toHaveBeenCalled()
+    expect(appendEntryOutsideRun).toHaveBeenCalledWith(
+      "s1",
+      "do",
+      "open the door"
+    )
     expect(result.structuredContent).toMatchObject({ position: 12, kind: "do" })
   })
 
   test("never echoes prose back in structuredContent", async () => {
-    appendNarrationEntry.mockImplementationOnce(async () => ({
+    appendEntryOutsideRun.mockImplementationOnce(async () => ({
       ok: true,
       data: {
         entry: { position: 1, text: "Some long passage of prose." } as never,
@@ -98,7 +103,7 @@ describe("write", () => {
   })
 
   test("a failed append becomes a failed() result, not a throw", async () => {
-    appendNarrationEntry.mockImplementationOnce(async () => ({
+    appendEntryOutsideRun.mockImplementationOnce(async () => ({
       ok: false,
       error: "Story not found.",
     }))

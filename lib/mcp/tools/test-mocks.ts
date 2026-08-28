@@ -17,21 +17,19 @@ import type { ActionResult, StoryEntry } from "@/lib/types"
 /* -------------------------------------------------------------------------- */
 /* lib/actions/commit + lib/actions/entries                                   */
 /*                                                                            */
-/* write.ts calls appendNarrationEntry from "@/lib/actions/entries" rather    */
+/* write.ts calls appendEntryOutsideRun from "@/lib/actions/entries" rather   */
 /* than appendEntryCore from "@/lib/db/entry-writes" directly, which keeps it */
 /* off a specifier tests/generation-stream.test.ts also doubles with a        */
 /* different shape. See write.ts's file header.                              */
 /* -------------------------------------------------------------------------- */
 
 export const commitChange = mock((_storyId: string | null) => {})
-export const appendActionEntry = mock(
-  async (): Promise<ActionResult<{ entry: StoryEntry }>> => ({
-    ok: true,
-    data: { entry: {} as StoryEntry },
-  })
-)
-export const appendNarrationEntry = mock(
-  async (): Promise<ActionResult<{ entry: StoryEntry }>> => ({
+export const appendEntryOutsideRun = mock(
+  async (
+    _storyId: string,
+    _mode: string,
+    _text: string
+  ): Promise<ActionResult<{ entry: StoryEntry }>> => ({
     ok: true,
     data: { entry: {} as StoryEntry },
   })
@@ -65,17 +63,12 @@ export function resetActionMocks() {
   // spec in this directory, and bun collects them all before running a test.
   stubQueries({ getLivePassageAtPosition, countLivePassagesAfter })
   commitChange.mockClear()
-  appendActionEntry.mockClear()
-  appendNarrationEntry.mockClear()
+  appendEntryOutsideRun.mockClear()
   updateEntryText.mockClear()
   rewindToEntry.mockClear()
   getLivePassageAtPosition.mockClear()
   countLivePassagesAfter.mockClear()
-  appendActionEntry.mockImplementation(async () => ({
-    ok: true,
-    data: { entry: {} as StoryEntry },
-  }))
-  appendNarrationEntry.mockImplementation(async () => ({
+  appendEntryOutsideRun.mockImplementation(async () => ({
     ok: true,
     data: { entry: {} as StoryEntry },
   }))
@@ -93,8 +86,7 @@ export function resetActionMocks() {
 export function installMocks() {
   mock.module("@/lib/actions/commit", () => ({ commitChange }))
   mock.module("@/lib/actions/entries", () => ({
-    appendActionEntry,
-    appendNarrationEntry,
+    appendEntryOutsideRun,
     updateEntryText,
     rewindToEntry,
   }))
