@@ -20,6 +20,18 @@ const eslintConfig = defineConfig([
       "react-hooks/set-state-in-effect": "off",
     },
   },
+  {
+    // Test doubles are typed by their signature, not by what the body reads:
+    // a stub for `getStory(id)` has to declare the id to stand in for the real
+    // one, and then ignore it. Underscore marks that as deliberate.
+    files: ["**/*.test.ts", "lib/mcp/tools/test-*.ts"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;
