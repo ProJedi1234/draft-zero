@@ -84,7 +84,9 @@ export const registerRead: RegisterTool = (server) => {
         const slots = await readManuscriptWindow(
           args.storyId,
           range.from,
-          range.to
+          range.to,
+          range.limit,
+          range.take
         )
         const entries = slots.map((slot) => ({
           position: slot.position,
@@ -99,10 +101,13 @@ export const registerRead: RegisterTool = (server) => {
 
         const firstPosition = bounds.empty ? -1 : bounds.first
         const lastPosition = bounds.empty ? -1 : bounds.last
-        const hasMore = !bounds.empty && range.from > bounds.first
-
         const actualFrom = entries[0]?.position ?? range.from
         const actualTo = entries[entries.length - 1]?.position ?? range.to
+
+        // Measured from what came back, not from the window asked for: the
+        // query trims the window to `limit` rows, so the returned page can
+        // start well inside it.
+        const hasMore = !bounds.empty && actualFrom > bounds.first
 
         return structured(
           line(

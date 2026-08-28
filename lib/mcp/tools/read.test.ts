@@ -18,7 +18,13 @@ const getManuscriptBoundsMock = mock(async (_storyId: string) => ({
   empty: true,
 }))
 const readManuscriptWindowMock = mock(
-  async (_storyId: string, _from: number, _to: number) => [] as ManuscriptSlot[]
+  async (
+    _storyId: string,
+    _from: number,
+    _to: number,
+    _limit: number,
+    _take?: "head" | "tail"
+  ) => [] as ManuscriptSlot[]
 )
 
 installQueryMocks()
@@ -52,9 +58,10 @@ function registeredHandler(): ToolHandler {
 
 /**
  * A story with the given live bounds, whose window read returns `slots`
- * clipped to whatever range the handler resolved — the real query does the
- * clipping in SQL, so the double has to do it here or a tail-defaulting read
- * would look like it returned rows outside its own window.
+ * clipped to whatever range the handler resolved and trimmed to `limit` rows
+ * from the requested end — the real query does both in SQL, so the double has
+ * to do them here or a tail-defaulting read would look like it returned rows
+ * outside its own window, or more of them than it asked for.
  */
 function storyWith(
   bounds: { first: number; last: number },
@@ -64,8 +71,13 @@ function storyWith(
     ...bounds,
     empty: bounds.last < bounds.first,
   }))
-  readManuscriptWindowMock.mockImplementation(async (_id, from, to) =>
-    slots.filter((slot) => slot.position >= from && slot.position <= to)
+  readManuscriptWindowMock.mockImplementation(
+    async (_id, from, to, limit, take = "head") => {
+      const inWindow = slots.filter(
+        (slot) => slot.position >= from && slot.position <= to
+      )
+      return take === "tail" ? inWindow.slice(-limit) : inWindow.slice(0, limit)
+    }
   )
 }
 
@@ -157,6 +169,58 @@ describe("read", () => {
 
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text).toContain("before the first position 10")
+  })
+
+  test("a tail read returns `limit` rows even when positions are sparse", async () => {
+    // The shape after a rewind: live rows at 0-5 and 20, the numbers between
+    // them held by soft-deleted takes. Treating limit as a span of positions
+    // would resolve to 11-20 and hand back a single entry.
+    storyWith({ first: 0, last: 20 }, [
+      ...Array.from({ length: 6 }, (_, i) => ({
+        position: i,
+        kind: "narration" as const,
+        text: `Passage ${i}.`,
+      })),
+      { position: 20, kind: "narration", text: "After the rewind." },
+    ])
+
+    const handler = registeredHandler()
+    const result = await handler({ storyId: "s1", limit: 5 })
+    const data = result.structuredContent as Record<string, unknown>
+    const entries = data.entries as Array<Record<string, unknown>>
+
+    expect(entries.map((e) => e.position)).toEqual([2, 3, 4, 5, 20])
+    expect(data.from).toBe(2)
+    expect(data.to).toBe(20)
+    expect(data.hasMore).toBe(true)
+  })
+
+  test("a start-to-end read pages instead of returning the manuscript", async () => {
+    storyWith(
+      { first: 0, last: 99 },
+      Array.from({ length: 100 }, (_, i) => ({
+        position: i,
+        kind: "narration" as const,
+        text: `Passage ${i}.`,
+      }))
+    )
+
+    const handler = registeredHandler()
+    const result = await handler({
+      storyId: "s1",
+      from: "start",
+      to: "end",
+      limit: 10,
+    })
+    const data = result.structuredContent as Record<string, unknown>
+    const entries = data.entries as Array<Record<string, unknown>>
+
+    expect(entries).toHaveLength(10)
+    expect(data.from).toBe(0)
+    expect(data.to).toBe(9)
+    // The tail is still 99, so the model can see there is more ahead of it.
+    expect(data.lastPosition).toBe(99)
+    expect(data.hasMore).toBe(false)
   })
 
   test("flags hasMore when the resolved window starts after the story's first slot", async () => {

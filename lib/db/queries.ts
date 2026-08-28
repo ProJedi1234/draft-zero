@@ -908,14 +908,25 @@ export interface ManuscriptSlot {
  * Both tables' live rows inside an inclusive position window, merged and
  * sorted into reading order. The caller decides how to render an image slot;
  * this returns its prompt untouched.
+ *
+ * `limit` is a row count and `take` says which end of the window it counts
+ * from — positions are not dense in live rows, so a window is never a
+ * trustworthy proxy for how many rows sit in it. Bounding the selects here
+ * rather than in the caller means no tool can ask for an unbounded manuscript.
  */
 export async function readManuscriptWindow(
   storyId: string,
   from: number,
-  to: number
+  to: number,
+  limit: number,
+  take: "head" | "tail" = "head"
 ): Promise<ManuscriptSlot[]> {
-  if (to < from) return []
+  if (to < from || limit < 1) return []
   const db = await getDb()
+  // The limit is applied per table and again after the merge: `limit` rows
+  // from each side always contain the true first (or last) `limit` rows of
+  // their union, and neither select can be asked for a whole manuscript.
+  const order = take === "tail" ? desc : asc
   const [passageRows, imageRows] = await Promise.all([
     db
       .select({
@@ -930,7 +941,9 @@ export async function readManuscriptWindow(
           gte(storyEntries.position, from),
           lte(storyEntries.position, to)
         )
-      ),
+      )
+      .orderBy(order(storyEntries.position))
+      .limit(limit),
     db
       .select({ position: storyImages.position, prompt: storyImages.prompt })
       .from(storyImages)
@@ -940,10 +953,12 @@ export async function readManuscriptWindow(
           gte(storyImages.position, from),
           lte(storyImages.position, to)
         )
-      ),
+      )
+      .orderBy(order(storyImages.position))
+      .limit(limit),
   ])
 
-  return [
+  const slots = [
     ...passageRows.map((row): ManuscriptSlot => ({
       position: row.position,
       kind: row.actionKind ?? "narration",
@@ -955,6 +970,8 @@ export async function readManuscriptWindow(
       text: row.prompt,
     })),
   ].sort((a, b) => a.position - b.position)
+
+  return take === "tail" ? slots.slice(-limit) : slots.slice(0, limit)
 }
 
 /**
