@@ -99,12 +99,20 @@ const EXPECTED_ORDER = [
   "story_map",
   "read",
   "search",
+  "lore_get",
   "write",
   "edit",
   "rewind",
+  "lore_write",
 ]
 
-const READ_TOOLS = new Set(["list_stories", "story_map", "read", "search"])
+const READ_TOOLS = new Set([
+  "list_stories",
+  "story_map",
+  "read",
+  "search",
+  "lore_get",
+])
 
 describe("createMcpServer", () => {
   test("registers its tools in the fixed order", async () => {

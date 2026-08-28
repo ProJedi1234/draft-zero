@@ -33,6 +33,7 @@ const DEFAULTS = {
   countLivePassagesByStory: async () => new Map<string, number>(),
   escapeLikeNeedle: (query: string) => query.trim().replace(/[\\%_]/g, "\\$&"),
   getLivePassageAtPosition: async () => null,
+  getLorebookEntry: async () => null,
   getManuscriptBounds: async () => ({ first: 0, last: -1, empty: true }),
   getStory: async () => null,
   getStoryTitle: async () => null,

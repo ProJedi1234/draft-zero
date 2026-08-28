@@ -21,6 +21,7 @@ import type {
 } from "@/lib/mcp/helpers"
 import { registerEdit } from "@/lib/mcp/tools/edit"
 import { registerListStories } from "@/lib/mcp/tools/list-stories"
+import { registerLoreGet, registerLoreWrite } from "@/lib/mcp/tools/lore"
 import { registerRead } from "@/lib/mcp/tools/read"
 import { registerRewind } from "@/lib/mcp/tools/rewind"
 import { registerSearch } from "@/lib/mcp/tools/search"
@@ -58,10 +59,12 @@ const REGISTRARS: readonly RegisterTool[] = [
   registerStoryMap,
   registerRead,
   registerSearch,
+  registerLoreGet,
   // Writes
   registerWrite,
   registerEdit,
   registerRewind,
+  registerLoreWrite,
 ]
 
 /**
