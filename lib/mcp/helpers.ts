@@ -200,16 +200,30 @@ export interface ResolvedRange {
   from: number
   to: number
   limit: number
+  /**
+   * Which end of the window `limit` rows are taken from. Positions are NOT
+   * dense in live rows — a rewind soft-deletes its passages but keeps their
+   * numbers, and the next write allocates past them — so `limit` can only be
+   * honoured as a row count by the query, never as arithmetic on positions
+   * here. The window is the whole span the caller asked for; this says which
+   * end of it to fill from when the span holds more rows than `limit`.
+   */
+  take: "head" | "tail"
 }
 
 /**
  * Turns the `from`/`to`/`limit` triple every read accepts into a concrete
  * inclusive window.
  *
- * Defaults to the TAIL: with neither endpoint given the window is the last
- * `limit` slots, which is what a model orienting itself in a story almost
+ * Defaults to the TAIL: with neither endpoint given the window is the whole
+ * story taken from its end, which is what a model orienting itself almost
  * always wants. Giving only `from` reads forward from there; only `to` reads
  * backward to it.
+ *
+ * `limit` is a ROW COUNT, and the caller must apply it as one — `take` says
+ * from which end. Deriving an endpoint from `limit` here would silently return
+ * fewer rows than asked for on any story that has been rewound, and would let
+ * a both-endpoints call ask the DB for the entire manuscript.
  */
 export function resolveRange(
   input: { from?: PositionArg; to?: PositionArg; limit?: number },
@@ -218,18 +232,14 @@ export function resolveRange(
 ): ResolvedRange {
   const limit = clampLimit(input.limit ?? defaultLimit)
   if (bounds.last < bounds.first) {
-    return { from: bounds.first, to: bounds.first - 1, limit }
+    return { from: bounds.first, to: bounds.first - 1, limit, take: "head" }
   }
 
   const from = anchor(input.from, bounds)
   const to = anchor(input.to, bounds)
 
   if (from === undefined && to === undefined) {
-    return {
-      from: Math.max(bounds.first, bounds.last - limit + 1),
-      to: bounds.last,
-      limit,
-    }
+    return { from: bounds.first, to: bounds.last, limit, take: "tail" }
   }
   // A single anchor is clamped to the far bound, so one that sits outside the
   // story — the usual case just after a rewind — would otherwise resolve to an
@@ -240,7 +250,7 @@ export function resolveRange(
         `Empty range: from ${from} is past the last position ${bounds.last}.`
       )
     }
-    return { from, to: Math.min(bounds.last, from + limit - 1), limit }
+    return { from, to: bounds.last, limit, take: "head" }
   }
   if (from === undefined && to !== undefined) {
     if (to < bounds.first) {
@@ -248,14 +258,17 @@ export function resolveRange(
         `Empty range: to ${to} is before the first position ${bounds.first}.`
       )
     }
-    return { from: Math.max(bounds.first, to - limit + 1), to, limit }
+    return { from: bounds.first, to, limit, take: "tail" }
   }
   if (from! > to!) {
     throw new ToolInputError(
       `Empty range: from ${from} is past to ${to}. Positions ascend with the manuscript.`
     )
   }
-  return { from: from!, to: to!, limit }
+  // Both endpoints given: the caller named the span, `limit` still caps the
+  // rows. `from: 'start', to: 'end'` is a whole-manuscript request and must
+  // come back one page at a time like any other.
+  return { from: from!, to: to!, limit, take: "head" }
 }
 
 function anchor(

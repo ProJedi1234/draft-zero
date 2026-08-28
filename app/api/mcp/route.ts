@@ -10,7 +10,13 @@
 // GET and DELETE are exported so the SDK answers them — they are 2025-era
 // session operations this stateless endpoint has no answer for, and the SDK's
 // 405 says so in JSON-RPC. Next's own 405 would say it in HTML.
-import { createMcpHandler } from "@modelcontextprotocol/server"
+import {
+  createMcpHandler,
+  hostHeaderValidationResponse,
+  localhostAllowedHostnames,
+  localhostAllowedOrigins,
+  originValidationResponse,
+} from "@modelcontextprotocol/server"
 
 import { createMcpServer } from "@/lib/mcp/server"
 
@@ -31,7 +37,33 @@ const handler = createMcpHandler(createMcpServer, {
   },
 })
 
+/**
+ * Hostnames this endpoint answers to. Localhost by default; `MCP_ALLOWED_HOSTS`
+ * adds the LAN names it is actually reached on, since compose binds it on
+ * 0.0.0.0.
+ */
+function extraHosts(): string[] {
+  return (process.env.MCP_ALLOWED_HOSTS ?? "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean)
+}
+
+// `createMcpHandler` is deliberately validation-free, so DNS rebinding
+// protection has to sit here or nowhere. "No auth" is a statement about
+// tokens; it does not license a web page the writer happens to visit to drive
+// `delete_story` through the browser as if it were same-origin.
 function serve(request: Request): Promise<Response> {
+  const rejected =
+    hostHeaderValidationResponse(request, [
+      ...localhostAllowedHostnames(),
+      ...extraHosts(),
+    ]) ??
+    originValidationResponse(request, [
+      ...localhostAllowedOrigins(),
+      ...extraHosts(),
+    ])
+  if (rejected) return Promise.resolve(rejected)
   return handler.fetch(request)
 }
 

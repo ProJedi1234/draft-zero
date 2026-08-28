@@ -75,6 +75,9 @@ services:
       # read and write the DB directly — nothing here calls a model.
       OPENROUTER_API_KEY: ""
       WATCHPACK_POLLING: "true"
+      # The endpoint is published on 0.0.0.0, so /api/mcp's DNS-rebinding guard
+      # needs the LAN names it is actually reached on beside localhost.
+      MCP_ALLOWED_HOSTS: "argos,argos.olympus.lan"
     ports:
       - "0.0.0.0:3005:3000"
     volumes:
