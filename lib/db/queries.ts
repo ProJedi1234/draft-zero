@@ -827,6 +827,28 @@ export async function getLorebookEntry(
   return row ? toLorebookEntry(row) : null
 }
 
+/* -------------------------------------------------------------------------- */
+/* Passage counts for the MCP story index.                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Live passage counts for every story at once, keyed by id.
+ *
+ * `listStoriesWithCounts` aggregates words for the library grid and has no
+ * reason to also count rows; the MCP index wants both, so it asks for this
+ * alongside rather than making every page of the app pay for a second
+ * aggregate.
+ */
+export async function countLivePassagesByStory(): Promise<Map<string, number>> {
+  const db = await getDb()
+  const rows = await db
+    .select({ storyId: storyEntries.storyId, n: count() })
+    .from(storyEntries)
+    .where(and(eq(storyEntries.isActive, true), isNull(storyEntries.deletedAt)))
+    .groupBy(storyEntries.storyId)
+  return new Map(rows.map((row) => [row.storyId, row.n]))
+}
+
 /** Every profile, in the writer's order. */
 export async function listModelProfiles(): Promise<ModelProfile[]> {
   const db = await getDb()
