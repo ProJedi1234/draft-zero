@@ -98,10 +98,12 @@ const outputSchema = z.object({
     .describe("Entries that actually made it in, after the budget."),
   totalTokens: z.number().int(),
   contextWindow: z.number().int(),
-  loreBudget: z
+  loreBudgetPercent: z
     .number()
     .int()
-    .describe("Tokens lore may claim; unspent share returns to prose."),
+    .describe(
+      "Percent (0-100) of the window left after fixed overhead that lore may claim; the unspent share returns to prose."
+    ),
   droppedLore: z
     .number()
     .int()
@@ -217,7 +219,7 @@ export const registerContextBreakdown: RegisterTool = (server) => {
             lore,
             totalTokens: breakdown.usedTokens,
             contextWindow: breakdown.windowTokens,
-            loreBudget: story.settings.loreBudget,
+            loreBudgetPercent: story.settings.loreBudget,
             droppedLore,
           }
         )

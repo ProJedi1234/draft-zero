@@ -13,6 +13,7 @@ interface FakeAggregate {
     key: string
     calls: number
     costUsd: string
+    unpricedCalls: number
     promptTokens: number
     completionTokens: number
     reasoningTokens: number
@@ -21,6 +22,7 @@ interface FakeAggregate {
   totals: {
     calls: number
     costUsd: string
+    unpricedCalls: number
     promptTokens: number
     completionTokens: number
     reasoningTokens: number
@@ -31,11 +33,16 @@ interface FakeAggregate {
 const ZERO_TOTALS = {
   calls: 0,
   costUsd: "0",
+  unpricedCalls: 0,
   promptTokens: 0,
   completionTokens: 0,
   reasoningTokens: 0,
   cachedPromptTokens: 0,
 }
+
+const getStoryTitleMock = mock(
+  async (_storyId: string) => "Some Story" as string | null
+)
 
 const getUsageAggregateMock = mock(
   async (_options: unknown): Promise<FakeAggregate> => ({
@@ -74,7 +81,12 @@ function registeredHandler(): ToolHandler {
 }
 
 beforeEach(() => {
-  stubQueries({ getUsageAggregate: getUsageAggregateMock })
+  stubQueries({
+    getStoryTitle: getStoryTitleMock,
+    getUsageAggregate: getUsageAggregateMock,
+  })
+  getStoryTitleMock.mockClear()
+  getStoryTitleMock.mockImplementation(async () => "Some Story")
   getUsageAggregateMock.mockClear()
   getUsageAggregateMock.mockImplementation(async () => ({
     groups: [],
@@ -107,6 +119,7 @@ describe("usage", () => {
           key: "anthropic/claude-sonnet-5",
           calls: 12,
           costUsd: "1.234500000000",
+          unpricedCalls: 0,
           promptTokens: 40000,
           completionTokens: 8000,
           reasoningTokens: 500,
@@ -116,6 +129,7 @@ describe("usage", () => {
       totals: {
         calls: 12,
         costUsd: "1.234500000000",
+        unpricedCalls: 0,
         promptTokens: 40000,
         completionTokens: 8000,
         reasoningTokens: 500,
@@ -148,6 +162,7 @@ describe("usage", () => {
           key: "a",
           calls: 3,
           costUsd: "0.5",
+          unpricedCalls: 0,
           promptTokens: 0,
           completionTokens: 0,
           reasoningTokens: 0,
@@ -157,6 +172,7 @@ describe("usage", () => {
           key: "b",
           calls: 2,
           costUsd: "0.25",
+          unpricedCalls: 0,
           promptTokens: 0,
           completionTokens: 0,
           reasoningTokens: 0,
@@ -166,6 +182,7 @@ describe("usage", () => {
       totals: {
         calls: 5,
         costUsd: "0.75",
+        unpricedCalls: 0,
         promptTokens: 0,
         completionTokens: 0,
         reasoningTokens: 0,
@@ -181,6 +198,43 @@ describe("usage", () => {
     expect(text).toContain("2 groups")
     expect(text).toContain("5 calls")
     expect(text).toContain("$0.7500")
+  })
+
+  test("an unknown storyId is a correctable error, not a confident $0", async () => {
+    getStoryTitleMock.mockImplementation(async () => null)
+    const handler = registeredHandler()
+
+    const result = await handler({ storyId: "stroy-abc" })
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toContain("No story with id stroy-abc")
+    expect(getUsageAggregateMock).not.toHaveBeenCalled()
+  })
+
+  test("marks a total built over unpriced calls as a floor", async () => {
+    // cost_usd stays NULL on a call nothing ever priced, so summing it and
+    // coalescing to 0 undercounts. Reporting "$0.8400" flat would present
+    // that undercount as exact.
+    getUsageAggregateMock.mockImplementation(async () => ({
+      groups: [],
+      totals: {
+        ...ZERO_TOTALS,
+        calls: 40,
+        costUsd: "0.84",
+        unpricedCalls: 12,
+      },
+    }))
+    const handler = registeredHandler()
+
+    const result = await handler({})
+
+    const text = result.content[0]?.text ?? ""
+    expect(text).toContain("$0.8400+")
+    expect(text).toContain("12 unpriced")
+    const data = result.structuredContent as {
+      totals: { unpricedCalls: number }
+    }
+    expect(data.totals.unpricedCalls).toBe(12)
   })
 
   test("an empty ledger reports zeroed totals, not an error", async () => {

@@ -1277,6 +1277,14 @@ export interface UsageGroupRow {
   /** Summed cost, USD — kept as the numeric column's own string so a report
    * built from many fractional-cent calls never drifts. */
   costUsd: string
+  /**
+   * Calls in this bucket that were never priced. `cost_usd` is NULL until
+   * known and stays NULL on a call nothing ever priced, so `costUsd` is a
+   * floor whenever this is above zero — the same rule lib/db/cost-queries.ts
+   * states in its header, carried here so a report cannot present an
+   * undercount as exact.
+   */
+  unpricedCalls: number
   promptTokens: number
   completionTokens: number
   reasoningTokens: number
@@ -1292,6 +1300,7 @@ export interface UsageAggregate {
 const ZERO_USAGE_TOTALS: Omit<UsageGroupRow, "key"> = {
   calls: 0,
   costUsd: "0",
+  unpricedCalls: 0,
   promptTokens: 0,
   completionTokens: 0,
   reasoningTokens: 0,
@@ -1302,6 +1311,7 @@ const usageSettled = ne(generationCalls.status, "streaming")
 
 const usageCostUsd = sql<string>`coalesce(sum(${generationCalls.costUsd}), 0)::text`
 const usageCalls = sql<number>`count(*)::int`
+const usageUnpricedCalls = sql<number>`count(*) filter (where ${generationCalls.costUsd} is null)::int`
 const usagePromptTokens = sql<number>`coalesce(sum(${generationCalls.promptTokens}), 0)::int`
 const usageCompletionTokens = sql<number>`coalesce(sum(${generationCalls.completionTokens}), 0)::int`
 const usageReasoningTokens = sql<number>`coalesce(sum(${generationCalls.reasoningTokens}), 0)::int`
@@ -1350,6 +1360,7 @@ export async function getUsageAggregate(options: {
             key: sql<string>`coalesce(${stories.title}, max(${generationCalls.storyTitle}), 'Deleted story')`,
             calls: usageCalls,
             costUsd: usageCostUsd,
+            unpricedCalls: usageUnpricedCalls,
             promptTokens: usagePromptTokens,
             completionTokens: usageCompletionTokens,
             reasoningTokens: usageReasoningTokens,
@@ -1370,6 +1381,7 @@ export async function getUsageAggregate(options: {
                   : usageDayKey,
             calls: usageCalls,
             costUsd: usageCostUsd,
+            unpricedCalls: usageUnpricedCalls,
             promptTokens: usagePromptTokens,
             completionTokens: usageCompletionTokens,
             reasoningTokens: usageReasoningTokens,
@@ -1390,6 +1402,7 @@ export async function getUsageAggregate(options: {
     .select({
       calls: usageCalls,
       costUsd: usageCostUsd,
+      unpricedCalls: usageUnpricedCalls,
       promptTokens: usagePromptTokens,
       completionTokens: usageCompletionTokens,
       reasoningTokens: usageReasoningTokens,

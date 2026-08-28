@@ -1,13 +1,18 @@
 // Owned by the usage bundle. See lib/mcp/CONVENTIONS.md before touching this.
 import { z } from "zod"
 
-import { getUsageAggregate, type UsageGroupBy } from "@/lib/db/queries"
+import {
+  getStoryTitle,
+  getUsageAggregate,
+  type UsageGroupBy,
+} from "@/lib/db/queries"
 
 import {
   line,
   plural,
   runTool,
   structured,
+  ToolInputError,
   usd,
   type RegisterTool,
 } from "@/lib/mcp/helpers"
@@ -37,6 +42,12 @@ const group = z.object({
     .describe("The model id, request kind, YYYY-MM-DD day, or story title."),
   calls: z.number().int(),
   costUsd: z.number(),
+  unpricedCalls: z
+    .number()
+    .int()
+    .describe(
+      "Calls never priced by the provider. Above zero, costUsd is a floor, not the total."
+    ),
   promptTokens: z.number().int(),
   completionTokens: z.number().int(),
   reasoningTokens: z.number().int().describe("Tokens spent thinking."),
@@ -73,6 +84,18 @@ export const registerUsage: RegisterTool = (server) => {
     },
     async (args) =>
       runTool("usage", async () => {
+        // A ledger scoped to a story that does not exist matches no rows and
+        // would report a confident $0 — indistinguishable from a story that
+        // genuinely cost nothing. Every other story-scoped tool checks first.
+        if (
+          args.storyId !== undefined &&
+          (await getStoryTitle(args.storyId)) === null
+        ) {
+          throw new ToolInputError(
+            `No story with id ${args.storyId}. Call list_stories for valid ids.`
+          )
+        }
+
         const groupBy = args.groupBy ?? DEFAULT_GROUP_BY
         const aggregate = await getUsageAggregate({
           storyId: args.storyId,
@@ -85,6 +108,7 @@ export const registerUsage: RegisterTool = (server) => {
           key: row.key,
           calls: row.calls,
           costUsd: Number(row.costUsd),
+          unpricedCalls: row.unpricedCalls,
           promptTokens: row.promptTokens,
           completionTokens: row.completionTokens,
           reasoningTokens: row.reasoningTokens,
@@ -93,6 +117,7 @@ export const registerUsage: RegisterTool = (server) => {
         const totals: UsageTotals = {
           calls: aggregate.totals.calls,
           costUsd: Number(aggregate.totals.costUsd),
+          unpricedCalls: aggregate.totals.unpricedCalls,
           promptTokens: aggregate.totals.promptTokens,
           completionTokens: aggregate.totals.completionTokens,
           reasoningTokens: aggregate.totals.reasoningTokens,
@@ -104,7 +129,12 @@ export const registerUsage: RegisterTool = (server) => {
             `by ${groupBy}`,
             plural(groups.length, "group"),
             plural(totals.calls, "call"),
-            usd(totals.costUsd)
+            // A floor, and it says so: "$0.8400+ · 12 unpriced" is honest
+            // where "$0.8400" would not be.
+            totals.unpricedCalls > 0
+              ? `${usd(totals.costUsd)}+`
+              : usd(totals.costUsd),
+            totals.unpricedCalls > 0 && `${totals.unpricedCalls} unpriced`
           ),
           {
             groups,

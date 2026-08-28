@@ -232,7 +232,9 @@ describe("context_breakdown", () => {
     ])
     // 2 triggered, 1 kept.
     expect(data.droppedLore).toBe(1)
-    expect(data.loreBudget).toBe(20)
+    // A percent of the leftover window, not a token count — the field name
+    // says which, because 20 tokens beside 30 tokens of lore is impossible.
+    expect(data.loreBudgetPercent).toBe(20)
     expect(data.totalTokens).toBe(190)
     expect(data.contextWindow).toBe(8000)
   })
