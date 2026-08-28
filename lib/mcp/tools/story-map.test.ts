@@ -178,7 +178,7 @@ describe("story_map", () => {
     expect(data.generation).toEqual({
       model: "~anthropic/claude-sonnet-latest",
       contextWindow: 32000,
-      loreBudget: 20,
+      loreBudgetPercent: 20,
       temperature: 0.8,
     })
   })

@@ -52,8 +52,13 @@ const outputSchema = z.object({
   generation: z
     .object({
       model: z.string(),
-      contextWindow: z.number().int(),
-      loreBudget: z.number().int(),
+      contextWindow: z.number().int().describe("Tokens."),
+      loreBudgetPercent: z
+        .number()
+        .int()
+        .describe(
+          "Percent (0-100) of the leftover window lore may claim, not a token count."
+        ),
       temperature: z.number(),
     })
     .describe("Read-only. Settings are not editable through MCP."),
@@ -117,7 +122,7 @@ export const registerStoryMap: RegisterTool = (server) => {
             generation: {
               model: story.settings.modelId,
               contextWindow: story.settings.contextWindow,
-              loreBudget: story.settings.loreBudget,
+              loreBudgetPercent: story.settings.loreBudget,
               temperature: story.settings.temperature,
             },
           }
