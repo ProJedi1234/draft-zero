@@ -1008,6 +1008,17 @@ export async function countLivePassagesAfter(
   return row?.n ?? 0
 }
 
+/** Live passages in one story — the number `delete_story` puts in its prompt. */
+export async function countLivePassages(storyId: string): Promise<number> {
+  const db = await getDb()
+  const row = await db
+    .select({ n: count() })
+    .from(storyEntries)
+    .where(livePassages(storyId))
+    .then((rows) => rows[0])
+  return row?.n ?? 0
+}
+
 /**
  * Live passage counts for every story at once, keyed by id.
  *

@@ -29,6 +29,7 @@ type Stub = (...args: never[]) => unknown
  * importing one, or that tool's spec will register a shape missing it.
  */
 const DEFAULTS = {
+  countLivePassages: async () => 0,
   countLivePassagesAfter: async () => 0,
   countLivePassagesByStory: async () => new Map<string, number>(),
   escapeLikeNeedle: (query: string) => query.trim().replace(/[\\%_]/g, "\\$&"),
