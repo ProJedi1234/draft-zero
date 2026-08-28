@@ -19,10 +19,13 @@ import type {
   RequestStatePayload,
   ToolDeps,
 } from "@/lib/mcp/helpers"
+import { registerEdit } from "@/lib/mcp/tools/edit"
 import { registerListStories } from "@/lib/mcp/tools/list-stories"
 import { registerRead } from "@/lib/mcp/tools/read"
+import { registerRewind } from "@/lib/mcp/tools/rewind"
 import { registerSearch } from "@/lib/mcp/tools/search"
 import { registerStoryMap } from "@/lib/mcp/tools/story-map"
+import { registerWrite } from "@/lib/mcp/tools/write"
 
 const SERVER_INFO = {
   name: "draft-zero",
@@ -55,6 +58,10 @@ const REGISTRARS: readonly RegisterTool[] = [
   registerStoryMap,
   registerRead,
   registerSearch,
+  // Writes
+  registerWrite,
+  registerEdit,
+  registerRewind,
 ]
 
 /**

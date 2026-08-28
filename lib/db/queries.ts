@@ -7,6 +7,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   ilike,
@@ -972,6 +973,39 @@ export async function readManuscriptWindow(
   ].sort((a, b) => a.position - b.position)
 
   return take === "tail" ? slots.slice(-limit) : slots.slice(0, limit)
+}
+
+/**
+ * The live passage in a slot, if a passage is what sits there. A slot holding
+ * an image, a retired take, or nothing at all reads as null — which is the
+ * answer `edit` and `rewind` both turn into "no passage at that position".
+ */
+export async function getLivePassageAtPosition(
+  storyId: string,
+  position: number
+): Promise<{ id: string; text: string } | null> {
+  const db = await getDb()
+  const row = await db
+    .select({ id: storyEntries.id, text: storyEntries.text })
+    .from(storyEntries)
+    .where(and(livePassages(storyId), eq(storyEntries.position, position)))
+    .limit(1)
+    .then((rows) => rows[0])
+  return row ?? null
+}
+
+/** Live passages a rewind to `position` would retire. */
+export async function countLivePassagesAfter(
+  storyId: string,
+  position: number
+): Promise<number> {
+  const db = await getDb()
+  const row = await db
+    .select({ n: count() })
+    .from(storyEntries)
+    .where(and(livePassages(storyId), gt(storyEntries.position, position)))
+    .then((rows) => rows[0])
+  return row?.n ?? 0
 }
 
 /**
