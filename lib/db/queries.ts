@@ -13,6 +13,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  lte,
   ne,
   or,
   sql,
@@ -828,8 +829,150 @@ export async function getLorebookEntry(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Passage counts for the MCP story index.                                    */
+/* Manuscript positions — the handle every MCP tool takes.                    */
+/*                                                                            */
+/* `story_entries.position` and `story_images.position` draw from one         */
+/* per-story counter, so "the manuscript" is both tables read together and    */
+/* "live" always means the active take, not soft-deleted. These live here     */
+/* rather than in a tool file because five tools need them and three needed   */
+/* the same one: read/story_map share the bounds, edit/rewind share the       */
+/* position lookup, and list_stories/delete_story share the passage count.    */
 /* -------------------------------------------------------------------------- */
+
+/** Passage rows that are the rendered take and not soft-deleted. */
+function livePassages(storyId: string) {
+  return and(
+    eq(storyEntries.storyId, storyId),
+    eq(storyEntries.isActive, true),
+    isNull(storyEntries.deletedAt)
+  )
+}
+
+/** Image rows on the same terms. */
+function liveImages(storyId: string) {
+  return and(
+    eq(storyImages.storyId, storyId),
+    eq(storyImages.isActive, true),
+    isNull(storyImages.deletedAt)
+  )
+}
+
+/**
+ * A story's live position range across both slot-bearing tables.
+ *
+ * `empty` comes back as `first: 0, last: -1` on purpose: that is exactly the
+ * `last < first` shape the MCP range resolver already treats as an empty
+ * story, so a caller needs no special case for a story with nothing in it.
+ */
+export async function getManuscriptBounds(
+  storyId: string
+): Promise<{ first: number; last: number; empty: boolean }> {
+  const db = await getDb()
+  const [entryBounds, imageBounds] = await Promise.all([
+    db
+      .select({
+        min: sql<number | null>`min(${storyEntries.position})`,
+        max: sql<number | null>`max(${storyEntries.position})`,
+      })
+      .from(storyEntries)
+      .where(livePassages(storyId))
+      .then((rows) => rows[0]),
+    db
+      .select({
+        min: sql<number | null>`min(${storyImages.position})`,
+        max: sql<number | null>`max(${storyImages.position})`,
+      })
+      .from(storyImages)
+      .where(liveImages(storyId))
+      .then((rows) => rows[0]),
+  ])
+
+  const mins = [entryBounds?.min, imageBounds?.min].filter(isNumber)
+  const maxs = [entryBounds?.max, imageBounds?.max].filter(isNumber)
+  if (mins.length === 0) return { first: 0, last: -1, empty: true }
+  return { first: Math.min(...mins), last: Math.max(...maxs), empty: false }
+}
+
+function isNumber(value: number | null | undefined): value is number {
+  return value !== null && value !== undefined
+}
+
+/** One slot of the manuscript. `text` is the prose, or an image's prompt. */
+export interface ManuscriptSlot {
+  position: number
+  kind: "narration" | "say" | "do" | "image"
+  text: string
+}
+
+/**
+ * Both tables' live rows inside an inclusive position window, merged and
+ * sorted into reading order. The caller decides how to render an image slot;
+ * this returns its prompt untouched.
+ *
+ * `limit` is a row count and `take` says which end of the window it counts
+ * from — positions are not dense in live rows, so a window is never a
+ * trustworthy proxy for how many rows sit in it. Bounding the selects here
+ * rather than in the caller means no tool can ask for an unbounded manuscript.
+ */
+export async function readManuscriptWindow(
+  storyId: string,
+  from: number,
+  to: number,
+  limit: number,
+  take: "head" | "tail" = "head"
+): Promise<ManuscriptSlot[]> {
+  if (to < from || limit < 1) return []
+  const db = await getDb()
+  // The limit is applied per table and again after the merge: `limit` rows
+  // from each side always contain the true first (or last) `limit` rows of
+  // their union, and neither select can be asked for a whole manuscript.
+  const order = take === "tail" ? desc : asc
+  const [passageRows, imageRows] = await Promise.all([
+    db
+      .select({
+        position: storyEntries.position,
+        actionKind: storyEntries.actionKind,
+        text: storyEntries.text,
+      })
+      .from(storyEntries)
+      .where(
+        and(
+          livePassages(storyId),
+          gte(storyEntries.position, from),
+          lte(storyEntries.position, to)
+        )
+      )
+      .orderBy(order(storyEntries.position))
+      .limit(limit),
+    db
+      .select({ position: storyImages.position, prompt: storyImages.prompt })
+      .from(storyImages)
+      .where(
+        and(
+          liveImages(storyId),
+          gte(storyImages.position, from),
+          lte(storyImages.position, to)
+        )
+      )
+      .orderBy(order(storyImages.position))
+      .limit(limit),
+  ])
+
+  const slots = [
+    ...passageRows.map((row): ManuscriptSlot => ({
+      position: row.position,
+      kind: row.actionKind ?? "narration",
+      text: row.text,
+    })),
+    ...imageRows.map((row): ManuscriptSlot => ({
+      position: row.position,
+      kind: "image",
+      text: row.prompt,
+    })),
+  ].sort((a, b) => a.position - b.position)
+
+  return take === "tail" ? slots.slice(-limit) : slots.slice(0, limit)
+}
 
 /**
  * Live passage counts for every story at once, keyed by id.
@@ -847,6 +990,102 @@ export async function countLivePassagesByStory(): Promise<Map<string, number>> {
     .where(and(eq(storyEntries.isActive, true), isNull(storyEntries.deletedAt)))
     .groupBy(storyEntries.storyId)
   return new Map(rows.map((row) => [row.storyId, row.n]))
+}
+
+/* -------------------------------------------------------------------------- */
+/* Search — owned by the MCP search-lore bundle (lib/mcp/tools/search.ts).   */
+/* -------------------------------------------------------------------------- */
+
+/** Bounds a single search call — this app is single-user/LAN, not a corpus. */
+const SEARCH_ROW_CAP = 500
+
+/** Escapes LIKE metacharacters, matching listStories' needle handling. */
+export function escapeLikeNeedle(query: string): string {
+  return query.trim().replace(/[\\%_]/g, "\\$&")
+}
+
+export interface EntryMatch {
+  storyId: string
+  storyTitle: string
+  position: number
+  text: string
+}
+
+/**
+ * Live, active passages whose text matches `needle` (already LIKE-escaped),
+ * case-insensitive. Scoped to one story when given, otherwise every story —
+ * soft-deleted and inactive-take text never surfaces here, same visibility
+ * rule as the manuscript reads.
+ */
+export async function searchStoryEntries(
+  needle: string,
+  storyId?: string
+): Promise<EntryMatch[]> {
+  const db = await getDb()
+  const rows = await db
+    .select({
+      storyId: storyEntries.storyId,
+      storyTitle: stories.title,
+      position: storyEntries.position,
+      text: storyEntries.text,
+    })
+    .from(storyEntries)
+    .innerJoin(stories, eq(storyEntries.storyId, stories.id))
+    .where(
+      and(
+        isNull(storyEntries.deletedAt),
+        eq(storyEntries.isActive, true),
+        ilike(storyEntries.text, `%${needle}%`),
+        storyId === undefined ? undefined : eq(storyEntries.storyId, storyId)
+      )
+    )
+    .orderBy(asc(storyEntries.storyId), asc(storyEntries.position))
+    .limit(SEARCH_ROW_CAP)
+  return rows
+}
+
+export interface LoreMatch {
+  id: string
+  storyId: string
+  storyTitle: string
+  name: string
+  content: string
+}
+
+/**
+ * Lorebook entries whose name or content matches `needle` (already
+ * LIKE-escaped), case-insensitive. Scoped to one story when given. Matches
+ * regardless of `enabled` — search is for finding an entry to read or edit,
+ * not a preview of what is currently triggerable.
+ */
+export async function searchLorebookContent(
+  needle: string,
+  storyId?: string
+): Promise<LoreMatch[]> {
+  const db = await getDb()
+  const pattern = `%${needle}%`
+  const rows = await db
+    .select({
+      id: lorebookEntries.id,
+      storyId: lorebookEntries.storyId,
+      storyTitle: stories.title,
+      name: lorebookEntries.name,
+      content: lorebookEntries.content,
+    })
+    .from(lorebookEntries)
+    .innerJoin(stories, eq(lorebookEntries.storyId, stories.id))
+    .where(
+      and(
+        or(
+          ilike(lorebookEntries.name, pattern),
+          ilike(lorebookEntries.content, pattern)
+        ),
+        storyId === undefined ? undefined : eq(lorebookEntries.storyId, storyId)
+      )
+    )
+    .orderBy(asc(lorebookEntries.storyId), asc(lorebookEntries.name))
+    .limit(SEARCH_ROW_CAP)
+  return rows
 }
 
 /** Every profile, in the writer's order. */

@@ -20,6 +20,9 @@ import type {
   ToolDeps,
 } from "@/lib/mcp/helpers"
 import { registerListStories } from "@/lib/mcp/tools/list-stories"
+import { registerRead } from "@/lib/mcp/tools/read"
+import { registerSearch } from "@/lib/mcp/tools/search"
+import { registerStoryMap } from "@/lib/mcp/tools/story-map"
 
 const SERVER_INFO = {
   name: "draft-zero",
@@ -49,6 +52,9 @@ Results are compact on purpose: lists give ids and counts, searches give snippet
 const REGISTRARS: readonly RegisterTool[] = [
   // Reads
   registerListStories,
+  registerStoryMap,
+  registerRead,
+  registerSearch,
 ]
 
 /**

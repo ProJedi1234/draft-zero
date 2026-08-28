@@ -30,7 +30,15 @@ type Stub = (...args: never[]) => unknown
  */
 const DEFAULTS = {
   countLivePassagesByStory: async () => new Map<string, number>(),
+  escapeLikeNeedle: (query: string) => query.trim().replace(/[\\%_]/g, "\\$&"),
+  getManuscriptBounds: async () => ({ first: 0, last: -1, empty: true }),
+  getStory: async () => null,
+  getStoryTitle: async () => null,
+  listLorebookEntries: async () => [],
   listStoriesWithCounts: async () => [],
+  readManuscriptWindow: async () => [],
+  searchLorebookContent: async () => [],
+  searchStoryEntries: async () => [],
 } satisfies Record<string, Stub>
 
 type QueryName = keyof typeof DEFAULTS

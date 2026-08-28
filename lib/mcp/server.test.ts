@@ -95,9 +95,9 @@ async function listTools(): Promise<ListedTool[]> {
 }
 
 /** The order server.ts fixes: reads, then writes, then the destructive one. */
-const EXPECTED_ORDER = ["list_stories"]
+const EXPECTED_ORDER = ["list_stories", "story_map", "read", "search"]
 
-const READ_TOOLS = new Set(["list_stories"])
+const READ_TOOLS = new Set(["list_stories", "story_map", "read", "search"])
 
 describe("createMcpServer", () => {
   test("registers its tools in the fixed order", async () => {
