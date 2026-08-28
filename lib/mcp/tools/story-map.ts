@@ -25,7 +25,11 @@ const outputSchema = z.object({
   title: z.string(),
   genre: z.string(),
   description: z.string(),
-  recap: z.string().describe("Current rolling summary; the story so far."),
+  recap: z
+    .string()
+    .describe(
+      "Summary of the prose that has scrolled OUT of the context window — the head of the story the model can no longer see. Empty while the whole story still fits, which is the normal state for a short one. `read` gives you the live tail; the two together are the whole story."
+    ),
   memory: z.string().describe("Always-on facts prepended to every generation."),
   authorsNote: z.string().describe("Steering note injected near the tail."),
   lore: z
