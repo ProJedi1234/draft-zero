@@ -124,7 +124,9 @@ const writeInput = z.object({
   keys: z
     .array(z.string())
     .optional()
-    .describe("Trigger words. Replaces the whole list."),
+    .describe(
+      'Trigger words. Replaces the whole list. Matching is case-insensitive SUBSTRING, not whole-word: "she" fires inside "shelf" and "ashes", so short or common keys pull the entry into nearly every generation and crowd out the lore that matters. Prefer distinctive multi-character names and phrases.'
+    ),
   content: z.string().optional(),
   priority: z.number().int().optional(),
   enabled: z.boolean().optional(),
@@ -138,6 +140,16 @@ const writeOutput = z.object({
   changed: z.array(z.string()).describe("Fields this call actually moved."),
 })
 
+/** The optional fields a create can set; `name` is always set, so it is not here. */
+const CREATE_FIELDS = [
+  "category",
+  "keys",
+  "content",
+  "priority",
+  "enabled",
+  "alwaysActive",
+] as const
+
 /** Same-value array check — a `keys` list unchanged in substance is not a change. */
 function sameKeys(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index])
@@ -149,7 +161,7 @@ export const registerLoreWrite: RegisterTool = (server) => {
     {
       title: "Write lore entry",
       description:
-        "Create or update one lorebook entry. Omit id to create, give id to update — only the fields you pass change. Journalled and synced to open browsers.",
+        "Create or update one lorebook entry. Omit id to create, give id to update — only the fields you pass change. An entry enters context when one of its keys appears as a substring of the recent story text (or when alwaysActive is set), and an entry already in context is itself scanned for other entries' keys, up to 3 levels deep — so lore can pull in lore. Use context_breakdown to see which entries actually fired for a passage and which lost the budget. Journalled and synced to open browsers.",
       inputSchema: writeInput,
       outputSchema: writeOutput,
       annotations: {
@@ -254,19 +266,17 @@ export const registerLoreWrite: RegisterTool = (server) => {
         })
         if (!result.ok) throw new ToolInputError(result.error)
 
+        // Only what the caller actually set. On a create everything "changed"
+        // by definition, so listing the defaulted fields too says nothing —
+        // this is the list of what the model chose, next to the defaults it
+        // accepted.
+        const set = CREATE_FIELDS.filter((field) => args[field] !== undefined)
+
         return structured(`created "${name}"`, {
           id: result.data.id,
           name,
           created: true,
-          changed: [
-            "name",
-            "category",
-            "keys",
-            "content",
-            "priority",
-            "enabled",
-            "alwaysActive",
-          ],
+          changed: ["name", ...set],
         })
       })
   )

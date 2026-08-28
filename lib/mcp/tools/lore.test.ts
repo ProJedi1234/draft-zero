@@ -202,6 +202,23 @@ describe("lore_write", () => {
     })
   })
 
+  test("create reports the fields the caller set, not every field", async () => {
+    // Everything "changed" on a create by definition, so echoing the defaulted
+    // fields back says nothing about what the model actually chose.
+    const result = await handler()({
+      storyId: "s1",
+      name: "Vell",
+      keys: ["vell"],
+      content: "A wanderer.",
+    })
+
+    expect(result.structuredContent?.changed).toEqual([
+      "name",
+      "keys",
+      "content",
+    ])
+  })
+
   test("creating against an unknown story fails correctably, not opaquely", async () => {
     // story_id is a foreign key: without this check the insert dies in
     // Postgres and the model gets runTool's blanket "the server logged the
