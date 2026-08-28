@@ -100,7 +100,7 @@ export function Composer({
 }: {
   value: string
   onValueChange: (value: string) => void
-  /** Owned by the workspace so switching stories doesn't reset it. */
+  /** Per-story, synced, and seeded from the draft row — see StoryEditor. */
   mode: ComposerMode
   onModeChange: (mode: ComposerMode) => void
   /** The frame the next image is asked for in. Remembered across sends. */

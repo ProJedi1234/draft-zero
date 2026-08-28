@@ -861,6 +861,20 @@ export interface AppSettings {
  */
 export const IMAGE_CONTEXT_OPTIONS = [1024, 2048, 4096, 8192, 16384] as const
 
+/**
+ * The composer's unsent state for one story, as the DB last saw it: the text
+ * AND which move is armed, because "pick up where you left off" includes what
+ * the next keystroke would have meant. `updatedAt` is the version the client
+ * arbitrates live `draft` events against — same ISO-string-order-is-time-order
+ * convention as every other timestamp here.
+ */
+export interface ComposerDraft {
+  text: string
+  mode: ComposerMode
+  /** ISO-8601. */
+  updatedAt: string
+}
+
 /** Uniform server-action result. Actions never throw for expected failures. */
 export type ActionResult<T = null> =
   { ok: true; data: T } | { ok: false; error: string }

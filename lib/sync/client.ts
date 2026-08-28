@@ -18,6 +18,16 @@ import {
 export type RunEndedEvent = Extract<SyncWireEvent, { type: "run-ended" }>
 
 /**
+ * This tab's identity on the sync channel, minted once per page load. Its one
+ * job is echo suppression: a `draft` event stamped with our own id is our own
+ * keystroke coming back around the bus, and adopting it would fight the
+ * textarea it came from. Not crypto.randomUUID — that is undefined outside a
+ * secure context, and this app's LAN origin is plain HTTP.
+ */
+export const syncClientId =
+  Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+/**
  * Silence past ~2 ping intervals means the socket is dead, per the contract.
  * iOS in particular kills a background PWA's sockets without an error or a
  * close — the read just never resolves again — so waiting on the network to
@@ -83,6 +93,36 @@ export const runEndings = {
     }
   },
   publish(event: RunEndedEvent): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event)
+      } catch {
+        // One broken subscriber must not mute the rest, same as the bus.
+      }
+    }
+  },
+}
+
+/** The `draft` frame, narrowed out of the union for subscribers. */
+export type DraftEvent = Extract<SyncWireEvent, { type: "draft" }>
+
+/**
+ * Composer drafts, fanned out to whichever story editor is mounted. A module
+ * singleton for the same reason runEndings is: the channel holder lives in the
+ * root layout while the composer lives in the story-keyed subtree. Subscribe-
+ * only, with no memory of the last event — a device that was not listening
+ * when a draft moved gets it from the DB row on the next story mount, and from
+ * the resync probe on reconnect.
+ */
+export const draftRelay = {
+  listeners: new Set<(event: DraftEvent) => void>(),
+  subscribe(listener: (event: DraftEvent) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  },
+  publish(event: DraftEvent): void {
     for (const listener of this.listeners) {
       try {
         listener(event)

@@ -34,6 +34,7 @@ import { toast } from "sonner"
 
 import {
   atmosphereStatus,
+  draftRelay,
   localRefresh,
   openSyncChannel,
   runEndings,
@@ -145,6 +146,13 @@ export function useStorySync(): void {
             // and to the moment it gives up, and to nothing else. Every other
             // phase is reported by the sparkle, which costs no interruption.
             if (event.message !== null) toast.error(event.message)
+            continue
+          }
+          if (event.type === "draft") {
+            // Payload rides the event — no refresh. Nothing rendered from the
+            // server depends on a draft after mount, so there is nothing a
+            // refetch would even carry.
+            draftRelay.publish(event)
             continue
           }
           if (event.type === "run-ended") {

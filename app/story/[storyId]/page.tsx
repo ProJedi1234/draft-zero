@@ -5,6 +5,7 @@ import { StoryWorkspace } from "@/components/story/story-workspace"
 import { getStoryCostProfile } from "@/lib/db/cost-queries"
 import {
   getAppSettings,
+  getComposerDraft,
   getStory,
   getStoryTitle,
   listLorebookEntries,
@@ -54,17 +55,28 @@ export default async function StoryPage({ params }: StoryPageProps) {
   // The whole profile list, not just the followed one: the switcher is a menu,
   // and there are a handful of these rows at most (see the UX doc) — a second
   // round trip when the writer opens it would be the expensive option.
-  const [story, lorebookEntries, models, imageModels, costProfile, profiles] =
-    await Promise.all([
-      getStory(storyId),
-      listLorebookEntries(storyId),
-      listModels(),
-      // Cached an hour in-process like the text catalog, so this is a lookup
-      // rather than a round trip on most requests.
-      listImageModels(),
-      getStoryCostProfile(storyId),
-      listModelProfiles(),
-    ])
+  const [
+    story,
+    composerDraft,
+    lorebookEntries,
+    models,
+    imageModels,
+    costProfile,
+    profiles,
+  ] = await Promise.all([
+    getStory(storyId),
+    // The unsent composer text, seeding the editor's live draft state. Only
+    // the mount ever reads it — after that the `draft` bus events are the
+    // channel — so a refetch delivering a newer row changes nothing.
+    getComposerDraft(storyId),
+    listLorebookEntries(storyId),
+    listModels(),
+    // Cached an hour in-process like the text catalog, so this is a lookup
+    // rather than a round trip on most requests.
+    listImageModels(),
+    getStoryCostProfile(storyId),
+    listModelProfiles(),
+  ])
 
   if (!story) {
     notFound()
@@ -85,10 +97,11 @@ export default async function StoryPage({ params }: StoryPageProps) {
 
   // No key here: the workspace keys its own editor subtree by story id, so
   // per-story state resets while the writer's UI preferences (inspector
-  // visibility, the armed Say/Do move) survive navigation.
+  // visibility) survive navigation.
   return (
     <StoryWorkspace
       story={story}
+      composerDraft={composerDraft}
       lorebookEntries={lorebookEntries}
       models={models}
       imageModels={imageModels}
