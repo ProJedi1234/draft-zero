@@ -32,8 +32,14 @@ import {
 
 /* -------------------------------- create --------------------------------- */
 
-const createInput = z.object({
-  title: z.string().min(1),
+/**
+ * The story metadata both tools accept, declared once so the two cannot
+ * drift. They did: create took `systemPrompt` but not `authorsNote`, update
+ * took `authorsNote` but not `systemPrompt`, so neither could set both and a
+ * story's system prompt could never be changed after creation. No field here
+ * is settable at one moment and not the other.
+ */
+const metaFields = {
   description: z
     .string()
     .optional()
@@ -42,11 +48,29 @@ const createInput = z.object({
   memory: z
     .string()
     .optional()
-    .describe("Always-on facts prepended to every generation."),
+    .describe(
+      "Always-on facts prepended to every generation. Pass an empty string to clear."
+    ),
+  authorsNote: z
+    .string()
+    .optional()
+    .describe(
+      "Steering note injected near the tail. Pass an empty string to clear."
+    ),
   systemPrompt: z
     .string()
     .optional()
-    .describe("Overrides the app default for this story."),
+    .describe(
+      "Overrides the app default for this story. Pass an empty string to go back to following it."
+    ),
+}
+
+/** The keys of {@link metaFields}, for building a patch from either tool. */
+const META_FIELDS = Object.keys(metaFields) as (keyof typeof metaFields)[]
+
+const createInput = z.object({
+  title: z.string().min(1),
+  ...metaFields,
 })
 
 const createOutput = z.object({
@@ -60,7 +84,7 @@ export const registerCreateStory: RegisterTool = (server) => {
     {
       title: "Create story",
       description:
-        "Start a new, empty story. Returns its id — follow with write to put the first passage in. Journalled and synced to open browsers.",
+        "Start a new, empty story, configured in one call — it takes the same metadata fields as update_story. Returns its id; follow with write to put the first passage in. Journalled and synced to open browsers.",
       inputSchema: createInput,
       outputSchema: createOutput,
       annotations: {
@@ -81,11 +105,10 @@ export const registerCreateStory: RegisterTool = (server) => {
         // do by creating then editing. Skipped entirely when nothing else was
         // given, so a bare create_story stays a single write.
         const patch: Parameters<typeof updateStoryMeta>[1] = {}
-        if (args.description !== undefined) patch.description = args.description
-        if (args.genre !== undefined) patch.genre = args.genre
-        if (args.memory !== undefined) patch.memory = args.memory
-        if (args.systemPrompt !== undefined)
-          patch.systemPrompt = args.systemPrompt
+        for (const field of META_FIELDS) {
+          const value = args[field]
+          if (value !== undefined) patch[field] = value
+        }
         if (Object.keys(patch).length > 0) {
           const patched = await updateStoryMeta(id, patch)
           if (!patched.ok) throw new ToolInputError(patched.error)
@@ -104,16 +127,7 @@ export const registerCreateStory: RegisterTool = (server) => {
 const updateInput = z.object({
   storyId: z.string(),
   title: z.string().optional(),
-  description: z.string().optional(),
-  genre: z.string().optional(),
-  memory: z
-    .string()
-    .optional()
-    .describe("Always-on facts. Pass an empty string to clear."),
-  authorsNote: z
-    .string()
-    .optional()
-    .describe("Steering note injected near the tail."),
+  ...metaFields,
 })
 
 const updateOutput = z.object({
@@ -127,7 +141,7 @@ export const registerUpdateStory: RegisterTool = (server) => {
     {
       title: "Update story",
       description:
-        "Change a story's title, description, genre, memory or author's note. Only the fields you pass move. Journalled and synced to open browsers.",
+        "Change a story's title, description, genre, memory, author's note or system prompt — the same fields create_story takes. Only the fields you pass move. Journalled and synced to open browsers.",
       inputSchema: updateInput,
       outputSchema: updateOutput,
       annotations: {
@@ -146,18 +160,16 @@ export const registerUpdateStory: RegisterTool = (server) => {
 
         if (changed.length === 0) {
           throw new ToolInputError(
-            "Nothing to update — pass at least one of title, description, genre, memory or authorsNote."
+            `Nothing to update — pass at least one of title, ${META_FIELDS.join(", ")}.`
           )
         }
 
         const patch: Parameters<typeof updateStoryMeta>[1] = {}
         if (fields.title !== undefined) patch.title = fields.title
-        if (fields.description !== undefined)
-          patch.description = fields.description
-        if (fields.genre !== undefined) patch.genre = fields.genre
-        if (fields.memory !== undefined) patch.memory = fields.memory
-        if (fields.authorsNote !== undefined)
-          patch.authorsNote = fields.authorsNote
+        for (const field of META_FIELDS) {
+          const value = fields[field]
+          if (value !== undefined) patch[field] = value
+        }
 
         const result = await updateStoryMeta(storyId, patch)
         if (!result.ok) throw new ToolInputError(result.error)

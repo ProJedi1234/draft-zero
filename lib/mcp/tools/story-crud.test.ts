@@ -134,6 +134,35 @@ describe("create_story", () => {
     })
   })
 
+  test("creates a fully configured story in one call", async () => {
+    // The parity this pins: create and update take the same metadata. Before,
+    // authorsNote was update-only and systemPrompt create-only, so standing a
+    // story up cost a second call and the system prompt was write-once.
+    const { server, handlers } = makeFakeServer()
+    registerCreateStory(server as never, undefined as never)
+    const handler = handlers.get("create_story")!
+
+    await handler(
+      {
+        title: "The Long Road",
+        description: "A western.",
+        genre: "western",
+        memory: "Dust everywhere.",
+        authorsNote: "Keep it terse.",
+        systemPrompt: "You are a laconic narrator.",
+      },
+      makeCtx()
+    )
+
+    expect(updateStoryMetaMock.mock.calls[0][1]).toEqual({
+      description: "A western.",
+      genre: "western",
+      memory: "Dust everywhere.",
+      authorsNote: "Keep it terse.",
+      systemPrompt: "You are a laconic narrator.",
+    })
+  })
+
   test("surfaces a failed create as a model-visible error, not a throw", async () => {
     createStoryMock.mockImplementationOnce(async () => ({
       ok: false as const,
@@ -175,6 +204,22 @@ describe("update_story", () => {
     expect(result.structuredContent.changed.sort()).toEqual(
       ["memory", "title"].sort()
     )
+  })
+
+  test("update reaches the system prompt too", async () => {
+    const { server, handlers } = makeFakeServer()
+    registerUpdateStory(server as never, undefined as never)
+    const handler = handlers.get("update_story")!
+
+    const result = (await handler(
+      { storyId: "story-1", systemPrompt: "You are a laconic narrator." },
+      makeCtx()
+    )) as { structuredContent: { id: string; changed: string[] } }
+
+    expect(updateStoryMetaMock.mock.calls[0][1]).toEqual({
+      systemPrompt: "You are a laconic narrator.",
+    })
+    expect(result.structuredContent.changed).toEqual(["systemPrompt"])
   })
 
   test("rejects a call with nothing to update, without touching the action", async () => {
