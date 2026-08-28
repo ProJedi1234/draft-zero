@@ -12,6 +12,7 @@
 // the refetch is the sync, so the bus never has to serialize story state.
 
 import type { AtmospherePhase, RunEndStatus } from "@/lib/sync/types"
+import type { ComposerMode } from "@/lib/types"
 
 export type BusEvent =
   | { kind: "change"; storyId: string | null }
@@ -38,6 +39,21 @@ export type BusEvent =
    * it retried for free every turn, after it nothing will happen at all.
    */
   | { kind: "summary-stopped"; storyId: string }
+  /**
+   * The composer's unsent state moved — text and armed mode together. The
+   * other payload-carrying event beside `atmosphere`, and for the same
+   * reason: nothing here is worth a refetch — the payload IS the whole fact,
+   * and the DB row it mirrors exists only to seed the next mount. See
+   * SyncWireEvent's `draft` for the field semantics.
+   */
+  | {
+      kind: "draft"
+      storyId: string
+      text: string
+      mode: ComposerMode
+      version: string
+      origin: string
+    }
   /**
    * The atmosphere picker started, finished, or gave up on this story.
    *

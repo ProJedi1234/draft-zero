@@ -21,6 +21,7 @@ import {
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import type {
   AppSettings,
+  ComposerDraft,
   GalleryImage,
   GenerationBaseline,
   LorebookEntry,
@@ -57,6 +58,7 @@ import {
 } from "./mappers"
 import {
   appSettings,
+  composerDrafts,
   generationCalls,
   lorebookEntries,
   modelProfiles,
@@ -726,6 +728,27 @@ export function getStoryFull(id: string): Promise<Story | null> {
 }
 
 /** Just the title, for generateMetadata — no reason to load a manuscript. */
+/**
+ * The composer's unsent state for one story, or null when its composer was
+ * never touched — the seed for the workspace's live draft state. Read once
+ * per story open; live updates travel as `draft` bus events, never through a
+ * refetch of this.
+ */
+export async function getComposerDraft(
+  storyId: string
+): Promise<ComposerDraft | null> {
+  const db = await getDb()
+  const row = await db
+    .select()
+    .from(composerDrafts)
+    .where(eq(composerDrafts.storyId, storyId))
+    .limit(1)
+    .then((rows) => rows[0])
+  return row
+    ? { text: row.text, mode: row.mode, updatedAt: row.updatedAt }
+    : null
+}
+
 export async function getStoryTitle(id: string): Promise<string | null> {
   const db = await getDb()
   const row = await db

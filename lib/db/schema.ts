@@ -21,6 +21,7 @@ import {
 
 import type { OpKind } from "@/lib/history/ops"
 import type {
+  ComposerMode,
   CostSource,
   GenerationCallStatus,
   GenerationRequestKind,
@@ -113,6 +114,35 @@ export const stories = pgTable("stories", {
   // position, not a fact about any one op.
   undoCursor: integer("undo_cursor").notNull().default(0),
   createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+/**
+ * The composer's unsent state, one row per story — what lets a draft typed on
+ * one device be picked up mid-sentence on another, and survive a story switch
+ * or a server restart. Absence means the composer was never touched; a sent
+ * move leaves the row behind with empty text, because `mode` is state worth
+ * keeping after the words are gone — the writer who sent a Say is still
+ * speaking.
+ *
+ * `mode` lives here rather than as a writer-global preference, and that is a
+ * reversal made on purpose: the armed move used to survive story switches
+ * precisely because it was nobody's data, but "resume this story where I left
+ * it" includes what the next keystroke would have meant, so each story now
+ * remembers its own.
+ *
+ * Deliberately NOT columns on `stories`. `stories.updated_at` is the version
+ * every magic-synced control arbitrates staleness by, and draft keystrokes
+ * would bump it several times a sentence — invalidating controls whose values
+ * never moved. Draft writes also skip commitChange entirely: the `draft` bus
+ * event carries the state itself, so there is nothing to refetch.
+ */
+export const composerDrafts = pgTable("composer_drafts", {
+  storyId: text("story_id")
+    .primaryKey()
+    .references(() => stories.id, { onDelete: "cascade" }),
+  text: text("text").notNull(),
+  mode: text("mode").notNull().default("do").$type<ComposerMode>(),
   updatedAt: text("updated_at").notNull(),
 })
 
@@ -654,6 +684,7 @@ export const appSettings = pgTable("app_settings", {
 })
 
 export type StoryRow = typeof stories.$inferSelect
+export type ComposerDraftRow = typeof composerDrafts.$inferSelect
 export type StoryEntryRow = typeof storyEntries.$inferSelect
 export type StoryRecapRow = typeof storyRecaps.$inferSelect
 export type NewStoryRecapRow = typeof storyRecaps.$inferInsert

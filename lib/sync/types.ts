@@ -19,7 +19,11 @@
 // a listener and nothing else. Only stopGeneration() aborts the model.
 
 import type { GenerationEvent, GenerationUsage } from "@/lib/generation/types"
-import type { GenerationRequestKind, ImageAspectRatio } from "@/lib/types"
+import type {
+  ComposerMode,
+  GenerationRequestKind,
+  ImageAspectRatio,
+} from "@/lib/types"
 
 /** How a finished run ended. Mirrors SettledCallStatus on purpose. */
 export type RunEndStatus = "ok" | "aborted" | "error"
@@ -137,6 +141,26 @@ export type SyncWireEvent =
     }
   /** The summarizer gave up on this story. See BusEvent's note on why it toasts. */
   | { type: "summary-stopped"; storyId: string }
+  /**
+   * The composer's unsent state moved on some device — the text, and which
+   * move is armed, because the two travel as one gesture: restoring "I draw
+   * my blade" under Say would hand the writer a different sentence. Like
+   * `atmosphere`, this carries its payload instead of asking for a refetch —
+   * a draft is a few hundred bytes that changes on a debounce cadence, and
+   * answering each one with a full RSC round-trip would be almost all waste.
+   * `origin` is the writing device's own id, so it can ignore its echo;
+   * `version` is the row's updated_at, so a device holding a newer draft can
+   * turn a stale event away. Empty text is the draft being cleared (sent, or
+   * deleted) — the mode still rides, and still applies.
+   */
+  | {
+      type: "draft"
+      storyId: string
+      text: string
+      mode: ComposerMode
+      version: string
+      origin: string
+    }
   /**
    * Where the atmosphere picker is on this story. Unlike every other event
    * here this one is not "go and refetch" — a repaint already sends its own

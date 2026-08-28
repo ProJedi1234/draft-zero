@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import type {
+  ComposerDraft,
   ComposerMode,
   ImageAspectRatio,
   LorebookEntry,
@@ -14,6 +15,7 @@ import type {
   StoryImage,
 } from "@/lib/types"
 import { runHandoff } from "@/lib/sync/client"
+import { useComposerDraftSync } from "@/hooks/use-composer-draft-sync"
 import {
   useGeneration,
   type GenerationController,
@@ -45,20 +47,21 @@ import { useSidebar } from "@/components/ui/sidebar"
 /** Workspace preferences are the writer's, not the story's — they survive reloads. */
 const INSPECTOR_STORAGE_KEY = "draft-zero:inspector-open"
 const INSPECTOR_TAB_STORAGE_KEY = "draft-zero:inspector-tab"
-/** Unsent composer text, per story, for the length of the browser session. */
-const DRAFT_STORAGE_PREFIX = "draft-zero:draft:"
 
 const useIsomorphicLayoutEffect =
   typeof window === "undefined" ? React.useEffect : React.useLayoutEffect
 
 /**
  * The workspace shell. Everything here is deliberately OUTSIDE the story-keyed
- * subtree: inspector visibility and the armed Say/Do move are preferences of the
- * writer, not properties of the story, and remounting them on every navigation
- * would slam the inspector back open and silently drop the writer back to Do.
+ * subtree: inspector visibility is a preference of the writer, not a property
+ * of the story, and remounting it on every navigation would slam the inspector
+ * back open. (The armed Say/Do move used to live out here too, for the same
+ * reason — it moved into the editor when it became synced, per-story state:
+ * see composer_drafts.mode in the schema.)
  */
 export function StoryWorkspace({
   story,
+  composerDraft,
   lorebookEntries,
   models,
   imageModels,
@@ -70,6 +73,8 @@ export function StoryWorkspace({
   requireZdr,
 }: {
   story: Story
+  /** The unsent composer text as the DB last saw it — the editor's seed. */
+  composerDraft: ComposerDraft | null
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
   /** The image catalog — a separate endpoint and a separate shape; see lib/images/models.ts. */
@@ -90,8 +95,6 @@ export function StoryWorkspace({
   const [inspectorOpen, setInspectorOpen] = useInspectorOpen()
   const [inspectorTab, setInspectorTab] = useInspectorTab()
   const [mobileInspectorOpen, setMobileInspectorOpen] = React.useState(false)
-  // Owned here so switching stories does not reset which mode is armed.
-  const [mode, setMode] = React.useState<ComposerMode>("do")
   const closeMobileInspector = React.useCallback(
     () => setMobileInspectorOpen(false),
     []
@@ -112,6 +115,10 @@ export function StoryWorkspace({
   const imageAttachRef = React.useRef<((runId: string | null) => void) | null>(
     null
   )
+  // The draft's twin bridge: `draft` events reach the editor through the
+  // draftRelay directly, but events missed while the socket was down do not —
+  // this is how the reconnect asks the editor to re-read the row.
+  const draftResyncRef = React.useRef<(() => void) | null>(null)
   React.useEffect(() => {
     runHandoff.current = {
       storyId: story.id,
@@ -119,10 +126,11 @@ export function StoryWorkspace({
       onImageRunStarted: (runId) => imageAttachRef.current?.(runId),
       // A reconnect means run-started events may have been missed while the
       // socket was down; a null attach is the "is anything running?" probe —
-      // one per channel.
+      // one per channel. The draft probe rides the same moment.
       onReconnect: () => {
         attachRef.current?.(null)
         imageAttachRef.current?.(null)
+        draftResyncRef.current?.()
       },
     }
     return () => {
@@ -176,13 +184,13 @@ export function StoryWorkspace({
           <StoryEditor
             key={story.id}
             story={story}
+            composerDraft={composerDraft}
             models={models}
             profiles={profiles}
             defaultProfileId={defaultProfileId}
-            mode={mode}
-            onModeChange={setMode}
             attachRef={attachRef}
             imageAttachRef={imageAttachRef}
+            draftResyncRef={draftResyncRef}
           />
         </ImageRetryModelsProvider>
         <InspectorPanel
@@ -236,27 +244,86 @@ export function StoryWorkspace({
 /** Canvas + composer + generation: the part that is per-story. */
 function StoryEditor({
   story,
+  composerDraft,
   models,
   profiles,
   defaultProfileId,
-  mode,
-  onModeChange,
   attachRef,
   imageAttachRef,
+  draftResyncRef,
 }: {
   story: Story
+  /** The unsent draft the DB holds — seeded once at mount, live after that. */
+  composerDraft: ComposerDraft | null
   /** For the retry menu's one-line summary of each profile. */
   models: OpenRouterModel[]
   profiles: ModelProfile[]
   defaultProfileId: string | null
-  mode: ComposerMode
-  onModeChange: (mode: ComposerMode) => void
   /** Bridge from the workspace's sync channel: run-started → attach mid-flight; null = re-probe. */
   attachRef: { current: ((runId: string | null) => void) | null }
   /** Same bridge for the image channel — image-run-started lands here. */
   imageAttachRef: { current: ((runId: string | null) => void) | null }
+  /** The draft's bridge: a reconnect calls through to re-read the row. */
+  draftResyncRef: { current: (() => void) | null }
 }) {
-  const [draft, setDraft] = React.useState("")
+  // Seeded from the DB row once — the editor remounts per story (key above),
+  // and after mount the pair belongs to this state, fed by keystrokes on this
+  // device and `draft` events from the others. RSC refreshes deliver newer
+  // composerDraft props, and they are deliberately ignored: the wire is the
+  // live channel, and re-seeding from a refetch would be a second, slower
+  // opinion arriving out of order.
+  //
+  // Mode is owned here now, per story, where it used to be the workspace's:
+  // once the armed move syncs and is remembered per story, it IS story state,
+  // and switching stories arming what each one last used is the point.
+  const [draft, setDraft] = React.useState(composerDraft?.text ?? "")
+  const [mode, setMode] = React.useState<ComposerMode>(
+    composerDraft?.mode ?? "do"
+  )
+  // For callbacks that need "what is the composer holding right now" without
+  // subscribing to every keystroke. Written synchronously by the change
+  // wrappers below, because a suggestion chip sets mode and text in the same
+  // tick and the second publish must already see the first value; the effect
+  // keeps them honest across foreign adoptions.
+  const draftRef = React.useRef(draft)
+  const modeRef = React.useRef(mode)
+  React.useEffect(() => {
+    draftRef.current = draft
+    modeRef.current = mode
+  })
+  const adoptDraft = React.useCallback(
+    (text: string, adoptedMode: ComposerMode | null) => {
+      setDraft(text)
+      if (adoptedMode !== null) setMode(adoptedMode)
+    },
+    []
+  )
+  const draftSync = useComposerDraftSync({
+    storyId: story.id,
+    initialVersion: composerDraft?.updatedAt ?? null,
+    adopt: adoptDraft,
+    resyncRef: draftResyncRef,
+  })
+  const publishDraft = draftSync.publish
+  // Every USER-driven change goes through these so the other devices hear it.
+  // Foreign adoptions go through adoptDraft above instead — routing them
+  // through here would echo every adopted value straight back onto the bus.
+  const changeDraft = React.useCallback(
+    (value: string) => {
+      draftRef.current = value
+      setDraft(value)
+      publishDraft({ text: value, mode: modeRef.current })
+    },
+    [publishDraft]
+  )
+  const changeMode = React.useCallback(
+    (value: ComposerMode) => {
+      modeRef.current = value
+      setMode(value)
+      publishDraft({ text: draftRef.current, mode: value })
+    },
+    [publishDraft]
+  )
   const composerRef = React.useRef<HTMLTextAreaElement>(null)
   const composerBoxRef = React.useRef<HTMLDivElement>(null)
   const shellRef = React.useRef<HTMLDivElement>(null)
@@ -267,11 +334,11 @@ function StoryEditor({
       // own cluster, not from here) must not overwrite a sentence the writer is
       // halfway through typing — losing live keystrokes to a background failure
       // is a worse trade than losing a prompt they can regenerate.
-      setDraft((current) => (current === "" ? prompt : current))
+      if (draftRef.current === "") changeDraft(prompt)
       // Armed for image, because the restored text IS an image prompt: handing
       // it back under Do would leave the next Send about to file a scene
       // description as the writer's turn.
-      onModeChange("image")
+      changeMode("image")
     },
   })
   // The bridge from the workspace's sync registration: an image-run-started
@@ -292,7 +359,7 @@ function StoryEditor({
   const generation = useGeneration(story, {
     // The composer clears the moment a move dispatches, so until the server has
     // written the row the textarea is the only copy of what the writer typed.
-    onRestoreDraft: setDraft,
+    onRestoreDraft: changeDraft,
     attachRef,
   })
 
@@ -317,8 +384,6 @@ function StoryEditor({
     }),
     [profiles, models, defaultProfileId, story.profileId, retryLast]
   )
-
-  useDraftPersistence(story.id, draft, setDraft)
 
   useHistoryShortcuts(generation)
   useContinueShortcut(generation)
@@ -345,8 +410,8 @@ function StoryEditor({
   // while Say is still armed would send You say, "I look around."
   const handleSuggestion = React.useCallback(
     (text: string) => {
-      onModeChange("do")
-      setDraft(text)
+      changeMode("do")
+      changeDraft(text)
       const textarea = composerRef.current
       if (!textarea) return
       textarea.focus()
@@ -355,7 +420,7 @@ function StoryEditor({
         textarea.setSelectionRange(end, end)
       })
     },
-    [onModeChange]
+    [changeDraft, changeMode]
   )
 
   // The in-flight preview is held until the revalidated tree delivers the row,
@@ -373,12 +438,12 @@ function StoryEditor({
   /** Hands a picture's prompt back to the composer, armed to redraw it. */
   const handleEditImagePrompt = React.useCallback(
     (target: StoryImage) => {
-      onModeChange("image")
+      changeMode("image")
       setAspectRatio(target.aspectRatio)
-      setDraft(target.prompt)
+      changeDraft(target.prompt)
       composerRef.current?.focus()
     },
-    [onModeChange]
+    [changeDraft, changeMode]
   )
 
   return (
@@ -411,9 +476,9 @@ function StoryEditor({
         />
         <Composer
           value={draft}
-          onValueChange={setDraft}
+          onValueChange={changeDraft}
           mode={mode}
-          onModeChange={onModeChange}
+          onModeChange={changeMode}
           aspectRatio={aspectRatio}
           onAspectRatioChange={setAspectRatio}
           deriving={derivation.deriving}
@@ -657,31 +722,4 @@ function useInspectorTab(): [InspectorTab, (tab: InspectorTab) => void] {
   }, [])
 
   return [tab, set]
-}
-
-/**
- * Keeps a typed-but-unsent draft alive across navigation. Every other piece of
- * writing in the app is persisted; the composer was the one place prose could
- * vanish by clicking "Lorebook".
- */
-function useDraftPersistence(
-  storyId: string,
-  draft: string,
-  setDraft: (value: string) => void
-) {
-  const storageKey = DRAFT_STORAGE_PREFIX + storyId
-  const restoredRef = React.useRef(false)
-
-  useIsomorphicLayoutEffect(() => {
-    const saved = window.sessionStorage.getItem(storageKey)
-    if (saved) setDraft(saved)
-    restoredRef.current = true
-  }, [storageKey, setDraft])
-
-  React.useEffect(() => {
-    // Never write before the restore pass, or the initial "" would erase it.
-    if (!restoredRef.current) return
-    if (draft === "") window.sessionStorage.removeItem(storageKey)
-    else window.sessionStorage.setItem(storageKey, draft)
-  }, [draft, storageKey])
 }
