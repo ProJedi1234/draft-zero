@@ -19,6 +19,7 @@ import type {
   RequestStatePayload,
   ToolDeps,
 } from "@/lib/mcp/helpers"
+import { registerContextBreakdown } from "@/lib/mcp/tools/context-breakdown"
 import { registerEdit } from "@/lib/mcp/tools/edit"
 import { registerListStories } from "@/lib/mcp/tools/list-stories"
 import { registerLoreGet, registerLoreWrite } from "@/lib/mcp/tools/lore"
@@ -31,6 +32,7 @@ import {
   registerUpdateStory,
 } from "@/lib/mcp/tools/story-crud"
 import { registerStoryMap } from "@/lib/mcp/tools/story-map"
+import { registerUsage } from "@/lib/mcp/tools/usage"
 import { registerWrite } from "@/lib/mcp/tools/write"
 
 const SERVER_INFO = {
@@ -65,6 +67,8 @@ const REGISTRARS: readonly RegisterTool[] = [
   registerRead,
   registerSearch,
   registerLoreGet,
+  registerUsage,
+  registerContextBreakdown,
   // Writes
   registerCreateStory,
   registerWrite,

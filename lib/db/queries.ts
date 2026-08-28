@@ -1262,3 +1262,142 @@ export async function getAppSettings(): Promise<AppSettings> {
 
   return toAppSettings({ ...row, defaultProfileId: SEEDED_DEFAULT_PROFILE_ID })
 }
+
+/* -------------------------------------------------------------------------- */
+/* Usage aggregation — owned by the `usage` MCP tool                          */
+/* -------------------------------------------------------------------------- */
+
+/** How `getUsageAggregate` buckets its rows. */
+export type UsageGroupBy = "model" | "requestKind" | "day" | "story"
+
+export interface UsageGroupRow {
+  /** The model id, request kind, `YYYY-MM-DD` day, or story title. */
+  key: string
+  calls: number
+  /** Summed cost, USD — kept as the numeric column's own string so a report
+   * built from many fractional-cent calls never drifts. */
+  costUsd: string
+  promptTokens: number
+  completionTokens: number
+  reasoningTokens: number
+  /** Subset of promptTokens the provider reported as cache hits. */
+  cachedPromptTokens: number
+}
+
+export interface UsageAggregate {
+  groups: UsageGroupRow[]
+  totals: Omit<UsageGroupRow, "key">
+}
+
+const ZERO_USAGE_TOTALS: Omit<UsageGroupRow, "key"> = {
+  calls: 0,
+  costUsd: "0",
+  promptTokens: 0,
+  completionTokens: 0,
+  reasoningTokens: 0,
+  cachedPromptTokens: 0,
+}
+
+const usageSettled = ne(generationCalls.status, "streaming")
+
+const usageCostUsd = sql<string>`coalesce(sum(${generationCalls.costUsd}), 0)::text`
+const usageCalls = sql<number>`count(*)::int`
+const usagePromptTokens = sql<number>`coalesce(sum(${generationCalls.promptTokens}), 0)::int`
+const usageCompletionTokens = sql<number>`coalesce(sum(${generationCalls.completionTokens}), 0)::int`
+const usageReasoningTokens = sql<number>`coalesce(sum(${generationCalls.reasoningTokens}), 0)::int`
+const usageCachedPromptTokens = sql<number>`coalesce(sum(${generationCalls.cachedPromptTokens}), 0)::int`
+
+/**
+ * The day a call landed, as `YYYY-MM-DD` off its raw ISO `created_at` text —
+ * UTC, not the writer's local zone. Good enough for a spend-shape report; a
+ * local-time bucket would need the zone this single-user LAN server has no
+ * request-scoped notion of (see `zonedDayStart` in cost-queries.ts, which
+ * takes one explicitly from the client).
+ */
+const usageDayKey = sql<string>`substring(${generationCalls.createdAt} from 1 for 10)`
+
+/**
+ * Spend and token splits over `generation_calls`, grouped one of four ways and
+ * optionally scoped to a story and/or an inclusive `createdAt` window.
+ *
+ * Kept apart from `lib/db/cost-queries.ts`: that module is a fixed set of
+ * shapes the app's own cost UI reads (today/week/all-time, per story, per
+ * model); this is the one flexible aggregate the `usage` MCP tool needs and
+ * nothing there matches its groupBy/window combination. `story` grouping keys
+ * on `orig_story_id`, the same FK-free copy `getSpendByStory` uses, so a
+ * deleted story keeps its own line instead of merging into one NULL group.
+ */
+export async function getUsageAggregate(options: {
+  storyId?: string
+  groupBy?: UsageGroupBy
+  since?: string
+  until?: string
+}): Promise<UsageAggregate> {
+  const db = await getDb()
+  const { storyId, groupBy = "model", since, until } = options
+
+  const scope = and(
+    usageSettled,
+    storyId ? eq(generationCalls.storyId, storyId) : undefined,
+    since ? sql`${generationCalls.createdAt} >= ${since}` : undefined,
+    until ? sql`${generationCalls.createdAt} <= ${until}` : undefined
+  )
+
+  const groups: UsageGroupRow[] =
+    groupBy === "story"
+      ? await db
+          .select({
+            key: sql<string>`coalesce(${stories.title}, max(${generationCalls.storyTitle}), 'Deleted story')`,
+            calls: usageCalls,
+            costUsd: usageCostUsd,
+            promptTokens: usagePromptTokens,
+            completionTokens: usageCompletionTokens,
+            reasoningTokens: usageReasoningTokens,
+            cachedPromptTokens: usageCachedPromptTokens,
+          })
+          .from(generationCalls)
+          .leftJoin(stories, eq(stories.id, generationCalls.storyId))
+          .where(scope)
+          .groupBy(generationCalls.origStoryId, stories.id, stories.title)
+          .orderBy(sql`sum(${generationCalls.costUsd}) desc nulls last`)
+      : await db
+          .select({
+            key:
+              groupBy === "model"
+                ? generationCalls.modelId
+                : groupBy === "requestKind"
+                  ? generationCalls.requestKind
+                  : usageDayKey,
+            calls: usageCalls,
+            costUsd: usageCostUsd,
+            promptTokens: usagePromptTokens,
+            completionTokens: usageCompletionTokens,
+            reasoningTokens: usageReasoningTokens,
+            cachedPromptTokens: usageCachedPromptTokens,
+          })
+          .from(generationCalls)
+          .where(scope)
+          .groupBy(
+            groupBy === "model"
+              ? generationCalls.modelId
+              : groupBy === "requestKind"
+                ? generationCalls.requestKind
+                : usageDayKey
+          )
+          .orderBy(sql`sum(${generationCalls.costUsd}) desc nulls last`)
+
+  const totals = await db
+    .select({
+      calls: usageCalls,
+      costUsd: usageCostUsd,
+      promptTokens: usagePromptTokens,
+      completionTokens: usageCompletionTokens,
+      reasoningTokens: usageReasoningTokens,
+      cachedPromptTokens: usageCachedPromptTokens,
+    })
+    .from(generationCalls)
+    .where(scope)
+    .then((rows) => rows[0])
+
+  return { groups, totals: totals ?? ZERO_USAGE_TOTALS }
+}
