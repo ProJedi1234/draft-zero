@@ -22,6 +22,18 @@ import { mock } from "bun:test"
  */
 type Stub = (...args: never[]) => unknown
 
+const EMPTY_USAGE = {
+  groups: [],
+  totals: {
+    calls: 0,
+    costUsd: "0",
+    promptTokens: 0,
+    completionTokens: 0,
+    reasoningTokens: 0,
+    cachedPromptTokens: 0,
+  },
+}
+
 /**
  * Every export of `@/lib/db/queries` that a `lib/mcp/tools/*.ts` module
  * imports, with a default that answers "nothing there" — a spec overrides only
@@ -37,10 +49,13 @@ const DEFAULTS = {
   getLorebookEntry: async () => null,
   getManuscriptBounds: async () => ({ first: 0, last: -1, empty: true }),
   getStory: async () => null,
+  getStoryFull: async () => null,
   getStoryTitle: async () => null,
+  getUsageAggregate: async () => EMPTY_USAGE,
   listLorebookEntries: async () => [],
   listStoriesWithCounts: async () => [],
   readManuscriptWindow: async () => [],
+  resolveStoryRecap: async () => null,
   searchLorebookContent: async () => [],
   searchStoryEntries: async () => [],
 } satisfies Record<string, Stub>
