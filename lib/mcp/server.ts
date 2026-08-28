@@ -25,6 +25,11 @@ import { registerLoreGet, registerLoreWrite } from "@/lib/mcp/tools/lore"
 import { registerRead } from "@/lib/mcp/tools/read"
 import { registerRewind } from "@/lib/mcp/tools/rewind"
 import { registerSearch } from "@/lib/mcp/tools/search"
+import {
+  registerCreateStory,
+  registerDeleteStory,
+  registerUpdateStory,
+} from "@/lib/mcp/tools/story-crud"
 import { registerStoryMap } from "@/lib/mcp/tools/story-map"
 import { registerWrite } from "@/lib/mcp/tools/write"
 
@@ -61,10 +66,14 @@ const REGISTRARS: readonly RegisterTool[] = [
   registerSearch,
   registerLoreGet,
   // Writes
+  registerCreateStory,
   registerWrite,
   registerEdit,
   registerRewind,
   registerLoreWrite,
+  registerUpdateStory,
+  // Destroy
+  registerDeleteStory,
 ]
 
 /**

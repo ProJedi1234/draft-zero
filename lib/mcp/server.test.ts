@@ -100,10 +100,13 @@ const EXPECTED_ORDER = [
   "read",
   "search",
   "lore_get",
+  "create_story",
   "write",
   "edit",
   "rewind",
   "lore_write",
+  "update_story",
+  "delete_story",
 ]
 
 const READ_TOOLS = new Set([
@@ -156,7 +159,7 @@ describe("createMcpServer", () => {
         READ_TOOLS.has(tool.name)
       )
     }
-    for (const name of ["edit", "rewind"]) {
+    for (const name of ["edit", "rewind", "delete_story"]) {
       const tool = tools.find((candidate) => candidate.name === name)
       expect(tool?.annotations?.destructiveHint, `${name}`).toBe(true)
     }
