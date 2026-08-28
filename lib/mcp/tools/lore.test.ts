@@ -1,6 +1,7 @@
 // lib/mcp/tools/lore.test.ts — handler shaping logic against mocked queries
 // and mocked lib/actions/lorebook. No live DB, no HTTP.
 import { beforeEach, describe, expect, mock, test } from "bun:test"
+import { z } from "zod"
 
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
 
@@ -52,6 +53,9 @@ const createLorebookEntryMock = mock(
   })
 )
 type WriteResult = { ok: true; data: null } | { ok: false; error: string }
+const getStoryTitleMock = mock(
+  async (_storyId: string) => "Some Story" as string | null
+)
 const updateLorebookEntryMock = mock(
   async (_id: string, _patch: unknown): Promise<WriteResult> => ({
     ok: true,
@@ -82,19 +86,28 @@ type ToolHandler = (
 
 function makeFakeServer() {
   const handlers = new Map<string, ToolHandler>()
+  const configs = new Map<string, { inputSchema: z.ZodTypeAny }>()
   const server = {
-    registerTool: (name: string, _config: unknown, handler: ToolHandler) => {
+    registerTool: (
+      name: string,
+      config: { inputSchema: z.ZodTypeAny },
+      handler: ToolHandler
+    ) => {
       handlers.set(name, handler)
+      configs.set(name, config)
     },
   }
-  return { server, handlers }
+  return { server, handlers, configs }
 }
 
 beforeEach(() => {
   stubQueries({
     getLorebookEntry: getLorebookEntryMock,
+    getStoryTitle: getStoryTitleMock,
     listLorebookEntries: listLorebookEntriesMock,
   })
+  getStoryTitleMock.mockClear()
+  getStoryTitleMock.mockImplementation(async () => "Some Story")
   getLorebookEntryMock.mockClear()
   listLorebookEntriesMock.mockClear()
   createLorebookEntryMock.mockClear()
@@ -187,6 +200,42 @@ describe("lore_write", () => {
       name: "Vell",
       created: true,
     })
+  })
+
+  test("creating against an unknown story fails correctably, not opaquely", async () => {
+    // story_id is a foreign key: without this check the insert dies in
+    // Postgres and the model gets runTool's blanket "the server logged the
+    // reason" line, with no way to tell a typo from a server defect.
+    getStoryTitleMock.mockImplementation(async () => null)
+
+    const result = await handler()({
+      storyId: "s-typo",
+      name: "Vell",
+      content: "A wanderer.",
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toContain("No story with id s-typo")
+    expect(createLorebookEntryMock).not.toHaveBeenCalled()
+  })
+
+  test("rejects a category outside the closed set", async () => {
+    // The column is plain text with no CHECK constraint, so an off-union
+    // value persists and then matches no chip in the lorebook UI. The schema
+    // is the only thing standing between the model and that row.
+    const { server, configs } = makeFakeServer()
+    registerLoreWrite(server as never, {} as never)
+    const schema = configs.get("lore_write")?.inputSchema
+    if (!schema) throw new Error("lore_write did not register")
+
+    expect(
+      schema.safeParse({ storyId: "s1", name: "Kessa", category: "npc" })
+        .success
+    ).toBe(false)
+    expect(
+      schema.safeParse({ storyId: "s1", name: "Kessa", category: "character" })
+        .success
+    ).toBe(true)
   })
 
   test("creating without a name fails before touching the db", async () => {

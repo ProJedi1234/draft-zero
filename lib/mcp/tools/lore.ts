@@ -11,19 +11,37 @@ import {
   createLorebookEntry,
   updateLorebookEntry,
 } from "@/lib/actions/lorebook"
-import { getLorebookEntry, listLorebookEntries } from "@/lib/db/queries"
+import {
+  getLorebookEntry,
+  getStoryTitle,
+  listLorebookEntries,
+} from "@/lib/db/queries"
 import {
   runTool,
   structured,
   ToolInputError,
   type RegisterTool,
 } from "@/lib/mcp/helpers"
+import { LOREBOOK_CATEGORIES } from "@/lib/types"
 import type { LorebookCategory, NewLorebookEntry } from "@/lib/types"
+
+/**
+ * The closed set, straight off the app's own list so the two cannot drift.
+ * The column is plain text with no CHECK constraint and MCP is the only writer
+ * that does not already map onto the union, so this schema is the constraint:
+ * an off-union category persists fine and then matches no chip in the
+ * lorebook UI, visible under "All" and nowhere else.
+ */
+const categoryValues = LOREBOOK_CATEGORIES.map((entry) => entry.value) as [
+  LorebookCategory,
+  ...LorebookCategory[],
+]
+const category = z.enum(categoryValues)
 
 const loreEntry = z.object({
   id: z.string(),
   name: z.string(),
-  category: z.string(),
+  category,
   keys: z
     .array(z.string())
     .describe("Words that trigger this entry into context."),
@@ -102,7 +120,7 @@ const writeInput = z.object({
     .optional()
     .describe("Omit to create; give it to update in place."),
   name: z.string().optional().describe("Required when creating."),
-  category: z.string().optional(),
+  category: category.optional().describe("Defaults to concept on create."),
   keys: z
     .array(z.string())
     .optional()
@@ -163,7 +181,7 @@ export const registerLoreWrite: RegisterTool = (server) => {
             args.category !== undefined &&
             args.category !== existing.category
           ) {
-            patch.category = args.category as LorebookCategory
+            patch.category = args.category
             changed.push("category")
           }
           if (args.keys !== undefined && !sameKeys(args.keys, existing.keys)) {
@@ -215,10 +233,19 @@ export const registerLoreWrite: RegisterTool = (server) => {
         if (name === "")
           throw new ToolInputError("name is required to create a lore entry.")
 
+        // The update branch gets this from the entry it loaded; create has
+        // nothing to check against, and story_id is a foreign key — an unknown
+        // id would surface as the opaque "the server logged the reason" line
+        // instead of something the model can correct.
+        if ((await getStoryTitle(args.storyId)) === null) {
+          throw new ToolInputError(
+            `No story with id ${args.storyId}. Call list_stories for valid ids.`
+          )
+        }
+
         const result = await createLorebookEntry(args.storyId, {
           name,
-          category:
-            (args.category as LorebookCategory | undefined) ?? "concept",
+          category: args.category ?? "concept",
           keys: args.keys ?? [],
           content: args.content ?? "",
           priority: args.priority ?? 50,
