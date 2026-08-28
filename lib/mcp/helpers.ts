@@ -48,6 +48,20 @@ export interface RequestStatePayload {
   [key: string]: unknown
 }
 
+/**
+ * The payload a lapsed confirmation decodes to. The codec's own verify throws
+ * on an expired seal, and the SDK turns any verify failure into a frozen
+ * JSON-RPC -32602 before the handler runs — an error a model cannot tell from
+ * "the destructive thing half-happened". So `server.ts` softens expiry alone
+ * into this, and every tool's "is this seal mine?" check then fails the
+ * ordinary way and asks again. Forgery (a bad MAC or a bind mismatch) still
+ * fails hard; only lapsing is recoverable.
+ *
+ * Which means a tool MUST identify its own state by `tool` before acting on
+ * it, never by the mere presence of a payload.
+ */
+export const EXPIRED_REQUEST_STATE: RequestStatePayload = { tool: "@expired" }
+
 /** Every `lib/mcp/tools/*.ts` module exports registrars of this shape. */
 export type RegisterTool = (server: McpServer, deps: ToolDeps) => void
 

@@ -14,6 +14,7 @@
 // file the shared module registry ends up pointing at satisfies both.
 import { describe, expect, mock, test } from "bun:test"
 
+import { EXPIRED_REQUEST_STATE } from "@/lib/mcp/helpers"
 import { installQueryMocks } from "@/lib/mcp/tools/test-queries"
 
 installQueryMocks()
@@ -38,7 +39,8 @@ mock.module("@/lib/actions/context", () => ({
 }))
 
 const { createMcpHandler } = await import("@modelcontextprotocol/server")
-const { createMcpServer } = await import("@/lib/mcp/server")
+const { createMcpServer, recoverExpiredState } =
+  await import("@/lib/mcp/server")
 
 /* -------------------------------------------------------------------------- */
 /* Driving the handler                                                        */
@@ -150,5 +152,46 @@ describe("createMcpServer", () => {
     expect(second.map((tool) => tool.name)).toEqual(
       first.map((tool) => tool.name)
     )
+  })
+})
+
+describe("recoverExpiredState", () => {
+  const ctx = {} as never
+
+  test("turns a lapsed seal into a payload no tool will claim", async () => {
+    // The SDK turns any verify throw into a frozen -32602 raised before the
+    // handler runs, so an expired confirmation would otherwise reach the model
+    // as an error indistinguishable from "the delete half-happened".
+    const verify = recoverExpiredState(async () => {
+      throw new Error("expired")
+    })
+
+    const payload = await verify("stale", ctx)
+
+    expect(payload).toEqual(EXPIRED_REQUEST_STATE)
+    expect(payload.tool).not.toBe("delete_story")
+  })
+
+  test.each([["mac"], ["bind"], ["malformed"]])(
+    "keeps a %s failure fatal",
+    async (reason) => {
+      const verify = recoverExpiredState(async () => {
+        throw new Error(reason)
+      })
+
+      await expect(verify("forged", ctx)).rejects.toThrow(reason)
+    }
+  )
+
+  test("passes a good seal straight through", async () => {
+    const verify = recoverExpiredState(async () => ({
+      tool: "delete_story",
+      storyId: "s1",
+    }))
+
+    expect(await verify("good", ctx)).toEqual({
+      tool: "delete_story",
+      storyId: "s1",
+    })
   })
 })
