@@ -95,7 +95,15 @@ async function listTools(): Promise<ListedTool[]> {
 }
 
 /** The order server.ts fixes: reads, then writes, then the destructive one. */
-const EXPECTED_ORDER = ["list_stories", "story_map", "read", "search"]
+const EXPECTED_ORDER = [
+  "list_stories",
+  "story_map",
+  "read",
+  "search",
+  "write",
+  "edit",
+  "rewind",
+]
 
 const READ_TOOLS = new Set(["list_stories", "story_map", "read", "search"])
 
@@ -133,13 +141,17 @@ describe("createMcpServer", () => {
     }
   })
 
-  test("reads are marked read-only", async () => {
+  test("reads are marked read-only and the destructive ones say so", async () => {
     const tools = await listTools()
     for (const tool of tools) {
       const readOnly = tool.annotations?.readOnlyHint === true
       expect(readOnly, `${tool.name} readOnlyHint`).toBe(
         READ_TOOLS.has(tool.name)
       )
+    }
+    for (const name of ["edit", "rewind"]) {
+      const tool = tools.find((candidate) => candidate.name === name)
+      expect(tool?.annotations?.destructiveHint, `${name}`).toBe(true)
     }
   })
 

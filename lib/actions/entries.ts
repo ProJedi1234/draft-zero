@@ -81,6 +81,26 @@ export async function appendActionEntry(
 // directly and no request-scoped caller remained, so the wrapper is gone.
 
 /**
+ * Appends plain narration prose — no player-action translation, no
+ * actionKind — to the end of the manuscript. The UI has no direct caller for
+ * this: every composer send is a Say or Do (appendActionEntry) or a
+ * generation settling (persistGeneratedEntry). The MCP write tool's
+ * narration mode is the first caller that types prose in as-is, on the
+ * writer's behalf, without going through either of those.
+ *
+ * Deliberately does NOT call commitChange — same reasoning as
+ * appendActionEntry above: this is a thin pass-through to appendEntryCore,
+ * and the caller is in the best position to decide when the request-scoped
+ * revalidate and the sync-bus touch should land.
+ */
+export async function appendNarrationEntry(
+  storyId: string,
+  text: string
+): Promise<ActionResult<{ entry: StoryEntry }>> {
+  return appendEntryCore(storyId, text, "user", {})
+}
+
+/**
  * Re-edits a player turn: the writer edits their own first-person input again,
  * and both columns are rewritten from it so the stored prose stays exactly
  * `translateAction(actionKind, inputText)`. Editing the translated text
