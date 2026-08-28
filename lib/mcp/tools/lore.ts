@@ -28,9 +28,12 @@ import type { LorebookCategory, NewLorebookEntry } from "@/lib/types"
 /**
  * The closed set, straight off the app's own list so the two cannot drift.
  * The column is plain text with no CHECK constraint and MCP is the only writer
- * that does not already map onto the union, so this schema is the constraint:
- * an off-union category persists fine and then matches no chip in the
+ * that does not already map onto the union, so this is the constraint on
+ * WRITES: an off-union category persists fine and then matches no chip in the
  * lorebook UI, visible under "All" and nowhere else.
+ *
+ * Reads stay a plain string — see `loreEntry.category`. Tightening those too
+ * would stop a row written before this existed from being read at all.
  */
 const categoryValues = LOREBOOK_CATEGORIES.map((entry) => entry.value) as [
   LorebookCategory,
@@ -41,7 +44,14 @@ const category = z.enum(categoryValues)
 const loreEntry = z.object({
   id: z.string(),
   name: z.string(),
-  category,
+  // Deliberately NOT the enum, though writes are. The column is free text with
+  // no CHECK, so rows predating the enum can hold anything — and validating
+  // reads against the closed set would make exactly that data unreadable,
+  // turning a stale value into a lore entry nobody can open. Strict in what we
+  // accept, permissive in what we return.
+  category: z
+    .string()
+    .describe(`Normally one of: ${categoryValues.join(", ")}.`),
   keys: z
     .array(z.string())
     .describe("Words that trigger this entry into context."),

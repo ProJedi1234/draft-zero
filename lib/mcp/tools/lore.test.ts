@@ -236,6 +236,32 @@ describe("lore_write", () => {
     expect(createLorebookEntryMock).not.toHaveBeenCalled()
   })
 
+  test("reads back an entry whose stored category predates the enum", async () => {
+    // Rows written before lore_write validated categories can hold anything.
+    // Validating reads against the closed set would make that data
+    // unreadable — a lore entry nobody can open, created by our own tool.
+    getLorebookEntryMock.mockImplementation(async () => ({
+      ...EXISTING,
+      id: "lore-old",
+      name: "Lara Croft",
+      category: "Character",
+      content: "A raider of tombs.",
+    }))
+    const { server, handlers } = makeFakeServer()
+    registerLoreGet(server as never, {} as never)
+    const result = await handlers.get("lore_get")!({
+      storyId: "s1",
+      id: "lore-old",
+    })
+
+    expect(result.isError).toBeUndefined()
+    expect(result.structuredContent).toMatchObject({
+      name: "Lara Croft",
+      category: "Character",
+      content: "A raider of tombs.",
+    })
+  })
+
   test("rejects a category outside the closed set", async () => {
     // The column is plain text with no CHECK constraint, so an off-union
     // value persists and then matches no chip in the lorebook UI. The schema
