@@ -5,7 +5,11 @@ import { Pencil, Square, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import type { ImageJob } from "@/hooks/use-image-generation"
-import { deleteIllustration, restoreIllustration } from "@/lib/actions/images"
+import {
+  deleteIllustration,
+  restoreIllustration,
+  selectImageById,
+} from "@/lib/actions/images"
 import { aspectRatioValue, type StoryImage } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -19,6 +23,7 @@ import { ImageCostChip } from "@/components/cost/image-cost-chip"
 import { ImageRetryButton } from "@/components/story/image-retry-button"
 import { ImagePlaceholder } from "@/components/story/image-placeholder"
 import { ImageVariantSwitcher } from "@/components/story/image-variant-switcher"
+import { TakeFilmstrip } from "@/components/images/take-filmstrip"
 
 /** A data URI for a partial's base64. Partials are never persisted, so they never get a URL. */
 function previewSrc(b64: string, mediaType: string): string {
@@ -67,21 +72,62 @@ export function ImageBlock({
 }) {
   const [isPending, startTransition] = React.useTransition()
   const [lightbox, setLightbox] = React.useState(false)
+  // Which draw the lightbox is showing, or null for "whichever is in the
+  // story". Null rather than a number seeded from imageIndex so that promoting
+  // from in here, which moves imageIndex, cannot leave the view pointing at the
+  // take the promotion just displaced.
+  const [shownTake, setShownTake] = React.useState<number | null>(null)
   // Which half of the caption is showing. Local and unremembered: it is a
   // glance at provenance, not a reading mode, and every picture asks the
   // question separately.
   const [showSentPrompt, setShowSentPrompt] = React.useState(false)
 
+  // Opening asks the question again: the lightbox is a look at the picture the
+  // story is showing, not a view that remembers where you last wandered.
+  function openLightbox() {
+    setShownTake(null)
+    setLightbox(true)
+  }
+
+  const takes = image?.takes ?? []
+  const takeIndex =
+    shownTake === null
+      ? (image?.imageIndex ?? 0)
+      : Math.min(shownTake, Math.max(takes.length - 1, 0))
+  const shownTakeId = takes[takeIndex]?.id ?? image?.id
+
   // The lightbox is a hand-rolled overlay rather than a Dialog — it has no
-  // chrome to speak of — so Escape is wired here rather than inherited.
+  // chrome to speak of — so its keys are wired here rather than inherited.
   React.useEffect(() => {
     if (!lightbox) return
+    const step = (offset: number) => {
+      const next = takeIndex + offset
+      if (next >= 0 && next < takes.length) setShownTake(next)
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setLightbox(false)
+      // Up/down is the "through this picture's draws" axis the gallery
+      // lightbox uses too. Left/right joins it here only because there is no
+      // wall to cross in the manuscript, so nothing else wants those keys.
+      else if (event.key === "ArrowDown" || event.key === "ArrowRight") step(1)
+      else if (event.key === "ArrowUp" || event.key === "ArrowLeft") step(-1)
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [lightbox])
+  }, [lightbox, takeIndex, takes.length])
+
+  function promoteShownTake() {
+    if (!image) return
+    const groupId = image.imageGroupId
+    const takeId = takes[takeIndex]?.id
+    if (!takeId) return
+    startTransition(async () => {
+      const res = await selectImageById(storyId, groupId, takeId)
+      // Silent on success: the dot moving under the thumbnail, and the picture
+      // behind the manuscript changing, are the confirmation.
+      if (!res.ok) toast.error(res.error)
+    })
+  }
 
   const aspectRatio = job?.aspectRatio ?? image?.aspectRatio ?? "16:9"
   const ratio = aspectRatioValue(aspectRatio)
@@ -175,7 +221,7 @@ export function ImageBlock({
               // fade — only the very first one does, out of the shimmer.
               job && !job.previewB64 && "opacity-0"
             )}
-            onClick={image && !job ? () => setLightbox(true) : undefined}
+            onClick={image && !job ? openLightbox : undefined}
           />
         )}
 
@@ -307,8 +353,9 @@ export function ImageBlock({
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`/api/images/${image.id}`}
-            alt={image.prompt}
+            key={shownTakeId}
+            src={`/api/images/${shownTakeId}`}
+            alt={takes[takeIndex]?.prompt ?? image.prompt}
             className="max-h-full max-w-full object-contain"
           />
           <Button
@@ -320,6 +367,22 @@ export function ImageBlock({
           >
             <X />
           </Button>
+          {/* Stops at the strip: every click on the scrim closes the lightbox,
+              and choosing a draw is the one thing in here that is not "I am
+              done looking". */}
+          <div
+            onClick={(event) => event.stopPropagation()}
+            className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 max-w-[calc(100vw-2rem)] -translate-x-1/2"
+          >
+            <TakeFilmstrip
+              takes={takes}
+              activeIndex={image.imageIndex}
+              shownIndex={takeIndex}
+              onShow={setShownTake}
+              onPromote={promoteShownTake}
+              disabled={busy || isPending}
+            />
+          </div>
         </div>
       )}
     </div>

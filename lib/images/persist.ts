@@ -11,7 +11,7 @@ import { and, eq, isNull, max } from "drizzle-orm"
 
 import { getDb } from "@/lib/db/client"
 import { nextStoryPosition } from "@/lib/db/entry-writes"
-import { toStoryImage } from "@/lib/db/mappers"
+import { toImageTake, toStoryImage } from "@/lib/db/mappers"
 import { generationCalls, storyImages } from "@/lib/db/schema"
 import { resolveImageModelId } from "@/lib/images/models"
 import { writeImage } from "@/lib/images/store"
@@ -166,12 +166,15 @@ export async function persistIllustration(input: {
 
   // count is the honest 1 for a fresh slot; on a retry the refreshed story tree
   // carries the real figure a beat later. Overstating it here would flash a
-  // switcher pointing at a take that does not exist.
+  // switcher pointing at a take that does not exist — and `takes` understates
+  // for the same reason, holding only the draw that just landed until the tree
+  // arrives with its siblings.
   return {
     ok: true,
     data: toStoryImage(row, {
       index: row.imageIndex,
       count: row.imageIndex + 1,
+      takes: [toImageTake(row)],
     }),
   }
 }

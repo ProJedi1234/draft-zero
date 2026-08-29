@@ -949,6 +949,14 @@ export interface StoryImage {
   /** How many takes the slot holds. 1 for an illustration never retried. */
   imageCount: number
   /**
+   * Every take of the slot, oldest first — the same list `imageIndex` indexes
+   * into. Carried on the manuscript's picture and not just the gallery's so the
+   * story lightbox can offer the draws too; the switcher under the picture
+   * steps one at a time because that is all a caption has room for, which is a
+   * reason to keep it, not a reason for the full-screen view to be as narrow.
+   */
+  takes: ImageTake[]
+  /**
    * The full text that went to the image model — scene and, when the writer
    * chose one, the trailing style sentence (see composeSentPrompt). This is the
    * prompt in the provenance sense: rerun it and you get this picture again,
@@ -994,11 +1002,37 @@ export interface StoryImage {
 }
 
 /**
+ * One take of a picture's slot — enough to draw a thumbnail, caption it, and
+ * promote it. A thin echo of StoryImage rather than a reuse of it: a filmstrip
+ * has no use for positions, lore provenance or cost, and the gallery would
+ * otherwise load the whole manuscript's worth of columns for every picture in
+ * the library.
+ *
+ * Shared by both lightboxes, because "choose between the draws" is one feature
+ * that happens to be reachable from two places.
+ */
+export interface ImageTake {
+  id: string
+  prompt: string
+  aspectRatio: ImageAspectRatio
+  mediaType: string
+  modelId: string
+  seed: number
+  createdAt: string
+}
+
+/**
  * One tile on the gallery's photo wall: an illustration plus just enough of its
  * story to caption and group it. Flat rather than nested under a story because
- * the wall's default order is cross-story by recency, and takes/positions are
- * the manuscript's concern — the gallery only ever shows what the manuscript
- * shows, so slot mechanics never reach it.
+ * the wall's default order is cross-story by recency.
+ *
+ * One tile is one SLOT, not one row — the top-level fields describe the active
+ * take, and `takes` carries the retries behind it. Structural rather than a
+ * filter the wall applies, so "the wall shows each picture once" cannot be lost
+ * by forgetting a predicate. The manuscript hides nothing about retries (see
+ * ImageVariantSwitcher, which is always visible for exactly that reason) and
+ * the gallery now matches it: the count badge is the wall's version of the
+ * switcher's "2 / 3".
  */
 export interface GalleryImage {
   id: string
@@ -1012,6 +1046,12 @@ export interface GalleryImage {
   /** The story's tint, so a grouped section can wear it. See Story.tintHue. */
   tintHue: number | null
   tintStrength: number
+  /** This picture's take slot — what `selectImageById` promotes within. */
+  imageGroupId: string
+  /** 0-based position of the active take in `takes`. */
+  imageIndex: number
+  /** Every take of the slot, oldest first. Length 1 for a picture never retried. */
+  takes: ImageTake[]
 }
 
 /**

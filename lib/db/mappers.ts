@@ -13,9 +13,12 @@ import type {
   AppSettings,
   EntryGeneration,
   GenerationBaseline,
+  GalleryImage,
   GenerationDefaults,
   GenerationSettings,
   HistoryState,
+  ImageAspectRatio,
+  ImageTake,
   LorebookCategory,
   LorebookEntry,
   ModelProfile,
@@ -195,6 +198,27 @@ export function toStoryEntry(
   }
 }
 
+/** The slice of a take a filmstrip renders. Shared by both lightboxes. */
+export function toImageTake(row: {
+  id: string
+  prompt: string
+  aspectRatio: ImageAspectRatio
+  mediaType: string
+  modelId: string
+  seed: number
+  createdAt: string
+}): ImageTake {
+  return {
+    id: row.id,
+    prompt: row.prompt,
+    aspectRatio: row.aspectRatio,
+    mediaType: row.mediaType,
+    modelId: row.modelId,
+    seed: row.seed,
+    createdAt: row.createdAt,
+  }
+}
+
 /**
  * `slot` is this illustration's position among its takes, resolved once in
  * `toStory` for the same reason a passage's is — it is a fact about the group,
@@ -205,7 +229,7 @@ export function toStoryEntry(
  */
 export function toStoryImage(
   row: StoryImageRow,
-  slot: { index: number; count: number },
+  slot: { index: number; count: number; takes: ImageTake[] },
   cost: ImageCost | null = null
 ): StoryImage {
   return {
@@ -214,6 +238,7 @@ export function toStoryImage(
     imageGroupId: row.imageGroupId,
     imageIndex: slot.index,
     imageCount: slot.count,
+    takes: slot.takes,
     prompt: row.prompt,
     sourcePrompt: row.sourcePrompt,
     promptLoreIds: parseLoreIdsJson(row.promptLoreIdsJson),
@@ -227,6 +252,88 @@ export function toStoryImage(
     slotUnpricedCalls: cost?.slotUnpricedCalls ?? 0,
     createdAt: row.createdAt,
   }
+}
+
+/**
+ * One row behind the gallery: an illustration's take, plus the story columns
+ * the wall captions and tints with. Spelled out rather than `StoryImageRow &
+ * …` because the gallery reads a deliberately narrow column set — the whole
+ * library's pictures come back in one query, and prompt provenance, position
+ * and cost are weight nothing on the wall uses.
+ */
+export interface GalleryImageRow {
+  id: string
+  prompt: string
+  aspectRatio: ImageAspectRatio
+  mediaType: string
+  modelId: string
+  seed: number
+  createdAt: string
+  imageGroupId: string
+  isActive: boolean
+  storyId: string
+  storyTitle: string
+  tintHue: number | null
+  tintStrength: number
+}
+
+/**
+ * Rows → one tile per slot, retries folded in behind the active take.
+ *
+ * `rows` must arrive in image_index order so `takes` comes out oldest-first;
+ * the caller's ORDER BY is what guarantees that, exactly as it does for the
+ * manuscript's slots in toStory.
+ *
+ * Slots are ordered by their FIRST take — when the picture entered the story,
+ * not when its current take was drawn. Ordering by the active take instead
+ * would make the wall move under the reader twice over: retrying an old beat
+ * would send it to the front, and so would promoting an old take from the
+ * lightbox, which is a jump caused by the very act of looking.
+ *
+ * A slot with no live active take is dropped rather than repaired. It is the
+ * same rule the manuscript applies (toStory filters on isActive), and a slot in
+ * that state is a bug upstream in the take writer — showing an arbitrary take
+ * here would hide it.
+ */
+export function toGalleryImages(rows: GalleryImageRow[]): GalleryImage[] {
+  const slots = new Map<string, GalleryImageRow[]>()
+  for (const row of rows) {
+    const slot = slots.get(row.imageGroupId)
+    if (slot) slot.push(row)
+    else slots.set(row.imageGroupId, [row])
+  }
+
+  const images: GalleryImage[] = []
+  for (const slot of slots.values()) {
+    const activeIndex = slot.findIndex((row) => row.isActive)
+    if (activeIndex === -1) continue
+    const active = slot[activeIndex]
+    images.push({
+      id: active.id,
+      prompt: active.prompt,
+      aspectRatio: active.aspectRatio,
+      mediaType: active.mediaType,
+      modelId: active.modelId,
+      createdAt: active.createdAt,
+      storyId: active.storyId,
+      storyTitle: active.storyTitle,
+      tintHue: active.tintHue,
+      tintStrength: active.tintStrength,
+      imageGroupId: active.imageGroupId,
+      imageIndex: activeIndex,
+      takes: slot.map(toImageTake),
+    })
+  }
+
+  // id breaks the tie, so two pictures drawn in the same millisecond hold a
+  // stable order across reads rather than swapping places on refresh.
+  return images.sort((a, b) => {
+    const birthA = a.takes[0]
+    const birthB = b.takes[0]
+    if (birthA.createdAt !== birthB.createdAt)
+      return birthA.createdAt < birthB.createdAt ? 1 : -1
+    return birthA.id < birthB.id ? 1 : -1
+  })
 }
 
 /** A story's own columns, which are always concrete — Custom or not. */
@@ -440,7 +547,11 @@ export function toStory(
       const slot = imageSlots.get(imageRow.imageGroupId) ?? [imageRow]
       return toStoryImage(
         imageRow,
-        { index: slot.indexOf(imageRow), count: slot.length },
+        {
+          index: slot.indexOf(imageRow),
+          count: slot.length,
+          takes: slot.map(toImageTake),
+        },
         imageCosts.get(imageRow.id) ?? null
       )
     })

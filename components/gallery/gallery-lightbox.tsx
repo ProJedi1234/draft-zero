@@ -3,7 +3,9 @@
 import * as React from "react"
 import Link from "next/link"
 import { ArrowUpRight, ChevronLeft, ChevronRight, X } from "lucide-react"
+import { toast } from "sonner"
 
+import { selectImageById } from "@/lib/actions/images"
 import { formatRelativeDate } from "@/lib/format"
 import { aspectRatioValue, type GalleryImage } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -13,6 +15,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { TakeFilmstrip } from "@/components/images/take-filmstrip"
 
 interface Rect {
   top: number
@@ -95,16 +98,36 @@ export function GalleryLightbox({
   scrollCellTo: (id: string) => void
 }) {
   const image = images[index]
-  const ratio = aspectRatioValue(image.aspectRatio)
+
+  // Which take of the current slot is on screen. Held as {slot, index} rather
+  // than a bare number so that navigating to another picture falls back to its
+  // active take with no effect and no frame of the wrong image — the slot ids
+  // simply stop matching.
+  const [shown, setShown] = React.useState<{
+    imageGroupId: string
+    takeIndex: number
+  } | null>(null)
+  const [isPromoting, startPromoting] = React.useTransition()
+
+  const takeIndex =
+    shown?.imageGroupId === image.imageGroupId
+      ? Math.min(shown.takeIndex, image.takes.length - 1)
+      : image.imageIndex
+  const take = image.takes[takeIndex] ?? image.takes[image.imageIndex]
+
+  const ratio = aspectRatioValue(take.aspectRatio)
 
   const overlayRef = React.useRef<HTMLDivElement>(null)
   const backdropRef = React.useRef<HTMLDivElement>(null)
   const figureRef = React.useRef<HTMLDivElement>(null)
   const chromeRef = React.useRef<HTMLDivElement>(null)
   const closingRef = React.useRef(false)
-  // The id the overlay opened on: its img must not run the crossfade, which
+  // The take the overlay opened on: its img must not run the crossfade, which
   // would blank the picture for the whole opening flight.
-  const [openedOn] = React.useState(image.id)
+  const [openedOn] = React.useState(take.id)
+  // Tiles are keyed by slot, not by row — a promote swaps which take a tile
+  // shows, and the flight home must still find it.
+  const homeKey = image.imageGroupId
 
   // Rect is derived, not stored: the inputs are the picture's ratio and the
   // viewport, and only the viewport needs an event to be re-read.
@@ -134,7 +157,7 @@ export function GalleryLightbox({
     if (!figure || !backdrop || !chrome) return
     overlayRef.current?.focus()
     if (prefersReducedMotion()) return
-    const from = rectFor(openedOn)
+    const from = rectFor(homeKey)
     if (from) {
       figure.animate([frame(from), frame(rect)], {
         duration: 340,
@@ -166,7 +189,7 @@ export function GalleryLightbox({
     const figure = figureRef.current
     const backdrop = backdropRef.current
     const chrome = chromeRef.current
-    const home = rectFor(image.id)
+    const home = rectFor(homeKey)
     if (!figure || !backdrop || !chrome || prefersReducedMotion()) {
       onClose()
       return
@@ -190,7 +213,7 @@ export function GalleryLightbox({
       })
     }
     flight.finished.then(onClose, onClose)
-  }, [image.id, onClose, rect, rectFor])
+  }, [homeKey, onClose, rect, rectFor])
 
   const goTo = React.useCallback(
     (next: number) => {
@@ -201,25 +224,52 @@ export function GalleryLightbox({
     [images.length, onIndexChange]
   )
 
+  const goToTake = React.useCallback(
+    (next: number) => {
+      if (closingRef.current) return
+      if (next < 0 || next >= image.takes.length) return
+      setShown({ imageGroupId: image.imageGroupId, takeIndex: next })
+    },
+    [image.imageGroupId, image.takes.length]
+  )
+
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") close()
       else if (event.key === "ArrowRight") goTo(index + 1)
       else if (event.key === "ArrowLeft") goTo(index - 1)
+      // The second axis: left/right crosses the wall, up/down goes through one
+      // picture's takes. Deliberately NOT mirrored as a vertical swipe on
+      // touch, where a drag down a full-screen photo reads as dismiss.
+      else if (event.key === "ArrowDown") goToTake(takeIndex + 1)
+      else if (event.key === "ArrowUp") goToTake(takeIndex - 1)
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [close, goTo, index])
+  }, [close, goTo, goToTake, index, takeIndex])
+
+  function promote() {
+    startPromoting(async () => {
+      const res = await selectImageById(
+        image.storyId,
+        image.imageGroupId,
+        take.id
+      )
+      // Silent on success: the check clearing and the dot moving is the
+      // confirmation, the same way the canvas's switcher says nothing.
+      if (!res.ok) toast.error(res.error)
+    })
+  }
 
   // Keep the wall's (hidden) tile for the current picture on screen, so the
   // close flight always has somewhere real to land — and warm the neighbours'
   // caches so arrow keys feel instant.
   React.useEffect(() => {
-    scrollCellTo(image.id)
+    scrollCellTo(homeKey)
     for (const neighbour of [images[index - 1], images[index + 1]]) {
       if (neighbour) new window.Image().src = `/api/images/${neighbour.id}`
     }
-  }, [image.id, images, index, scrollCellTo])
+  }, [homeKey, images, index, scrollCellTo])
 
   // Swipe navigates, a plain tap closes — split by how far the pointer moved,
   // with the decision made on pointer-up and the click that follows swallowed.
@@ -277,12 +327,12 @@ export function GalleryLightbox({
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          key={image.id}
-          src={`/api/images/${image.id}`}
-          alt={image.prompt}
+          key={take.id}
+          src={`/api/images/${take.id}`}
+          alt={take.prompt}
           className={cn(
             "h-full w-full object-cover",
-            image.id !== openedOn &&
+            take.id !== openedOn &&
               "motion-safe:animate-in motion-safe:duration-200 motion-safe:fade-in"
           )}
         />
@@ -335,35 +385,50 @@ export function GalleryLightbox({
           className="pointer-events-auto absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/35 to-transparent px-4 pt-10 pb-[max(1rem,env(safe-area-inset-bottom))]"
           onClick={stop}
         >
-          <div className="mx-auto flex max-w-3xl items-end justify-between gap-4">
-            <div className="min-w-0">
-              <p className="truncate text-sm text-white">{image.prompt}</p>
-              <p className="mt-0.5 truncate text-xs text-white/60">
-                {image.storyTitle} · {formatRelativeDate(image.createdAt)}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="text-xs text-white/60 tabular-nums">
-                {index + 1} / {images.length}
-              </span>
-              {/* The trigger IS the link, styled as a button — same shape as
+          <div className="mx-auto max-w-3xl">
+            {/* Where a retry actually becomes reachable: the wall's badge
+                says a slot has more, and this is the "more". */}
+            <TakeFilmstrip
+              takes={image.takes}
+              activeIndex={image.imageIndex}
+              shownIndex={takeIndex}
+              onShow={goToTake}
+              onPromote={promote}
+              disabled={isPromoting}
+              className="mb-3 w-fit"
+            />
+
+            <div className="flex items-end justify-between gap-4">
+              <div className="min-w-0">
+                <p className="truncate text-sm text-white">{take.prompt}</p>
+                <p className="mt-0.5 truncate text-xs text-white/60">
+                  {image.storyTitle} · {formatRelativeDate(take.createdAt)}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-xs text-white/60 tabular-nums">
+                  {index + 1} / {images.length}
+                </span>
+                {/* The trigger IS the link, styled as a button — same shape as
                   the story header's lorebook link, and for the same reason:
                   Base UI's Button insists on a native <button>, which an <a>
                   is not. */}
-              <Tooltip>
-                <TooltipTrigger
-                  className={buttonVariants({
-                    variant: "ghost",
-                    size: "icon-sm",
-                    className: "text-white hover:bg-white/10 hover:text-white",
-                  })}
-                  aria-label="Open story"
-                  render={<Link href={`/story/${image.storyId}`} />}
-                >
-                  <ArrowUpRight />
-                </TooltipTrigger>
-                <TooltipContent>Open story</TooltipContent>
-              </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    className={buttonVariants({
+                      variant: "ghost",
+                      size: "icon-sm",
+                      className:
+                        "text-white hover:bg-white/10 hover:text-white",
+                    })}
+                    aria-label="Open story"
+                    render={<Link href={`/story/${image.storyId}`} />}
+                  >
+                    <ArrowUpRight />
+                  </TooltipTrigger>
+                  <TooltipContent>Open story</TooltipContent>
+                </Tooltip>
+              </div>
             </div>
           </div>
         </div>

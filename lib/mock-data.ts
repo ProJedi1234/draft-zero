@@ -4,6 +4,7 @@
 import { DEFAULT_CONTEXT_WINDOW, DEFAULT_LORE_BUDGET } from "./types"
 import type {
   GenerationSettings,
+  ImageAspectRatio,
   LorebookCategory,
   LorebookEntry,
   ModelEndpoint,
@@ -1159,3 +1160,155 @@ export function getLorebookEntriesByCategory(
   if (category === "all") return MOCK_LOREBOOK_ENTRIES
   return MOCK_LOREBOOK_ENTRIES.filter((e) => e.category === category)
 }
+
+/**
+ * A seeded illustration: one SLOT, with a seed per take.
+ *
+ * Seeds rather than bytes, because the offline mock draws from a seed and the
+ * pixels are reproducible from it — checking a dozen SVGs into the repo would
+ * be checking in a cache. The seed script renders them at seed time.
+ *
+ * `activeTake` is spelled out rather than defaulting to the last one for the
+ * sake of the case that actually needs looking at: a writer who retried twice
+ * and then went back to an earlier draw. That slot is the reason the gallery
+ * shows stacks at all, and a fixture set where the newest take is always the
+ * live one would never produce it.
+ */
+export interface MockIllustration {
+  storyId: string
+  /** Shares the story's position sequence with its passages. */
+  position: number
+  imageGroupId: string
+  prompt: string
+  /** The writer's brief, or null for a verbatim send. */
+  sourcePrompt: string | null
+  aspectRatio: ImageAspectRatio
+  modelId: string
+  /** One per take, oldest first. Length 1 for a picture never retried. */
+  seeds: number[]
+  /** Index into `seeds` of the take the manuscript shows. */
+  activeTake: number
+  /** Of the first take; later takes are minted a few minutes apart. */
+  createdAt: string
+}
+
+/**
+ * Illustrations for the fixture stories — the gallery's equivalent of
+ * MOCK_STORIES, and the only way a fresh clone has a photo wall to look at.
+ *
+ * Deliberately uneven: five of the eight slots have been retried and three have
+ * not, the retry counts run 2–4, and all three aspect ratios appear so the
+ * lightbox's rect morph has something to morph between. A fixture set where
+ * every picture were the same shape and every slot a single take would let a
+ * wall that quietly dropped retries look completely correct.
+ */
+export const MOCK_ILLUSTRATIONS: MockIllustration[] = [
+  {
+    storyId: "story-cartographer",
+    position: 3,
+    imageGroupId: "img-slot-graywater",
+    prompt:
+      "The drowned quarter of Graywater at low tide, rooftops breaking a flat brown river, survey stakes leaning in the silt. Overcast, muted, no figures.",
+    sourcePrompt: "the drowned quarter at low tide",
+    aspectRatio: "16:9",
+    modelId: "~openai/gpt-image-1",
+    // Three draws and the middle one kept: the writer went back. The tile that
+    // makes the stack worth building.
+    seeds: [10471, 10472, 10473],
+    activeTake: 1,
+    createdAt: "2026-08-09T18:04:00Z",
+  },
+  {
+    storyId: "story-cartographer",
+    position: 9,
+    imageGroupId: "img-slot-needle",
+    prompt:
+      "A brass surveyor's needle on dark oiled cloth, close, lamplit, the tip bent very slightly toward the viewer.",
+    sourcePrompt: "close on the bent needle, lamplight",
+    aspectRatio: "1:1",
+    modelId: "~black-forest-labs/flux-1.1-pro",
+    seeds: [22890],
+    activeTake: 0,
+    createdAt: "2026-08-09T20:41:00Z",
+  },
+  {
+    storyId: "story-static",
+    position: 5,
+    imageGroupId: "img-slot-relay",
+    prompt:
+      "A dead relay station tumbling against a starfield, one panel still lit, long shadows across its hull.",
+    sourcePrompt: null,
+    aspectRatio: "16:9",
+    modelId: "~openai/gpt-image-1",
+    seeds: [33110, 33111],
+    activeTake: 1,
+    createdAt: "2026-08-11T09:12:00Z",
+  },
+  {
+    storyId: "story-lighthouse",
+    position: 1,
+    imageGroupId: "img-slot-wren",
+    prompt:
+      "The lighthouse at Wren Point from the water at dusk, its beam just lit, rain coming in from the left.",
+    sourcePrompt: "wren point from the water, dusk, beam just lit",
+    aspectRatio: "9:16",
+    modelId: "~black-forest-labs/flux-1.1-pro",
+    // Four draws — enough that stepping one at a time is visibly the wrong
+    // control, which is the argument the filmstrip is making.
+    seeds: [41200, 41201, 41202, 41203],
+    activeTake: 3,
+    createdAt: "2026-08-14T17:55:00Z",
+  },
+  {
+    storyId: "story-lighthouse",
+    position: 5,
+    imageGroupId: "img-slot-keeper",
+    prompt:
+      "A keeper's logbook open on a table, salt-stained pages, a column of dates with the last three left blank.",
+    sourcePrompt: "the logbook, last three dates blank",
+    aspectRatio: "1:1",
+    modelId: "~openai/gpt-image-1",
+    seeds: [52640],
+    activeTake: 0,
+    createdAt: "2026-08-15T08:20:00Z",
+  },
+  {
+    storyId: "story-meridian",
+    position: 3,
+    imageGroupId: "img-slot-hollowdeck",
+    prompt:
+      "The hollow deck seen down its long axis, emergency lighting only, cargo webbing hanging loose in the dark.",
+    sourcePrompt: "down the length of the hollow deck, emergency lighting",
+    aspectRatio: "16:9",
+    modelId: "~google/imagen-4",
+    seeds: [61300, 61301],
+    activeTake: 0,
+    createdAt: "2026-08-19T14:02:00Z",
+  },
+  {
+    storyId: "story-meridian",
+    position: 7,
+    imageGroupId: "img-slot-signal",
+    prompt:
+      "An oscilloscope trace of a repeating signal, green on black, the repeat visibly imperfect.",
+    sourcePrompt: null,
+    aspectRatio: "1:1",
+    modelId: "~google/imagen-4",
+    seeds: [70450],
+    activeTake: 0,
+    createdAt: "2026-08-19T15:37:00Z",
+  },
+  {
+    storyId: "story-meridian",
+    position: 11,
+    imageGroupId: "img-slot-airlock",
+    prompt:
+      "An inner airlock door with frost creeping across the window from the far side, harsh side light.",
+    sourcePrompt: "frost on the airlock window, from the far side",
+    aspectRatio: "9:16",
+    modelId: "~black-forest-labs/flux-1.1-pro",
+    seeds: [88010, 88011, 88012],
+    activeTake: 2,
+    createdAt: "2026-08-20T11:26:00Z",
+  },
+]
