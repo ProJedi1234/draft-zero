@@ -38,7 +38,10 @@ import type {
 import { CHARS_PER_TOKEN } from "@/lib/generation/context"
 import { resolveGenerationSettings } from "@/lib/generation/resolve"
 
-import { getDb, type DrizzleDb } from "./client"
+import type { StoryRecord } from "@/lib/store/records"
+import { toStoryRecord } from "@/lib/store/records"
+
+import { getDb, type DrizzleDb, type DrizzleTx } from "./client"
 import { readHistoryState } from "./journal"
 import type {
   EntryCost,
@@ -156,6 +159,71 @@ export async function listStoriesWithCounts(): Promise<StorySummary[]> {
     .groupBy(stories.id)
     .orderBy(desc(stories.updatedAt))
   return rows.map((row) => toStorySummary(row.story, Number(row.wordCount)))
+}
+
+/** Either handle — the snapshot route reads both story queries in one txn. */
+type Handle = DrizzleDb | DrizzleTx
+
+/** One story as the client store holds it, with its version. */
+export interface StoryRecordRow {
+  id: string
+  version: string
+  row: StoryRecord
+}
+
+/**
+ * The client store's read of the library: the same rows and word-count
+ * aggregate listStoriesWithCounts assembles, narrowed to one story or to what
+ * has moved since a version the caller already holds.
+ *
+ * The narrowing is the point. The unfiltered aggregate scans every manuscript,
+ * which is fine at boot and wrong on every phone wake — a `since` delta runs it
+ * over the handful of stories that actually changed.
+ */
+export async function listStoryRecords(
+  options: { storyId?: string; since?: string; tx?: Handle } = {}
+): Promise<StoryRecordRow[]> {
+  const db = options.tx ?? (await getDb())
+  const where = options.storyId
+    ? eq(stories.id, options.storyId)
+    : options.since !== undefined
+      ? gt(stories.updatedAt, options.since)
+      : undefined
+  const rows = await db
+    .select({ story: stories, wordCount: entryWordCount })
+    .from(stories)
+    .leftJoin(
+      storyEntries,
+      and(
+        eq(storyEntries.storyId, stories.id),
+        isNull(storyEntries.deletedAt),
+        eq(storyEntries.isActive, true)
+      )
+    )
+    .where(where)
+    .groupBy(stories.id)
+    .orderBy(desc(stories.updatedAt))
+  return rows.map((row) => ({
+    id: row.story.id,
+    version: row.story.updatedAt,
+    row: toStoryRecord(row.story, Number(row.wordCount)),
+  }))
+}
+
+/**
+ * Every live story's id and version, and nothing else — the ground truth a
+ * delta snapshot's deletion sweep is decided against. A single-table scan, on
+ * purpose: it has to cover the whole library, so it must not carry the word
+ * count aggregate with it.
+ */
+export async function listStoryIdVersions(
+  tx?: Handle
+): Promise<Array<{ id: string; version: string }>> {
+  const db = tx ?? (await getDb())
+  const rows = await db
+    .select({ id: stories.id, version: stories.updatedAt })
+    .from(stories)
+  return rows
 }
 
 /**

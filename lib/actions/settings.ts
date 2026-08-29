@@ -167,7 +167,7 @@ export async function updateAppSettings(
     await db.update(appSettings).set(values).where(eq(appSettings.id, 1))
   }
 
-  commitChange(null)
+  commitChange(null, ["app-settings"])
   return { ok: true, data: null }
 }
 
@@ -214,7 +214,7 @@ export async function updateGenerationDefaults(
 
   // Null, not a story id: the defaults reach every profile, so every device —
   // including ones sitting on a story whose profile inherits — has to hear it.
-  commitChange(null)
+  commitChange(null, ["app-settings"])
   return { ok: true, data: null }
 }
 

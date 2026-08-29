@@ -173,7 +173,8 @@ export async function importScenario(input: {
   })
 
   // Library-level, same as createStory: an import is a new story with no
-  // viewers yet, announced to the library rather than to a story.
+  // viewers yet, announced to the library rather than to a story. No
+  // `entities` hint — it creates a story, so the full catch-up is correct.
   commitChange(null)
   return {
     ok: true,

@@ -17,7 +17,33 @@ export const runtime = "nodejs"
 function toWire(event: BusEvent): SyncWireEvent {
   switch (event.kind) {
     case "change":
-      return { type: "change", storyId: event.storyId }
+      return {
+        type: "change",
+        storyId: event.storyId,
+        ...(event.covered ? { covered: event.covered } : {}),
+        ...(event.entities ? { entities: event.entities } : {}),
+      }
+    case "entity":
+      return event.op === "upsert"
+        ? {
+            type: "entity",
+            op: "upsert",
+            entity: event.entity,
+            id: event.id,
+            storyId: event.storyId,
+            version: event.version,
+            origin: event.origin,
+            data: event.data,
+          }
+        : {
+            type: "entity",
+            op: "delete",
+            entity: event.entity,
+            id: event.id,
+            storyId: event.storyId,
+            version: event.version,
+            origin: event.origin,
+          }
     case "run-started":
       return {
         type: "run-started",

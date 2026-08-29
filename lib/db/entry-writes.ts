@@ -15,6 +15,7 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm"
 import type { DrizzleDb, DrizzleTx } from "@/lib/db/client"
 import { getDb } from "@/lib/db/client"
 import { recordOp } from "@/lib/db/journal"
+import { storyVersionBump } from "@/lib/db/story-version"
 import { slotProfilesMixed, toStoryEntry } from "@/lib/db/mappers"
 import type { StoryEntryRow } from "@/lib/db/schema"
 import {
@@ -59,7 +60,8 @@ export async function storyExists(
 export async function touchStoryRow(db: Handle, storyId: string, now: string) {
   await db
     .update(stories)
-    .set({ updatedAt: now })
+    // Monotone so the store's LWW never sees updated_at walk backwards.
+    .set({ updatedAt: storyVersionBump(now) })
     .where(eq(stories.id, storyId))
 }
 

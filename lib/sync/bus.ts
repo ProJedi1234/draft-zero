@@ -11,11 +11,49 @@
 // route) forward them to clients, and clients respond with router.refresh() —
 // the refetch is the sync, so the bus never has to serialize story state.
 
+import type { EntityKind, EntityRecordMap } from "@/lib/store/records"
 import type { AtmospherePhase, RunEndStatus } from "@/lib/sync/types"
 import type { ComposerMode } from "@/lib/types"
 
 export type BusEvent =
-  | { kind: "change"; storyId: string | null }
+  /**
+   * See SyncWireEvent's `change`: `covered` says an `entity` event on the same
+   * tick already carries this write's payload, `entities` names the kinds an
+   * uncovered write touched.
+   */
+  | {
+      kind: "change"
+      storyId: string | null
+      covered?: true
+      entities?: EntityKind[]
+    }
+  /**
+   * A row moved, with the row. The third payload-carrying event, and the
+   * general form of what `draft` and `atmosphere` do for one field each: the
+   * bus serializes the state instead of asking every device to go and read it.
+   * `data` is a full row and is present on upserts only — a delete has nothing
+   * to carry but its version. See SyncWireEvent's EntityUpsertEvent.
+   */
+  | {
+      kind: "entity"
+      op: "upsert"
+      entity: EntityKind
+      id: string
+      storyId: string | null
+      version: string
+      origin: string | null
+      data: EntityRecordMap[EntityKind]
+    }
+  | {
+      kind: "entity"
+      op: "delete"
+      entity: EntityKind
+      id: string
+      storyId: string | null
+      version: string
+      origin: string | null
+      data?: undefined
+    }
   | { kind: "run-started"; storyId: string; runId: string }
   /** An illustration began — the image channel's run-started. See SyncWireEvent. */
   | { kind: "image-run-started"; storyId: string; runId: string }
