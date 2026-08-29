@@ -1,22 +1,7 @@
 import type { Metadata } from "next"
-import { notFound } from "next/navigation"
 
-import { StoryWorkspace } from "@/components/story/story-workspace"
-import { getStoryCostProfile } from "@/lib/db/cost-queries"
-import {
-  getAppSettings,
-  getComposerDraft,
-  getStory,
-  getStoryTitle,
-  listLorebookEntries,
-  listModelProfiles,
-} from "@/lib/db/queries"
-import { listModels } from "@/lib/generation/models"
-import {
-  getImageModelPrice,
-  listImageModels,
-  resolveImageModelId,
-} from "@/lib/images/models"
+import { StoryWorkspaceLoader } from "@/components/story/story-workspace-loader"
+import { getStoryTitle } from "@/lib/db/queries"
 
 type StoryPageProps = {
   params: Promise<{ storyId: string }>
@@ -36,81 +21,42 @@ export async function generateMetadata({
   }
 }
 
+/**
+ * Deliberately empty of data. The workspace's props used to be read here, which
+ * meant every switch between two stories waited on eight queries before the
+ * screen could change; they are fetched by the shell now, against a cache that
+ * usually already holds them.
+ *
+ * `revision` is the one thing this render contributes. Every router.refresh()
+ * in the app — a generation settling, undo/redo, a lorebook write, a sync
+ * `change` from another device — re-renders this route, and a value that
+ * differs each time is what tells the shell to re-read the payload. That keeps
+ * every existing refresh path working without teaching each of them about the
+ * fetch that replaced their props.
+ *
+ * No key on the loader: the workspace keys its own editor subtree by story id,
+ * so per-story state resets while the writer's UI preferences (inspector
+ * visibility) survive navigation.
+ */
 export default async function StoryPage({ params }: StoryPageProps) {
   const { storyId } = await params
-  // Cost is read here rather than fetched by the header on open: the ledger is
-  // behind a deliberate click, and a panel that answers "how much have I spent"
-  // with a skeleton has wasted the gesture. revalidatePath after every entry
-  // mutation keeps these figures honest without a client fetch.
-  //
-  // Story-scoped only. The global summary used to be fetched alongside it, for
-  // the second half of one hover line: an unscoped aggregate over the entire
-  // ledger — the one cost query no index can serve — on every story open, for a
-  // figure most opens never reveal. The global "where am I" figures live on
-  // /usage, which the ledger links to.
-  //
-  // getAppSettings first, and alone: it lazily seeds the "Default" profile, so
-  // a list read in parallel with it can come back empty on a fresh database.
-  const settings = await getAppSettings()
-  // The whole profile list, not just the followed one: the switcher is a menu,
-  // and there are a handful of these rows at most (see the UX doc) — a second
-  // round trip when the writer opens it would be the expensive option.
-  const [
-    story,
-    composerDraft,
-    lorebookEntries,
-    models,
-    imageModels,
-    costProfile,
-    profiles,
-  ] = await Promise.all([
-    getStory(storyId),
-    // The unsent composer text, seeding the editor's live draft state. Only
-    // the mount ever reads it — after that the `draft` bus events are the
-    // channel — so a refetch delivering a newer row changes nothing.
-    getComposerDraft(storyId),
-    listLorebookEntries(storyId),
-    listModels(),
-    // Cached an hour in-process like the text catalog, so this is a lookup
-    // rather than a round trip on most requests.
-    listImageModels(),
-    getStoryCostProfile(storyId),
-    listModelProfiles(),
-  ])
 
-  if (!story) {
-    notFound()
-  }
-
-  // One request, for the selected model only, and cached an hour — the image
-  // catalog's list endpoint carries no pricing at all, so pricing every row
-  // would be one round trip per row to fill a select nobody has opened.
-  // What a null story choice resolves to, passed down so the picker's
-  // "Default" row can name it without re-deriving the server's answer.
-  const defaultImageModelId = await resolveImageModelId(
-    null,
-    story.settings.zdr
-  )
-  const imageModelPrice = await getImageModelPrice(
-    story.imageModelId ?? defaultImageModelId
-  )
-
-  // No key here: the workspace keys its own editor subtree by story id, so
-  // per-story state resets while the writer's UI preferences (inspector
-  // visibility) survive navigation.
   return (
-    <StoryWorkspace
-      story={story}
-      composerDraft={composerDraft}
-      lorebookEntries={lorebookEntries}
-      models={models}
-      imageModels={imageModels}
-      imageModelPrice={imageModelPrice}
-      defaultImageModelId={defaultImageModelId}
-      costProfile={costProfile}
-      profiles={profiles}
-      defaultProfileId={settings.defaultProfileId}
-      requireZdr={settings.requireZdr}
+    <StoryWorkspaceLoader
+      storyId={storyId}
+      revision={await serverRenderToken()}
     />
   )
+}
+
+/**
+ * A value that differs on every server render, which is the entire signal.
+ *
+ * Outside the component on purpose: read inline it trips react-hooks/purity,
+ * a rule about client components re-rendering unpredictably. This route only
+ * ever runs on the server, where "a new value per render" is the requirement
+ * rather than the bug.
+ */
+async function serverRenderToken(): Promise<string> {
+  return `${Date.now()}`
 }
