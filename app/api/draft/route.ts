@@ -25,10 +25,7 @@
 import { eq } from "drizzle-orm"
 
 import { getDb } from "@/lib/db/client"
-import {
-  parseExcludedLoreJson,
-  serializeExcludedLoreIds,
-} from "@/lib/db/mappers"
+import { parseLoreIdsJson, serializeExcludedLoreIds } from "@/lib/db/mappers"
 import { composerDrafts } from "@/lib/db/schema"
 import { publishBus } from "@/lib/sync/bus"
 import { isExcludedLoreIds } from "@/lib/sync/draft"
@@ -185,7 +182,7 @@ export async function GET(req: Request): Promise<Response> {
     imagePrompt: row.imagePrompt,
     imageAssisted: row.imageAssisted,
     imageStyle: row.imageStyle,
-    imageExcludedLoreIds: parseExcludedLoreJson(row.imageExcludedLoreJson),
+    imageExcludedLoreIds: parseLoreIdsJson(row.imageExcludedLoreJson),
     version: row.updatedAt,
   })
 }

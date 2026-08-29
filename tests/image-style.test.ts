@@ -67,4 +67,25 @@ describe("splitSentPrompt", () => {
     const prompt = "A poster reading Style: yours. Two figures beneath it"
     expect(splitSentPrompt(prompt).scene).toBe(prompt)
   })
+
+  test("a custom style with a period inside stays embedded, once", () => {
+    // The clause cannot be peeled — the pattern stops at the first period —
+    // so the whole string comes back as scene with no style. What MUST hold
+    // is the second half of the bargain: re-composing the split result
+    // reproduces the prompt byte for byte, so an edit-and-redraw cycle can
+    // never append the style a second time.
+    const sent = composeSentPrompt("A door.", "in the style of H.R. Giger")
+    expect(sent).toBe("A door. Style: in the style of H.R. Giger.")
+    const split = splitSentPrompt(sent)
+    expect(split).toEqual({ scene: sent, style: null })
+    expect(composeSentPrompt(split.scene, split.style)).toBe(sent)
+  })
+
+  test("compose after split is idempotent for every preset too", () => {
+    for (const preset of IMAGE_STYLE_PRESETS) {
+      const sent = composeSentPrompt("A door in the rain.", preset.text)
+      const split = splitSentPrompt(sent)
+      expect(composeSentPrompt(split.scene, split.style)).toBe(sent)
+    }
+  })
 })

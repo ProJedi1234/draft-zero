@@ -63,12 +63,13 @@ export function serializeKeys(keys: string[]): string {
 }
 
 /**
- * The draft row's muted-chip column, back into an array. Tolerant like
- * parsePromptLoreIds below: a mute is a preference for one send, so a column
- * that somehow holds nonsense costs the writer a second tap rather than an
- * error.
+ * A JSON column of lore ids, back into an array. Shared by the draft row's
+ * muted chips and a picture's prompt provenance, which store the same shape.
+ * Tolerant on purpose: both are decoration on rows that render fine without
+ * them, so a column that somehow holds nonsense costs a chip or a caption
+ * detail rather than an error.
  */
-export function parseExcludedLoreJson(json: string | null): string[] {
+export function parseLoreIdsJson(json: string | null): string[] {
   if (json === null || json === "") return []
   try {
     const parsed: unknown = JSON.parse(json)
@@ -195,23 +196,6 @@ export function toStoryEntry(
 }
 
 /**
- * The lore ids column, back into an array. Tolerant on purpose: this is
- * provenance on a picture that renders fine without it, so a column that
- * somehow holds something other than a JSON array of strings costs the caption
- * a detail rather than costing the manuscript a figure.
- */
-function parsePromptLoreIds(json: string | null): string[] {
-  if (json === null || json === "") return []
-  try {
-    const parsed: unknown = JSON.parse(json)
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((id): id is string => typeof id === "string")
-  } catch {
-    return []
-  }
-}
-
-/**
  * `slot` is this illustration's position among its takes, resolved once in
  * `toStory` for the same reason a passage's is — it is a fact about the group,
  * not about the row.
@@ -232,7 +216,7 @@ export function toStoryImage(
     imageCount: slot.count,
     prompt: row.prompt,
     sourcePrompt: row.sourcePrompt,
-    promptLoreIds: parsePromptLoreIds(row.promptLoreIdsJson),
+    promptLoreIds: parseLoreIdsJson(row.promptLoreIdsJson),
     modelId: row.modelId,
     aspectRatio: row.aspectRatio,
     seed: row.seed,

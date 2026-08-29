@@ -81,6 +81,14 @@ const MODES = [
 /** The image mode's placeholder when assistance is off — nothing expands it. */
 const VERBATIM_PLACEHOLDER = "Describe the image…"
 
+/**
+ * One string for one mute set, so "same mutes?" is an equality check. Order
+ * and duplicates are presentation noise, not different questions.
+ */
+function loreMuteKey(ids: Iterable<string>): string {
+  return [...new Set(ids)].sort().join("\n")
+}
+
 /** The icon rotation that shows a frame's shape rather than naming it. */
 const ASPECT_ICON_ROTATION: Record<ImageAspectRatio, string> = {
   "16:9": "",
@@ -107,6 +115,8 @@ export function Composer({
   onToggleLore,
   deriving,
   derivedBrief,
+  derivedExcludedLoreIds,
+  markDevelopedRef,
   onDevelop,
   onGenerateImage,
   imageBusy,
@@ -174,6 +184,19 @@ export function Composer({
    * to its own empty textarea would mark a perfectly fresh lane stale.
    */
   derivedBrief: string | null
+  /**
+   * The mutes that brief was asked under, or null before any run — the other
+   * half of the question the lane answers, read at the same falling edge.
+   */
+  derivedExcludedLoreIds: string[] | null
+  /**
+   * The workspace's bridge into the staleness mark: restoring a picture's
+   * brief/prompt pair calls through with the restored brief (null to clear) so
+   * the already-paid-for lane offers Draw instead of a second develop.
+   */
+  markDevelopedRef: {
+    current: ((developedForBrief: string | null) => void) | null
+  }
   /**
    * Expands the brief into the lane, or — with an empty brief — derives from
    * where the story is now. A real, billed call either way, which is why it is
@@ -261,17 +284,26 @@ export function Composer({
     onModeChange(MODES[(index + 1) % MODES.length].value)
   }, [mode, onModeChange])
 
-  // Which brief the lane on screen was developed FROM. Editing the brief past
+  // The question the lane on screen is an answer TO: the brief it was
+  // developed from and the mutes it was developed under. Editing either past
   // that point makes the lane an answer to a question nobody is asking any
   // more, and the second ↵ has to re-develop rather than draw — silently
   // drawing the old prompt is the one outcome the writer cannot undo cheaply.
+  // The mutes are half of that question: a chip tapped off after the develop
+  // changes nothing about the lane's text, and drawing it anyway would ship
+  // the muted entry under provenance that says it was left out.
   //
-  // Seeded from the brief at mount (the editor is keyed per story, so mount IS
+  // Seeded from the pair at mount (the editor is keyed per story, so mount IS
   // story open) because a persisted pair is taken as consistent: the writer
   // left them together, and greeting them with "stale" on every reload would
   // make the word meaningless.
-  const [developedFor, setDevelopedFor] = React.useState(() =>
-    imagePrompt !== null ? value.trim() : null
+  const [developedFor, setDevelopedFor] = React.useState<{
+    brief: string
+    muteKey: string
+  } | null>(() =>
+    imagePrompt !== null
+      ? { brief: value.trim(), muteKey: loreMuteKey(excludedLoreIds) }
+      : null
   )
   const [announceLane, setAnnounceLane] = React.useState(false)
   // Whether the folded rider chips are shown. Session-local and unremembered:
@@ -285,23 +317,45 @@ export function Composer({
     // The stream finishing is the only moment the lane becomes authoritative.
     // Falling edge rather than a callback so a develop started on this device,
     // one started on another, and one that failed mid-stream all settle
-    // through the same path.
-    //
-    // Dated by the run's OWN brief. Reading `value` here was right while the
-    // develop was this device's private call — it could only ever be the text
-    // in the box beside it — and is wrong now: a device that attached to
-    // somebody else's develop may hold a draft that has not caught up, and
-    // would mark the arriving lane stale against a brief nobody asked.
+    // through the same path. Dated by the run's own question, not this
+    // device's: a device that attached to somebody else's develop may hold a
+    // draft that has not caught up, and would mark the arriving lane stale
+    // against a brief nobody asked.
     if (wasDeriving.current && !deriving) {
-      setDevelopedFor(derivedBrief ?? value.trim())
+      setDevelopedFor({
+        brief: derivedBrief ?? value.trim(),
+        muteKey: loreMuteKey(derivedExcludedLoreIds ?? excludedLoreIds),
+      })
       setAnnounceLane(true)
     }
     wasDeriving.current = deriving
-  }, [deriving, derivedBrief, value])
+  }, [deriving, derivedBrief, derivedExcludedLoreIds, excludedLoreIds, value])
+  // The restore bridge (see the prop). Dated under the CURRENT mutes: the
+  // restore does not touch them, and the pair being handed back is consistent
+  // with whatever is muted right now by definition — it was drawn, not asked.
+  const markDeveloped = React.useCallback(
+    (developedForBrief: string | null) => {
+      setDevelopedFor(
+        developedForBrief === null
+          ? null
+          : { brief: developedForBrief, muteKey: loreMuteKey(excludedLoreIds) }
+      )
+    },
+    [excludedLoreIds]
+  )
+  React.useEffect(() => {
+    markDevelopedRef.current = markDeveloped
+    return () => {
+      markDevelopedRef.current = null
+    }
+  }, [markDevelopedRef, markDeveloped])
 
   const brief = value.trim()
   const lane = imagePrompt?.trim() ?? ""
-  const laneStale = developedFor !== null && developedFor !== brief
+  const laneStale =
+    developedFor !== null &&
+    (developedFor.brief !== brief ||
+      developedFor.muteKey !== loreMuteKey(excludedLoreIds))
   const laneReady = imageAssisted && lane !== "" && !laneStale && !deriving
   // The lane is on screen from the instant a develop starts, so the first
   // streamed word arrives into a box that already exists rather than shoving
@@ -587,8 +641,14 @@ export function Composer({
                           aria-label={`${match.entry.name} — ${
                             muted ? "left out of" : "included in"
                           } this prompt`}
+                          // Locked with the rest of the image controls while a
+                          // develop streams: a mute mid-run publishes a draft
+                          // whose lane is still the pre-develop value, and that
+                          // save would race the run's own write of the row.
+                          disabled={deriving}
                           onClick={() => onToggleLore(match.entry.id)}
                           className={cn(
+                            "disabled:pointer-events-none disabled:opacity-50",
                             // h-7 is the smallest comfortable thumb target that
                             // does not turn a row of names into a row of pills.
                             "inline-flex h-7 max-w-52 items-center truncate border px-2 text-[0.6875rem] tracking-wide uppercase transition-colors",

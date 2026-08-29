@@ -133,6 +133,13 @@ export interface DeriveRunFrame {
   storyId: string
   /** The writer's brief, or "" for the older gesture: describe the story now. */
   brief: string
+  /**
+   * The chips muted when the run launched — the brief's other half, carried
+   * for the same reason the brief is: the lane answers (brief, mutes), and a
+   * device dating the lane against its own current mutes would mark it fresh
+   * for a question the run was never asked.
+   */
+  excludedLoreIds: string[]
   /** The prompt so far, compressed the way RunFrame compresses prose. */
   text: string
 }

@@ -320,6 +320,15 @@ export function useImagePromptDerivation(
      */
     onText: (textSoFar: string) => void
     /**
+     * The run ended with a settled prompt — already persisted and announced by
+     * the run itself. Unlike onText this is the moment the lane's PUBLISHED
+     * value must catch up too: the run's own `draft` event loses to any save
+     * of ours still in flight (shouldAdoptDraft), and a device left holding a
+     * pre-develop published value would clobber the settled prompt with it on
+     * its next publish.
+     */
+    onSettle: (text: string) => void
+    /**
      * The run ended with nothing to show — an error, or a story deleted under
      * it. Fold the lane away. `persist` is true only on the device that
      * launched: the fold is a state worth writing down once, and N devices
@@ -335,6 +344,11 @@ export function useImagePromptDerivation(
   // question that was actually asked. Deliberately NOT cleared on end: the
   // composer reads it on the falling edge of `deriving`, which is that moment.
   const [derivedBrief, setDerivedBrief] = React.useState<string | null>(null)
+  // The mutes that brief was asked under — the same falling-edge read, so the
+  // composer dates its lane by the run's whole question, not half of it.
+  const [derivedExcludedLoreIds, setDerivedExcludedLoreIds] = React.useState<
+    string[] | null
+  >(null)
   const abortRef = React.useRef<AbortController | null>(null)
   /** True while THIS device is the one that launched the run being watched. */
   const launchedRef = React.useRef(false)
@@ -397,6 +411,7 @@ export function useImagePromptDerivation(
               watchedRunIdRef.current = event.runId
               text = event.text
               setDerivedBrief(event.brief)
+              setDerivedExcludedLoreIds(event.excludedLoreIds)
               setDeriving(true)
               // The snapshot, not a delta: an attacher lands in the middle of
               // a sentence and gets all of it at once.
@@ -417,7 +432,7 @@ export function useImagePromptDerivation(
               // device accumulated — a socket that dropped and re-attached
               // could have missed increments the snapshot then replaced.
               if (event.status === "ok" && event.text !== "") {
-                optionsRef.current.onText(event.text)
+                optionsRef.current.onSettle(event.text)
               } else {
                 optionsRef.current.onDiscard({ persist: launched })
               }
@@ -465,6 +480,7 @@ export function useImagePromptDerivation(
       // optimistically. Cleared below if the launch is refused.
       launchedRef.current = true
       setDerivedBrief(input.brief)
+      setDerivedExcludedLoreIds(input.excludedLoreIds)
       setDeriving(true)
       optionsRef.current.onText("")
 
@@ -483,14 +499,23 @@ export function useImagePromptDerivation(
           error?: string
         } | null
         if (!res.ok || !body?.runId) {
-          toast.error(body?.error ?? "Couldn't write a prompt for this scene.")
           launchedRef.current = false
-          setDeriving(false)
-          // Persisted, unlike an attached device's fold: this tap is the only
-          // reason the lane opened at all, and nothing was launched to close
-          // it. Leaving it local would show an empty lane over a row that
-          // still holds the last developed prompt.
-          optionsRef.current.onDiscard({ persist: true })
+          // A refusal can mean we lost the launch race to another device, and
+          // its derive-run-started may already have attached us to the run we
+          // lost to. That watch owns the lane now — unlocking and folding here
+          // would discard a live develop mid-stream and publish the fold over
+          // its row.
+          if (watchedRunIdRef.current === null) {
+            toast.error(
+              body?.error ?? "Couldn't write a prompt for this scene."
+            )
+            setDeriving(false)
+            // Persisted, unlike an attached device's fold: this tap is the only
+            // reason the lane opened at all, and nothing was launched to close
+            // it. Leaving it local would show an empty lane over a row that
+            // still holds the last developed prompt.
+            optionsRef.current.onDiscard({ persist: true })
+          }
           return
         }
         // The bus echo of our own launch may have beaten this reply and
@@ -498,10 +523,14 @@ export function useImagePromptDerivation(
         // identical one.
         if (watchedRunIdRef.current !== body.runId) void watch(body.runId)
       } catch {
-        toast.error("Couldn't write a prompt for this scene.")
         launchedRef.current = false
-        setDeriving(false)
-        optionsRef.current.onDiscard({ persist: true })
+        // Same guard as the refusal above: a network error on the launch call
+        // does not mean nothing is running.
+        if (watchedRunIdRef.current === null) {
+          toast.error("Couldn't write a prompt for this scene.")
+          setDeriving(false)
+          optionsRef.current.onDiscard({ persist: true })
+        }
       }
     },
     [storyId, watch]
@@ -526,5 +555,5 @@ export function useImagePromptDerivation(
     attach(null)
   }, [attach])
 
-  return { deriving, derivedBrief, develop, attach }
+  return { deriving, derivedBrief, derivedExcludedLoreIds, develop, attach }
 }
