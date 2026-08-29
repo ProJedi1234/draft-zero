@@ -1,9 +1,13 @@
 // tests/composer-draft.test.ts — the specification for shouldAdoptDraft: which
-// incoming `draft` events a mounted composer writes into its textarea.
+// incoming `draft` events a mounted composer writes into its textarea, and for
+// the bounds /api/draft holds an untrusted exclusion list to.
 
 import { describe, expect, test } from "bun:test"
 
 import {
+  isExcludedLoreIds,
+  MAX_EXCLUDED_LORE_IDS,
+  MAX_LORE_ID_CHARS,
   SERVER_DRAFT_ORIGIN,
   shouldAdoptDraft,
   type DraftPayload,
@@ -18,6 +22,7 @@ const event = (overrides: Partial<DraftEvent> = {}): DraftEvent => ({
   imagePrompt: null,
   imageAssisted: true,
   imageStyle: null,
+  imageExcludedLoreIds: [],
   version: "2026-08-28T12:00:10.000Z",
   origin: "other-device",
   ...overrides,
@@ -30,6 +35,7 @@ const payload = (overrides: Partial<DraftPayload> = {}): DraftPayload => ({
   imagePrompt: null,
   imageAssisted: true,
   imageStyle: null,
+  imageExcludedLoreIds: [],
   ...overrides,
 })
 
@@ -144,5 +150,64 @@ describe("shouldAdoptDraft", () => {
         { ...ctx, version: "2026-08-28T12:00:10.000Z" }
       )
     ).toBe(true)
+  })
+})
+
+describe("isExcludedLoreIds", () => {
+  test("takes an empty list — nothing muted is the normal case", () => {
+    expect(isExcludedLoreIds([])).toBe(true)
+  })
+
+  test("takes a list of ids", () => {
+    expect(isExcludedLoreIds(["a", "b"])).toBe(true)
+  })
+
+  test("refuses anything that is not an array", () => {
+    // Including null: unlike the lane's other fields, emptiness here has one
+    // shape, and the wire never carries the other.
+    expect(isExcludedLoreIds(null)).toBe(false)
+    expect(isExcludedLoreIds(undefined)).toBe(false)
+    expect(isExcludedLoreIds("a,b")).toBe(false)
+  })
+
+  test("refuses non-string and empty members", () => {
+    expect(isExcludedLoreIds([1])).toBe(false)
+    expect(isExcludedLoreIds(["a", ""])).toBe(false)
+  })
+
+  test("caps the list at what a brief could plausibly match", () => {
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `e${i}`)
+    expect(isExcludedLoreIds(ids(MAX_EXCLUDED_LORE_IDS))).toBe(true)
+    expect(isExcludedLoreIds(ids(MAX_EXCLUDED_LORE_IDS + 1))).toBe(false)
+  })
+
+  test("caps each id, so a bounded list is a bounded body", () => {
+    expect(isExcludedLoreIds(["x".repeat(MAX_LORE_ID_CHARS)])).toBe(true)
+    expect(isExcludedLoreIds(["x".repeat(MAX_LORE_ID_CHARS + 1)])).toBe(false)
+  })
+})
+
+describe("the muted chips as draft state", () => {
+  test("adopts a mute made on another device", () => {
+    // The chip tap is a draft change like a keystroke: same versioning, same
+    // echo suppression, same right of a local write in flight to outrank it.
+    expect(
+      shouldAdoptDraft(
+        event({
+          imageExcludedLoreIds: ["lore-1"],
+          version: "2026-08-28T12:00:11.000Z",
+        }),
+        { ...ctx, version: "2026-08-28T12:00:10.000Z" }
+      )
+    ).toBe(true)
+  })
+
+  test("a mute in flight here outranks a foreign draft", () => {
+    expect(
+      shouldAdoptDraft(event(), {
+        ...ctx,
+        pending: payload({ imageExcludedLoreIds: ["lore-1"] }),
+      })
+    ).toBe(false)
   })
 })

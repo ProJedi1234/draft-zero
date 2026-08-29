@@ -316,10 +316,11 @@ function StoryEditor({
   // Which lore chips the writer has muted, per send rather than per story: an
   // exclusion is an edit to ONE develop call — "not this time" — and carrying
   // it forward would quietly turn a tap into a lorebook setting nobody can see.
-  // Local to this device for now; it joins the synced draft payload next.
-  // Mutes for entries the brief no longer matches are simply never rendered.
+  // Per send, but not per DEVICE: it rides the draft row with the brief it
+  // qualifies, so a chip tapped off on the phone is off on the tablet that hits
+  // ↵. Mutes for entries the brief no longer matches are simply never rendered.
   const [excludedLoreIds, setExcludedLoreIds] = React.useState<Set<string>>(
-    () => new Set<string>()
+    () => new Set(composerDraft?.imageExcludedLoreIds ?? [])
   )
   // For callbacks that need "what is the composer holding right now" without
   // subscribing to every keystroke. Written synchronously by the change
@@ -351,11 +352,13 @@ function StoryEditor({
     if (adopted.imageAssisted !== undefined)
       setImageAssisted(adopted.imageAssisted)
     if (adopted.imageStyle !== undefined) setImageStyle(adopted.imageStyle)
+    if (adopted.imageExcludedLoreIds !== undefined)
+      setExcludedLoreIds(new Set(adopted.imageExcludedLoreIds))
   }, [])
   /**
    * Drop every mute. Through the ref as well as the state because the callers
-   * read the ref in the same tick — a queued setState would still be showing
-   * the old set.
+   * publish in the same tick — a queued setState would still be showing the old
+   * set when the payload is read.
    */
   const clearExcludedLore = React.useCallback(() => {
     if (excludedLoreRef.current.size === 0) return
@@ -378,6 +381,7 @@ function StoryEditor({
       imagePrompt: imagePromptRef.current,
       imageAssisted: imageAssistedRef.current,
       imageStyle: imageStyleRef.current,
+      imageExcludedLoreIds: [...excludedLoreRef.current],
     }),
     []
   )
@@ -388,19 +392,25 @@ function StoryEditor({
     (value: string) => {
       draftRef.current = value
       setDraft(value)
-      // A cleared brief is a cleared question, so the answers to it go too.
+      // A cleared brief is a cleared question, so the answers to it go too —
+      // through the ref first, because the publish below is the one that
+      // carries the clear to the other devices.
       if (value.trim() === "") clearExcludedLore()
       publishDraft(draftPayload())
     },
     [clearExcludedLore, draftPayload, publishDraft]
   )
-  /** A chip tapped on or off. */
-  const toggleLore = React.useCallback((id: string) => {
-    const next = new Set(excludedLoreRef.current)
-    if (!next.delete(id)) next.add(id)
-    excludedLoreRef.current = next
-    setExcludedLoreIds(next)
-  }, [])
+  /** A chip tapped on or off. Publishes, like every other user-driven change. */
+  const toggleLore = React.useCallback(
+    (id: string) => {
+      const next = new Set(excludedLoreRef.current)
+      if (!next.delete(id)) next.add(id)
+      excludedLoreRef.current = next
+      setExcludedLoreIds(next)
+      publishDraft(draftPayload())
+    },
+    [draftPayload, publishDraft]
+  )
   const changeMode = React.useCallback(
     (value: ComposerMode) => {
       modeRef.current = value
@@ -437,6 +447,13 @@ function StoryEditor({
   const composerRef = React.useRef<HTMLTextAreaElement>(null)
   const composerBoxRef = React.useRef<HTMLDivElement>(null)
   const shellRef = React.useRef<HTMLDivElement>(null)
+  // Bridge into the composer's lane-staleness mark, the same shape as the
+  // attach refs: restoring a picture's pair below has to tell the composer the
+  // pair is consistent, or the next ↵ bills a develop for a lane already paid
+  // for.
+  const markLaneDevelopedRef = React.useRef<
+    ((developedForBrief: string | null) => void) | null
+  >(null)
 
   /**
    * Puts a picture's prompt back in the composer as the two lanes it came from.
@@ -452,20 +469,30 @@ function StoryEditor({
    */
   const restoreImagePrompt = React.useCallback(
     (restored: { prompt: string; sourcePrompt: string | null }) => {
-      const { scene } = splitSentPrompt(restored.prompt)
+      const { scene, style } = splitSentPrompt(restored.prompt)
+      // The picture's own art direction comes back with it — null included: a
+      // redraw under whatever style the composer happened to hold would change
+      // the look with nothing on screen saying so. A custom style the split
+      // cannot peel (one with a period in it) stays embedded in the scene and
+      // the style clears, so the next send still draws it exactly once.
+      changeImageStyle(style)
       if (restored.sourcePrompt !== null) {
         changeDraft(restored.sourcePrompt)
         changeImagePrompt(scene)
+        // The restored pair is consistent — this lane was already paid for —
+        // so the composer must offer Draw rather than bill a second develop.
+        markLaneDevelopedRef.current?.(restored.sourcePrompt.trim())
       } else {
         changeDraft(scene)
         changeImagePrompt(null)
+        markLaneDevelopedRef.current?.(null)
       }
       // Armed for image, because the restored text IS an image prompt: handing
       // it back under Do would leave the next Send about to file a scene
       // description as the writer's turn.
       changeMode("image")
     },
-    [changeDraft, changeImagePrompt, changeMode]
+    [changeDraft, changeImagePrompt, changeImageStyle, changeMode]
   )
 
   const image = useImageGeneration(story.id, {
@@ -496,6 +523,15 @@ function StoryEditor({
     // Display only. A prompt still being written is not a draft worth shipping
     // to the writer's other devices a chunk at a time.
     onText: setImagePrompt,
+    // The settled prompt is already in the row — the run wrote it — so this is
+    // the published ref catching up, not a publish. It cannot wait for the
+    // run's own `draft` event: that event loses to any save of ours still in
+    // flight (shouldAdoptDraft), and a ref left holding the pre-develop lane
+    // would hand the next publish the old value to clobber the row with.
+    onSettle: (text) => {
+      imagePromptRef.current = text
+      setImagePrompt(text)
+    },
     // A develop that produced nothing (an error, a story deleted under it)
     // folds the lane away rather than leaving an empty box open. Only the
     // device that asked writes that down; the others hear it as the echo.
@@ -662,9 +698,10 @@ function StoryEditor({
       sourcePrompt: string | null
       loreIds: string[]
     }) => {
-      // The brief that these mutes qualified is on its way out — the composer
-      // empties it and folds the lane away in this same tick — so the answers
-      // to it go with it.
+      // No publish of its own: the composer empties the brief and folds the
+      // lane away in this same tick, and those changes publish the payload —
+      // cleared exclusions and all. A publish here would only be the same
+      // state announced twice.
       clearExcludedLore()
       void image.generate({
         prompt: composeSentPrompt(send.scene, imageStyleRef.current),
@@ -728,6 +765,8 @@ function StoryEditor({
           onToggleLore={toggleLore}
           deriving={derivation.deriving}
           derivedBrief={derivation.derivedBrief}
+          derivedExcludedLoreIds={derivation.derivedExcludedLoreIds}
+          markDevelopedRef={markLaneDevelopedRef}
           onDevelop={handleDevelop}
           onGenerateImage={handleGenerateImage}
           imageBusy={image.job !== null}

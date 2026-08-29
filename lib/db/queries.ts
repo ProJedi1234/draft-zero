@@ -48,6 +48,7 @@ import type {
 } from "./mappers"
 import {
   deriveSlotMeta,
+  parseLoreIdsJson,
   toAppSettings,
   toGenerationDefaults,
   toGenerationSettings,
@@ -753,6 +754,7 @@ export async function getComposerDraft(
         imagePrompt: row.imagePrompt,
         imageAssisted: row.imageAssisted,
         imageStyle: row.imageStyle,
+        imageExcludedLoreIds: parseLoreIdsJson(row.imageExcludedLoreJson),
         updatedAt: row.updatedAt,
       }
     : null

@@ -883,6 +883,14 @@ export interface ComposerDraft {
   imageAssisted: boolean
   /** The art direction appended to the next send, or null for none. */
   imageStyle: string | null
+  /**
+   * The lorebook entries the writer has muted under the brief on screen, so a
+   * chip tapped off on the phone is off on the tablet. Empty is the norm and
+   * the only shape emptiness takes here — the row's NULL is read as `[]`. Ids
+   * that no longer match the brief are kept: they cost nothing, and pruning
+   * them would un-mute an entry the moment a word was retyped.
+   */
+  imageExcludedLoreIds: string[]
   /** ISO-8601. */
   updatedAt: string
 }

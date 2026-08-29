@@ -1,0 +1,1 @@
+ALTER TABLE "composer_drafts" ADD COLUMN "image_excluded_lore_json" text;

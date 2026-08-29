@@ -1,5 +1,6 @@
 // /api/draft — the composer's unsent state (text, armed mode, and the image
-// lane: developed prompt, assistance, style), saved and fanned out.
+// lane: developed prompt, assistance, style, muted lore chips), saved and
+// fanned out.
 //
 // POST upserts the story's draft row and publishes a `draft` bus event that
 // CARRIES the state, so every other device on the story adopts it straight
@@ -24,8 +25,10 @@
 import { eq } from "drizzle-orm"
 
 import { getDb } from "@/lib/db/client"
+import { parseLoreIdsJson, serializeExcludedLoreIds } from "@/lib/db/mappers"
 import { composerDrafts } from "@/lib/db/schema"
 import { publishBus } from "@/lib/sync/bus"
+import { isExcludedLoreIds } from "@/lib/sync/draft"
 import type { ComposerMode } from "@/lib/types"
 
 // Node, explicitly: the bus is a Set on globalThis in this one process — an
@@ -49,6 +52,7 @@ export async function POST(req: Request): Promise<Response> {
   let imagePrompt: string | null
   let imageAssisted: boolean
   let imageStyle: string | null
+  let imageExcludedLoreIds: string[]
   let origin: string
   try {
     const body = (await req.json()) as {
@@ -58,6 +62,7 @@ export async function POST(req: Request): Promise<Response> {
       imagePrompt?: unknown
       imageAssisted?: unknown
       imageStyle?: unknown
+      imageExcludedLoreIds?: unknown
       origin?: unknown
     }
     if (typeof body.storyId !== "string" || body.storyId === "") {
@@ -86,6 +91,9 @@ export async function POST(req: Request): Promise<Response> {
     ) {
       return Response.json({ error: "Malformed draft." }, { status: 400 })
     }
+    if (!isExcludedLoreIds(body.imageExcludedLoreIds)) {
+      return Response.json({ error: "Malformed draft." }, { status: 400 })
+    }
     if (typeof body.origin !== "string" || body.origin === "") {
       return Response.json({ error: "origin is required." }, { status: 400 })
     }
@@ -95,6 +103,7 @@ export async function POST(req: Request): Promise<Response> {
     imagePrompt = body.imagePrompt
     imageAssisted = body.imageAssisted
     imageStyle = body.imageStyle
+    imageExcludedLoreIds = body.imageExcludedLoreIds
     origin = body.origin
   } catch {
     return Response.json({ error: "Malformed request." }, { status: 400 })
@@ -102,6 +111,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const db = await getDb()
   const version = new Date().toISOString()
+  const imageExcludedLoreJson = serializeExcludedLoreIds(imageExcludedLoreIds)
   try {
     await db
       .insert(composerDrafts)
@@ -112,6 +122,7 @@ export async function POST(req: Request): Promise<Response> {
         imagePrompt,
         imageAssisted,
         imageStyle,
+        imageExcludedLoreJson,
         updatedAt: version,
       })
       .onConflictDoUpdate({
@@ -122,6 +133,7 @@ export async function POST(req: Request): Promise<Response> {
           imagePrompt,
           imageAssisted,
           imageStyle,
+          imageExcludedLoreJson,
           updatedAt: version,
         },
       })
@@ -139,6 +151,7 @@ export async function POST(req: Request): Promise<Response> {
     imagePrompt,
     imageAssisted,
     imageStyle,
+    imageExcludedLoreIds,
     version,
     origin,
   })
@@ -169,6 +182,7 @@ export async function GET(req: Request): Promise<Response> {
     imagePrompt: row.imagePrompt,
     imageAssisted: row.imageAssisted,
     imageStyle: row.imageStyle,
+    imageExcludedLoreIds: parseLoreIdsJson(row.imageExcludedLoreJson),
     version: row.updatedAt,
   })
 }

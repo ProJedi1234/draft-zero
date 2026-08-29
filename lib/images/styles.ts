@@ -80,6 +80,12 @@ export const IMAGE_STYLE_PRESETS: readonly ImageStylePreset[] = [
  * which is a shape composeSentPrompt produced and a writer is unlikely to have
  * typed by accident. Anything else is left alone, because guessing wrong here
  * silently deletes the end of someone's prompt.
+ *
+ * A custom style with a period inside it ("in the style of H.R. Giger") is
+ * therefore unsplittable and comes back embedded in the scene, style null.
+ * That is the safe failure: the restore path adopts BOTH halves of this
+ * result, so the embedded clause is drawn exactly once rather than getting a
+ * second copy appended — compose(split(p)) must equal p either way.
  */
 export function splitSentPrompt(prompt: string): {
   scene: string

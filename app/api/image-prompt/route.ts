@@ -168,6 +168,7 @@ export async function POST(req: Request): Promise<Response> {
     storyId: story.id,
     storyTitle: story.title,
     brief,
+    excludedLoreIds,
     system: turn.system,
     user: turn.user,
     offlineText,

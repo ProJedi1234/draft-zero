@@ -24,6 +24,7 @@
 import "server-only"
 
 import { getDb } from "@/lib/db/client"
+import { parseLoreIdsJson } from "@/lib/db/mappers"
 import { composerDrafts } from "@/lib/db/schema"
 import { recordCallStarted, settleCall } from "@/lib/generation/calls"
 import { chunkText } from "@/lib/generation/fixtures"
@@ -60,6 +61,8 @@ export interface LiveDeriveRun {
    * and a device that attached mid-run has no other way to know it.
    */
   readonly brief: string
+  /** The mutes the brief was asked under — rides the frame beside it. */
+  readonly excludedLoreIds: string[]
   /** The rendered turn. Composed by the launcher; this module only carries it. */
   readonly system: string
   readonly user: string
@@ -129,6 +132,7 @@ export function attachDeriveRun(
     runId: run.runId,
     storyId: run.storyId,
     brief: run.brief,
+    excludedLoreIds: run.excludedLoreIds,
     text: run.textSoFar,
   }
   run.listeners.add(listener)
@@ -143,6 +147,7 @@ export interface LaunchDeriveOpts {
   storyId: string
   storyTitle: string | null
   brief: string
+  excludedLoreIds: string[]
   system: string
   user: string
   offlineText: string
@@ -166,6 +171,7 @@ export function launchDeriveRun(
     storyTitle: opts.storyTitle,
     startedAt: new Date().toISOString(),
     brief: opts.brief,
+    excludedLoreIds: opts.excludedLoreIds,
     system: opts.system,
     user: opts.user,
     offlineText: opts.offlineText,
@@ -188,7 +194,7 @@ export function launchDeriveRun(
   })
 
   void deriveRunLoop(run).catch((err) => {
-    console.error("[derive-live] run loop escaped its finally", err)
+    console.error("[derive-run] run loop escaped its finally", err)
   })
 
   return { runId: run.runId }
@@ -332,7 +338,7 @@ async function finishDeriveRun(
     try {
       await persistDerivedLane(run.storyId, settled)
     } catch (err) {
-      console.error("[derive-live] draft write failed", err)
+      console.error("[derive-run] draft write failed", err)
     }
   }
 
@@ -419,6 +425,7 @@ async function persistDerivedLane(
       imagePrompt,
       imageAssisted: true,
       imageStyle: null,
+      imageExcludedLoreJson: null,
       updatedAt: version,
     })
     .onConflictDoUpdate({
@@ -440,6 +447,10 @@ async function persistDerivedLane(
     imagePrompt: row.imagePrompt,
     imageAssisted: row.imageAssisted,
     imageStyle: row.imageStyle,
+    // Straight off the returned row, like everything else here: a chip muted
+    // while the model was writing is part of the composer this event hands
+    // back, not something this run is entitled to reset.
+    imageExcludedLoreIds: parseLoreIdsJson(row.imageExcludedLoreJson),
     version: row.updatedAt,
     origin: SERVER_DRAFT_ORIGIN,
   })

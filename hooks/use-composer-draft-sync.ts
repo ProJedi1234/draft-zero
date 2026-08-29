@@ -2,7 +2,8 @@
 
 // hooks/use-composer-draft-sync.ts — Magic sync for the composer's unsent
 // state: the text, the armed Do/Say/Image mode, and the image lane's developed
-// prompt, assistance flag and style, travelling as one payload.
+// prompt, assistance flag, style and muted lore chips, travelling as one
+// payload.
 //
 // The composer is unlike the §4.2 fields it joins: its value is real React
 // state (the send path clears it, the suggestion chips fill it), so there is
@@ -47,8 +48,8 @@ export function useComposerDraftSync({
    * Write an adopted draft into the composer state. Must be stable. Everything
    * but `text` is optional, and absent means "nothing on record": that is the
    * resync probe's 204 — a composer never touched has no armed mode, no
-   * developed prompt and no style, and whatever this device already holds is
-   * as good an answer as any.
+   * developed prompt, no style and nothing muted, and whatever this device
+   * already holds is as good an answer as any.
    */
   adopt: (draft: AdoptedDraft) => void
   /** Bridge from the workspace's sync registration: reconnect → re-read the row. */
@@ -88,6 +89,7 @@ export function useComposerDraftSync({
             imagePrompt: payload.imagePrompt,
             imageAssisted: payload.imageAssisted,
             imageStyle: payload.imageStyle,
+            imageExcludedLoreIds: payload.imageExcludedLoreIds,
             origin: syncClientId,
           }),
           // The last save before a tab closes is the one that matters most —
@@ -139,6 +141,7 @@ export function useComposerDraftSync({
           imagePrompt: event.imagePrompt,
           imageAssisted: event.imageAssisted,
           imageStyle: event.imageStyle,
+          imageExcludedLoreIds: event.imageExcludedLoreIds,
         })
       }),
     [storyId, adopt]
@@ -171,6 +174,7 @@ export function useComposerDraftSync({
           imagePrompt: string | null
           imageAssisted: boolean
           imageStyle: string | null
+          imageExcludedLoreIds: string[]
           version: string
         }
         if (versionRef.current !== null && data.version <= versionRef.current)
@@ -182,6 +186,7 @@ export function useComposerDraftSync({
           imagePrompt: data.imagePrompt,
           imageAssisted: data.imageAssisted,
           imageStyle: data.imageStyle,
+          imageExcludedLoreIds: data.imageExcludedLoreIds,
         })
       } catch {
         // A probe that failed is a socket about to reconnect again; the next

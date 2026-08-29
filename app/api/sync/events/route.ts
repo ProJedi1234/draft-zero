@@ -54,6 +54,7 @@ function toWire(event: BusEvent): SyncWireEvent {
         imagePrompt: event.imagePrompt,
         imageAssisted: event.imageAssisted,
         imageStyle: event.imageStyle,
+        imageExcludedLoreIds: event.imageExcludedLoreIds,
         version: event.version,
         origin: event.origin,
       }
