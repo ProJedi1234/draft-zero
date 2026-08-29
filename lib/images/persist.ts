@@ -34,8 +34,12 @@ import {
 export async function persistIllustration(input: {
   storyId: string
   imageGroupId?: string
+  /** The whole text sent to the provider, style sentence included. */
   prompt: string
-  derivedPrompt: string | null
+  /** The writer's brief, or null when there was none (a verbatim send). */
+  sourcePrompt: string | null
+  /** Lorebook entries fed to the develop call; empty when none were. */
+  promptLoreIds: string[]
   /** The story's chosen image model, or null to follow the catalog's first. */
   modelId: string | null
   aspectRatio: ImageAspectRatio
@@ -125,7 +129,14 @@ export async function persistIllustration(input: {
         imageIndex: nextIndex,
         isActive: true,
         prompt,
-        derivedPrompt: input.derivedPrompt,
+        sourcePrompt: input.sourcePrompt,
+        // NULL rather than "[]" for the empty case: absent lore and a draw that
+        // never consulted the lorebook are the same fact, and a stored empty
+        // array would look like a develop call that matched nothing.
+        promptLoreIdsJson:
+          input.promptLoreIds.length > 0
+            ? JSON.stringify(input.promptLoreIds)
+            : null,
         modelId,
         aspectRatio: input.aspectRatio,
         seed: input.seed,

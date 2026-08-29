@@ -12,6 +12,7 @@ import { describe, expect, test } from "bun:test"
 import type { ComposedContext } from "@/lib/generation/types"
 import {
   DERIVATION_SYSTEM_PROMPT,
+  renderBriefDerivationPrompt,
   renderDerivationPrompt,
 } from "@/lib/images/derivation-prompt"
 
@@ -145,5 +146,86 @@ describe("DERIVATION_SYSTEM_PROMPT", () => {
   test("one example shows lore appearance details carried into the prompt", () => {
     expect(DERIVATION_SYSTEM_PROMPT).toContain("Relevant details:")
     expect(DERIVATION_SYSTEM_PROMPT).toContain("soot-streaked leather apron")
+  })
+})
+
+/**
+ * Brief mode's turn. The sections are conditional in the same way the story
+ * window's are, and the failure is the same shape: a block that silently does
+ * not render costs the model the one detail that would have kept a character's
+ * face the same, and nothing throws.
+ *
+ * The exclusion case is the one that is genuinely new. A muted chip is a
+ * promise the writer can see — that entry is not going into this call — and
+ * the only place it can be broken is here, where absence looks exactly like an
+ * entry that never matched.
+ */
+describe("renderBriefDerivationPrompt", () => {
+  const lore = [
+    { name: "Lara", content: "A tomb raider — dark braid, torn jacket." },
+  ]
+
+  test("carries the brief under a label that names it as the request", () => {
+    const rendered = renderBriefDerivationPrompt({
+      brief: "Lara at the tomb door, torch raised",
+      memory: "",
+      lore: [],
+      summary: "",
+    })
+    expect(rendered).toContain(
+      "The writer's request:\nLara at the tomb door, torch raised"
+    )
+  })
+
+  test("renders memory, lore and summary when they exist", () => {
+    const rendered = renderBriefDerivationPrompt({
+      brief: "Lara at the door",
+      memory: "The year is 1938.",
+      lore,
+      summary: "She has been searching for the tomb for six weeks.",
+    })
+    expect(rendered).toContain("Setting notes:\nThe year is 1938.")
+    expect(rendered).toContain(
+      "Relevant details:\n- Lara: A tomb raider — dark braid, torn jacket."
+    )
+    expect(rendered).toContain("The story so far, summarized:\nShe has been")
+  })
+
+  test("omits the blocks it has nothing for", () => {
+    const rendered = renderBriefDerivationPrompt({
+      brief: "a coin on a counter",
+      memory: "   ",
+      lore: [],
+      summary: "",
+    })
+    expect(rendered).not.toContain("Setting notes")
+    expect(rendered).not.toContain("Relevant details")
+    expect(rendered).not.toContain("summarized")
+  })
+
+  test("an excluded entry is simply not there — the caller filters, we render", () => {
+    const rendered = renderBriefDerivationPrompt({
+      brief: "Lara and Sefa at the door",
+      memory: "",
+      // What the route hands over once the muted chip has been dropped.
+      lore,
+      summary: "",
+    })
+    expect(rendered).toContain("- Lara:")
+    // The brief still says the name — that is the writer's sentence, and it is
+    // sent verbatim. What must be gone is the muted entry's DETAILS.
+    expect(rendered).toContain("Sefa")
+    expect(rendered).not.toContain("- Sefa:")
+  })
+
+  test("never sends the recent manuscript — that is the whole inversion", () => {
+    const rendered = renderBriefDerivationPrompt({
+      brief: "Lara at the door",
+      memory: "",
+      lore: [],
+      summary: "",
+    })
+    expect(rendered).not.toContain("Recent passages")
+    expect(rendered).not.toContain("The moment to depict")
   })
 })

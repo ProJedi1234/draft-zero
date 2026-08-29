@@ -45,6 +45,15 @@ import {
 import { useSidebar } from "@/components/ui/sidebar"
 
 /** Workspace preferences are the writer's, not the story's — they survive reloads. */
+// The image lane at rest. The workspace does not drive these yet — the
+// composer that does arrives with the darkroom — but the draft payload is one
+// write, so every publish has to state the whole row.
+const IDLE_IMAGE_LANE = {
+  imagePrompt: null,
+  imageAssisted: true,
+  imageStyle: null,
+} as const
+
 const INSPECTOR_STORAGE_KEY = "draft-zero:inspector-open"
 const INSPECTOR_TAB_STORAGE_KEY = "draft-zero:inspector-tab"
 
@@ -312,7 +321,11 @@ function StoryEditor({
     (value: string) => {
       draftRef.current = value
       setDraft(value)
-      publishDraft({ text: value, mode: modeRef.current })
+      publishDraft({
+        text: value,
+        mode: modeRef.current,
+        ...IDLE_IMAGE_LANE,
+      })
     },
     [publishDraft]
   )
@@ -320,7 +333,11 @@ function StoryEditor({
     (value: ComposerMode) => {
       modeRef.current = value
       setMode(value)
-      publishDraft({ text: draftRef.current, mode: value })
+      publishDraft({
+        text: draftRef.current,
+        mode: value,
+        ...IDLE_IMAGE_LANE,
+      })
     },
     [publishDraft]
   )

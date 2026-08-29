@@ -143,6 +143,18 @@ export const composerDrafts = pgTable("composer_drafts", {
     .references(() => stories.id, { onDelete: "cascade" }),
   text: text("text").notNull(),
   mode: text("mode").notNull().default("do").$type<ComposerMode>(),
+  // The image lane's three pieces of unsent state. Here rather than on the
+  // story for the same reason `text` is: they move on a debounce cadence while
+  // the writer types, and none of them is a fact any other render depends on.
+  //
+  // `image_prompt` is nullable and undefaulted because NULL is a real state —
+  // no develop call has been made for the brief on screen — which is different
+  // from a develop that returned nothing.
+  imagePrompt: text("image_prompt"),
+  // Assisted is the default because it is the feature: a brief expands unless
+  // the writer says otherwise.
+  imageAssisted: boolean("image_assisted").notNull().default(true),
+  imageStyle: text("image_style"),
   updatedAt: text("updated_at").notNull(),
 })
 
@@ -520,10 +532,18 @@ export const storyImages = pgTable(
     isActive: boolean("is_active").notNull().default(true),
     /** NULL means live. Soft delete, so undo is one UPDATE. */
     deletedAt: text("deleted_at"),
+    /** The whole text the provider was sent, style sentence included. */
     prompt: text("prompt").notNull(),
-    // Nullable and undefaulted: NULL means "not derived", which is a different
-    // claim from "derived to the same words the writer kept".
-    derivedPrompt: text("derived_prompt"),
+    // The brief the writer typed, before the develop call. Nullable and
+    // undefaulted: NULL means "there was no brief" — a verbatim send, or a
+    // picture from before briefs existed — which is a different claim from a
+    // brief that happened to match the developed prompt word for word.
+    sourcePrompt: text("source_prompt"),
+    // JSON string[] rather than a join table: this is provenance nobody
+    // queries by, read only when one picture is being explained, and a row of
+    // ids that outlives the entries it names is the correct behaviour here —
+    // deleting a lorebook entry must not rewrite the history of a draw.
+    promptLoreIdsJson: text("prompt_lore_ids_json"),
     modelId: text("model_id").notNull(),
     aspectRatio: text("aspect_ratio").notNull().$type<ImageAspectRatio>(),
     seed: integer("seed").notNull(),

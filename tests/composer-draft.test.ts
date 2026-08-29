@@ -3,16 +3,33 @@
 
 import { describe, expect, test } from "bun:test"
 
-import { shouldAdoptDraft, type DraftPayload } from "@/lib/sync/draft"
-import type { DraftEvent } from "@/lib/sync/client"
+import {
+  SERVER_DRAFT_ORIGIN,
+  shouldAdoptDraft,
+  type DraftPayload,
+} from "@/lib/sync/draft"
+import { syncClientId, type DraftEvent } from "@/lib/sync/client"
 
 const event = (overrides: Partial<DraftEvent> = {}): DraftEvent => ({
   type: "draft",
   storyId: "s1",
   text: "the door creaks open",
   mode: "do",
+  imagePrompt: null,
+  imageAssisted: true,
+  imageStyle: null,
   version: "2026-08-28T12:00:10.000Z",
   origin: "other-device",
+  ...overrides,
+})
+
+/** A whole payload from the one or two fields a case is actually about. */
+const payload = (overrides: Partial<DraftPayload> = {}): DraftPayload => ({
+  text: "the door creaks open",
+  mode: "do",
+  imagePrompt: null,
+  imageAssisted: true,
+  imageStyle: null,
   ...overrides,
 })
 
@@ -42,7 +59,7 @@ describe("shouldAdoptDraft", () => {
     expect(
       shouldAdoptDraft(event(), {
         ...ctx,
-        pending: { text: "half a sentence", mode: "say" },
+        pending: payload({ text: "half a sentence", mode: "say" }),
       })
     ).toBe(false)
   })
@@ -53,7 +70,7 @@ describe("shouldAdoptDraft", () => {
     // The same holds for a bare mode swap — the payload is the write, whatever
     // half of it changed.
     expect(
-      shouldAdoptDraft(event(), { ...ctx, pending: { text: "", mode: "do" } })
+      shouldAdoptDraft(event(), { ...ctx, pending: payload({ text: "" }) })
     ).toBe(false)
   })
 
@@ -90,6 +107,32 @@ describe("shouldAdoptDraft", () => {
         version: "2026-08-28T12:00:00.000Z",
       })
     ).toBe(true)
+  })
+
+  test("adopts the develop run's own settle, on the device that launched it", () => {
+    // A finished derivation writes the lane itself, from inside its detached
+    // run, and stamps SERVER_DRAFT_ORIGIN. The launching device has to take it
+    // like anybody else's: what its composer is showing is streamed display
+    // text that was never published, and this event is the moment it becomes
+    // the draft. Nothing about a server origin may read as this device's echo.
+    expect(
+      shouldAdoptDraft(
+        event({
+          origin: SERVER_DRAFT_ORIGIN,
+          imagePrompt: "a tomb door, torch raised, wet stone",
+          mode: "image",
+          version: "2026-08-28T12:00:11.000Z",
+        }),
+        { ...ctx, version: "2026-08-28T12:00:10.000Z" }
+      )
+    ).toBe(true)
+  })
+
+  test("no device id can collide with the server's draft origin", () => {
+    // syncClientId is base36 with no separator, which is what makes the rule
+    // above structural rather than lucky.
+    expect(SERVER_DRAFT_ORIGIN).toMatch(/:/)
+    expect(syncClientId).not.toContain(":")
   })
 
   test("adopts a bare mode swap — same text, newer version", () => {
