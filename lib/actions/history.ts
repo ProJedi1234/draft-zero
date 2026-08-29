@@ -7,6 +7,7 @@ import type { DrizzleTx } from "@/lib/db/client"
 import { getDb } from "@/lib/db/client"
 import { applyMutations, recordOp } from "@/lib/db/journal"
 import { stories, storyEntries, storyOps } from "@/lib/db/schema"
+import { storyVersionBump } from "@/lib/db/story-version"
 import { refuseDuringRun } from "@/lib/generation/live"
 import type { OpPayload } from "@/lib/history/ops"
 import { parsePayload, redoPlan, summarize, undoPlan } from "@/lib/history/ops"
@@ -96,7 +97,7 @@ export async function undoStoryOp(
       await applyMutations(tx, undoPlan(op.payload))
       await tx
         .update(stories)
-        .set({ undoCursor: cursor - 1, updatedAt: now })
+        .set({ undoCursor: cursor - 1, updatedAt: storyVersionBump(now) })
         .where(eq(stories.id, storyId))
 
       return { ok: true, data: { summary: op.summary } }
@@ -129,7 +130,7 @@ export async function redoStoryOp(
       await applyMutations(tx, redoPlan(op.payload))
       await tx
         .update(stories)
-        .set({ undoCursor: cursor + 1, updatedAt: now })
+        .set({ undoCursor: cursor + 1, updatedAt: storyVersionBump(now) })
         .where(eq(stories.id, storyId))
 
       return { ok: true, data: { summary: op.summary } }
@@ -246,7 +247,7 @@ export async function selectVariantByOffset(
       await recordOp(tx, storyId, payload)
       await tx
         .update(stories)
-        .set({ updatedAt: now })
+        .set({ updatedAt: storyVersionBump(now) })
         .where(eq(stories.id, storyId))
 
       return { ok: true, data: { summary: summarize(payload) } }

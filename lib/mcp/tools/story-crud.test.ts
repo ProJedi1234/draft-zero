@@ -3,24 +3,42 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test"
 
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
+import type { StoryRecord } from "@/lib/store/records"
 
 /* -------------------------------------------------------------------------- */
 /* Mocks — declared before importing the module under test                   */
 /* -------------------------------------------------------------------------- */
 
+/** What the reworked actions return: the canonical row travels with the id. */
+const storyRecord: StoryRecord = {
+  id: "story-1",
+  title: "Doomed Story",
+  description: "",
+  genre: "",
+  createdAt: "2026-08-28T00:00:00.000Z",
+  updatedAt: "2026-08-28T00:00:01.000Z",
+  wordCount: 0,
+  tintHue: null,
+  tintStrength: 1,
+  tintAuto: true,
+}
+
 const createStoryMock = mock(
   async (_input?: {
     title?: string
+    id?: string
+    origin?: string
   }): Promise<
-    { ok: true; data: { id: string } } | { ok: false; error: string }
+    | { ok: true; data: { id: string; record: StoryRecord } }
+    | { ok: false; error: string }
   > => ({
     ok: true,
-    data: { id: "story-1" },
+    data: { id: "story-1", record: storyRecord },
   })
 )
 const updateStoryMetaMock = mock(async (_id: string, _patch: unknown) => ({
   ok: true as const,
-  data: null,
+  data: { record: storyRecord },
 }))
 const deleteStoryMock = mock(async (_id: string) => ({
   ok: true as const,

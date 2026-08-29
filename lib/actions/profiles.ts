@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/mappers"
 import { getAppSettings, getGenerationBaseline } from "@/lib/db/queries"
 import { appSettings, modelProfiles, stories } from "@/lib/db/schema"
+import { storyVersionBump } from "@/lib/db/story-version"
 import {
   customColumnsFromSettings,
   resolveGenerationSettings,
@@ -103,7 +104,7 @@ export async function createProfile(input: {
 
   // Null, not a story id: profiles are global, so every device has to hear it —
   // including the ones sitting on a story that now has a new profile to offer.
-  commitChange(null)
+  commitChange(null, ["model-profile"])
   return created
 }
 
@@ -157,7 +158,7 @@ export async function updateProfile(
 
   // No fan-out write to the followers: they read through the profile, so this
   // one UPDATE is the edit reaching all of them.
-  commitChange(null)
+  commitChange(null, ["model-profile"])
   return { ok: true, data: null }
 }
 
@@ -197,7 +198,7 @@ export async function reorderProfiles(
     }
   })
 
-  commitChange(null)
+  commitChange(null, ["model-profile"])
   return { ok: true, data: null }
 }
 
@@ -218,7 +219,7 @@ export async function setDefaultProfile(id: string): Promise<ActionResult> {
     .set({ defaultProfileId: id })
     .where(eq(appSettings.id, 1))
 
-  commitChange(null)
+  commitChange(null, ["model-profile"])
   return { ok: true, data: null }
 }
 
@@ -263,7 +264,7 @@ export async function deleteProfile(id: string): Promise<ActionResult> {
         ...customColumnsFromSettings(
           resolveProfileSettings(toProfileSettings(profile), baseline)
         ),
-        updatedAt: new Date().toISOString(),
+        updatedAt: storyVersionBump(new Date().toISOString()),
       })
       .where(eq(stories.profileId, id))
     await tx.delete(modelProfiles).where(eq(modelProfiles.id, id))
@@ -272,6 +273,8 @@ export async function deleteProfile(id: string): Promise<ActionResult> {
 
   if (!deleted) return { ok: false, error: NOT_FOUND }
 
+  // No entities hint: this write also touches every follower's stories row
+  // (profileId falls back to Custom), so the full story catch-up is correct.
   commitChange(null)
   return { ok: true, data: null }
 }
@@ -300,7 +303,7 @@ export async function setStoryProfile(
 
   const updated = await db
     .update(stories)
-    .set({ profileId, updatedAt: new Date().toISOString() })
+    .set({ profileId, updatedAt: storyVersionBump(new Date().toISOString()) })
     .where(eq(stories.id, storyId))
     .returning({ id: stories.id })
 
@@ -308,7 +311,8 @@ export async function setStoryProfile(
 
   // Null even though one story moved: the switch can only have been made from a
   // profile list every device shows, and a device on the settings page needs the
-  // follower count it prints to move too.
+  // follower count it prints to move too. No entities hint: this write does
+  // touch a stories row, so the full story catch-up is correct.
   commitChange(null)
   return { ok: true, data: null }
 }
@@ -361,9 +365,13 @@ export async function saveStoryAsProfile(
 
   await db
     .update(stories)
-    .set({ profileId: created.data.id, updatedAt: new Date().toISOString() })
+    .set({
+      profileId: created.data.id,
+      updatedAt: storyVersionBump(new Date().toISOString()),
+    })
     .where(eq(stories.id, storyId))
 
+  // No entities hint: this write also touches the story's own row.
   commitChange(null)
   return created
 }

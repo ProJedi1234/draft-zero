@@ -19,6 +19,7 @@
 // a listener and nothing else. Only stopGeneration() aborts the model.
 
 import type { GenerationEvent, GenerationUsage } from "@/lib/generation/types"
+import type { EntityKind, EntityRecordMap } from "@/lib/store/records"
 import type {
   ComposerMode,
   GenerationRequestKind,
@@ -165,11 +166,58 @@ export type DeriveRunWireEvent =
   | { type: "ping" }
   | DeriveRunEndFrame
 
+/**
+ * A row moved, WITH the row. The payload-carrying lane beside `change`: the
+ * client store folds `data` straight in instead of refetching, and `version`
+ * (the row's server-minted updated_at) is what a device holding something newer
+ * turns a stale event away by — the same arbitration `draft` already uses.
+ */
+export interface EntityUpsertEvent<K extends EntityKind = EntityKind> {
+  type: "entity"
+  op: "upsert"
+  entity: K
+  id: string
+  /** Scope for story-child entities; the story's own id for "story"; null for globals. */
+  storyId: string | null
+  /** ISO-8601 UTC; string order is chronological order. The LWW key. */
+  version: string
+  /** syncClientId of the acting device; null for server-initiated writes. */
+  origin: string | null
+  /** FULL row snapshot, not a patch. */
+  data: EntityRecordMap[K]
+}
+
+export interface EntityDeleteEvent {
+  type: "entity"
+  op: "delete"
+  entity: EntityKind
+  id: string
+  storyId: string | null
+  version: string
+  origin: string | null
+}
+
+export type EntityWireEvent = EntityUpsertEvent | EntityDeleteEvent
+
 export type SyncWireEvent =
   | { type: "hello" }
   | { type: "ping" }
-  /** Something persisted changed. Null storyId = global (library, settings). */
-  | { type: "change"; storyId: string | null }
+  /**
+   * Something persisted changed. Null storyId = global (library, settings).
+   *
+   * `covered` means an `entity` event carrying this write's whole payload went
+   * out on the same bus tick, so a store-lane client can skip its catch-up
+   * read; `entities` names which kinds an UNCOVERED write touched, so a client
+   * can skip a read it has no table for. Both are optional and additive — a
+   * client that ignores them refreshes on every change exactly as before.
+   */
+  | {
+      type: "change"
+      storyId: string | null
+      covered?: true
+      entities?: EntityKind[]
+    }
+  | EntityWireEvent
   /** A run began — devices on that story should attach to the subscribe channel. */
   | { type: "run-started"; storyId: string; runId: string }
   /**

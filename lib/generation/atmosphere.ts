@@ -26,9 +26,11 @@ import "server-only"
 
 import { and, eq } from "drizzle-orm"
 
+import { publishStoryUpsert } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
-import { getAppSettings, getStory } from "@/lib/db/queries"
+import { getAppSettings, getStory, listStoryRecords } from "@/lib/db/queries"
 import { stories } from "@/lib/db/schema"
+import { storyVersionBump } from "@/lib/db/story-version"
 import {
   recordCallStarted,
   settleCall,
@@ -43,7 +45,7 @@ import { resolveOpenRouterKey } from "@/lib/generation/key"
 import { completeOnce, mapOpenRouterError } from "@/lib/generation/openrouter"
 import type { GenerationUsage } from "@/lib/generation/types"
 import { STORY_TINTS } from "@/lib/story-tint"
-import { publishBus, touchStory } from "@/lib/sync/bus"
+import { publishBus } from "@/lib/sync/bus"
 import type { AtmospherePhase } from "@/lib/sync/types"
 import type {
   AtmosphereSettings,
@@ -141,19 +143,25 @@ export const liveIo: AtmosphereIo = {
       .set({
         tintHue: tint.hue,
         tintStrength: tint.strength,
-        updatedAt: new Date().toISOString(),
+        updatedAt: storyVersionBump(new Date().toISOString()),
       })
       .where(and(eq(stories.id, storyId), eq(stories.tintAuto, true)))
       .returning({ id: stories.id })
+    if (updated.length > 0) {
+      // Detached run-loop path — no request to revalidate, so publish
+      // straight to the bus (mirrors lib/generation/live.ts). The entity
+      // upsert IS the announcement now; see announceChanged below.
+      const [rec] = await listStoryRecords({ storyId })
+      if (rec) publishStoryUpsert(rec.row, null)
+    }
     return updated.length > 0
   },
-  // The same generic "this story moved" the manual swatch publishes, and on
-  // purpose: clients answer it with router.refresh(), the server component
-  // re-emits the hue custom properties, and every open device fades to the new
-  // colour. A dedicated event would only be needed if a client had to know WHY
-  // — and here it does not, because a tint that arrives unexplained is exactly
-  // the feature.
-  announceChanged: touchStory,
+  // The manual swatch and the checkOnce caller both call this after a paint;
+  // for the auto-tint write it would duplicate the entity upsert writeTint
+  // just published above, so it is a no-op here. Kept in the interface (and
+  // still exercised by the AtmosphereIo test double) because "announce a
+  // paint" is still the right shape for an io that has no other way to.
+  announceChanged() {},
   announcePhase(storyId, phase, message) {
     publishBus({ kind: "atmosphere", storyId, phase, message })
   },

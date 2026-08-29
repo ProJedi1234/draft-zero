@@ -64,7 +64,9 @@ export function AtmosphereRow({ story }: { story: Story }) {
   // action: engaging Auto must not send a hue, so the two gestures cannot share
   // one call shape — only the error handling and the transition.
   function save(
-    write: () => Promise<ActionResult>,
+    // `unknown` payload: this only reads `ok`, and the tint actions return the
+    // canonical row for the store lane.
+    write: () => Promise<ActionResult<unknown>>,
     onSettle: () => void,
     onFail: () => void
   ) {

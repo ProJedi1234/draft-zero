@@ -65,7 +65,7 @@ export async function updateLorebookEntry(
   if (updated.length === 0)
     return { ok: false, error: "Lorebook entry not found." }
 
-  commitChange(null)
+  commitChange(null, ["lorebook-entry"])
   return { ok: true, data: null }
 }
 
@@ -79,6 +79,6 @@ export async function deleteLorebookEntry(id: string): Promise<ActionResult> {
   if (deleted.length === 0)
     return { ok: false, error: "Lorebook entry not found." }
 
-  commitChange(null)
+  commitChange(null, ["lorebook-entry"])
   return { ok: true, data: null }
 }
