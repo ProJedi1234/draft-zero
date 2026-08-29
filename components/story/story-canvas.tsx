@@ -38,6 +38,25 @@ const SCROLL_REST_MS = 120
  */
 const TOUCH_ACTIVE_MS = 700
 
+/**
+ * How many passages are put in the DOM to begin with, and how many more each
+ * scroll-up reveals.
+ *
+ * The server's window is sized for the PROMPT — the context budget in
+ * characters plus slack — so any manuscript smaller than that budget arrives
+ * whole, and used to be rendered whole. A 167-passage story that fits in a
+ * 16k-token window is 140k characters of DOM built on every visit, which is
+ * most of what made switching to a long story slow (markedly worse in Safari,
+ * whose layout cost over that many blocks is higher).
+ *
+ * So the window here is a RENDER bound, independent of the data: every entry
+ * stays in memory, which is what keeps the inspector's context meter honest —
+ * it composes the real prompt from story.entries and would under-report if the
+ * canvas could take entries away.
+ */
+const INITIAL_RENDER_ENTRIES = 30
+const RENDER_PAGE_ENTRIES = 30
+
 // Landing at the live edge must happen before the browser paints, otherwise the
 // canvas flashes the top of the manuscript on every story open.
 const useIsomorphicLayoutEffect =
@@ -105,6 +124,16 @@ export function StoryCanvas({
   const landWantedRef = React.useRef(false)
   /** scrollHeight captured just before a prepend, for scroll anchoring. */
   const anchorRef = React.useRef<{ height: number } | null>(null)
+  /** How many of the loaded passages are actually rendered, counted from the
+      live edge. Grows on scroll-up; never shrinks while a story is open. */
+  const [renderCount, setRenderCount] = React.useState(INITIAL_RENDER_ENTRIES)
+  /** Loaded-but-not-rendered passages, read by requestLand without re-arming
+      the callback on every reveal. */
+  const hiddenCountRef = React.useRef(0)
+  /** A reveal of already-loaded prose waiting on the same rest gate a fetched
+      page waits on: growing the rendered slice prepends DOM exactly as a page
+      does, so it needs the same compensation and the same timing. */
+  const pendingGrowRef = React.useRef(false)
   /** A resolved page waiting for the scroller to come to rest. */
   const pendingPageRef = React.useRef<{
     entries: StoryEntry[]
@@ -137,10 +166,23 @@ export function StoryCanvas({
   const removing = new Set(removingEntryIds)
   // Paged-in prose first, then the server tail; the tail's copy wins any
   // overlap — the window can slide back across passages already paged in.
-  const entries = mergeWindowedEntries(older, story.entries).filter(
+  const loaded = mergeWindowedEntries(older, story.entries).filter(
     (entry) => !removing.has(entry.id)
   )
-  const moreAbove = hasMoreOlder ?? story.hasMoreBefore ?? false
+  // The tail of what is loaded. Slicing from the END is what makes a new
+  // passage always visible: generation appends, so the live edge is never the
+  // part being withheld.
+  const hiddenCount = Math.max(0, loaded.length - renderCount)
+  const entries = hiddenCount > 0 ? loaded.slice(hiddenCount) : loaded
+  // Either kind of "older" keeps the sentinel alive: prose already loaded but
+  // not yet rendered, or pages the server still holds.
+  const moreAbove =
+    hiddenCount > 0 || (hasMoreOlder ?? story.hasMoreBefore ?? false)
+  // Committed rather than written during render: the sentinel that reads this
+  // ref only fires after paint, so the commit is early enough.
+  useIsomorphicLayoutEffect(() => {
+    hiddenCountRef.current = hiddenCount
+  }, [hiddenCount])
 
   // Passages and pictures share one ordering sequence (see nextStoryPosition),
   // so the manuscript is a single list sorted by position — no interleaving
@@ -196,8 +238,9 @@ export function StoryCanvas({
   const flushRef = React.useRef<(() => void) | null>(null)
   const fetchRef = React.useRef<(() => Promise<void>) | null>(null)
   const flushPendingPage = React.useCallback(() => {
+    const grow = pendingGrowRef.current
     const page = pendingPageRef.current
-    if (!page) return
+    if (!grow && !page) return
     // Wheel-driven scrolling lands immediately: macOS momentum is plain
     // events, and the compensation write between two of them holds, so the
     // reader never waits out their own glide. The at-rest wait remains for
@@ -215,13 +258,28 @@ export function StoryCanvas({
       )
       return
     }
-    pendingPageRef.current = null
-    landWantedRef.current = false
     const viewport = getViewport()
     // Only the pre-prepend HEIGHT is captured — deliberately not scrollTop.
     // The layout effect adjusts RELATIVELY from wherever the reader is at
     // commit, so nothing they did in the meantime is thrown away.
     anchorRef.current = viewport ? { height: viewport.scrollHeight } : null
+
+    // Revealing loaded prose comes first and costs no network. Only when the
+    // rendered slice has caught up with everything loaded does the server page
+    // matter, so a reveal never consumes one.
+    if (grow) {
+      pendingGrowRef.current = false
+      landWantedRef.current = false
+      setRenderCount((count) => count + RENDER_PAGE_ENTRIES)
+      return
+    }
+    if (!page) return
+
+    pendingPageRef.current = null
+    landWantedRef.current = false
+    // A landed page is prose the reader scrolled to reach, so render it rather
+    // than leaving it hidden behind the slice that just ran out.
+    setRenderCount((count) => count + page.entries.length)
     if (page.windowStartPosition !== null)
       olderCursorRef.current = page.windowStartPosition
     hasMoreRef.current = page.hasMore
@@ -267,6 +325,13 @@ export function StoryCanvas({
   // otherwise fetch — and land it the moment it arrives.
   const requestLand = React.useCallback(() => {
     landWantedRef.current = true
+    // Loaded prose first: it needs no round trip, so the reader scrolls into
+    // text rather than into a gap the network has to fill.
+    if (hiddenCountRef.current > 0) {
+      pendingGrowRef.current = true
+      flushPendingPage()
+      return
+    }
     if (pendingPageRef.current !== null) flushPendingPage()
     else void fetchNextPage()
   }, [flushPendingPage, fetchNextPage])
@@ -343,7 +408,10 @@ export function StoryCanvas({
       }
       requestAnimationFrame(verify)
     }
-  }, [older, getViewport])
+    // renderCount as well as older: revealing loaded prose grows the content
+    // above the reader exactly as a fetched page does, and an uncompensated
+    // reveal throws them down the manuscript just the same.
+  }, [older, renderCount, getViewport])
 
   // The trigger: a sentinel above the first passage, watched against the
   // scroll viewport. rootMargin starts the fetch early so the reader
