@@ -15,6 +15,14 @@ import { useStoreView } from "@/hooks/use-store"
 import { useWorkspacePayload } from "@/hooks/use-workspace-payload"
 import { StoryWorkspace } from "@/components/story/story-workspace"
 
+/**
+ * This shell reads the store for a title and a pending flag, so it re-renders
+ * on every store change — a snapshot landing, another device's write, any row
+ * moving. Without this the manuscript re-rendered with each of them, on props
+ * that had not changed at all.
+ */
+const MemoWorkspace = React.memo(StoryWorkspace)
+
 export function StoryWorkspaceLoader({
   storyId,
   revision,
@@ -43,7 +51,7 @@ export function StoryWorkspaceLoader({
   }
 
   return (
-    <StoryWorkspace
+    <MemoWorkspace
       story={payload.story}
       composerDraft={payload.composerDraft}
       lorebookEntries={payload.lorebookEntries}

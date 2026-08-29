@@ -49,7 +49,18 @@ export function useWorkspacePayload(
       if (cancelled) return
 
       if (outcome.kind === "ok") {
-        setCurrent({ storyId, payload: outcome.payload, state: "ready" })
+        // Keep the object we are already showing when the correction says the
+        // same thing. Re-seating an identical payload costs a full re-render of
+        // the manuscript — a quarter-second of blocked main thread on a long
+        // story — to arrive at the pixels already on screen. Revisiting a story
+        // nothing has touched is the common case, so this is most revisits.
+        setCurrent((prev) =>
+          prev.storyId === storyId &&
+          prev.payload !== null &&
+          samePayload(prev.payload, outcome.payload)
+            ? prev
+            : { storyId, payload: outcome.payload, state: "ready" }
+        )
         return
       }
 
@@ -81,6 +92,18 @@ export function useWorkspacePayload(
   }, [storyId, revision, isPendingCreate])
 
   return { payload: current.payload, state: current.state }
+}
+
+/**
+ * Exact, not a fingerprint: a cheap comparison that misses a change leaves the
+ * writer looking at a stale manuscript, which is a far worse failure than the
+ * few milliseconds this costs on a payload of a couple of hundred kilobytes.
+ */
+function samePayload(
+  a: StoryWorkspacePayload,
+  b: StoryWorkspacePayload
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
 }
 
 function seed(storyId: string): {
