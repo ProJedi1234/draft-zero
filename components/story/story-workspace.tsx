@@ -15,7 +15,13 @@ import type {
   StoryImage,
 } from "@/lib/types"
 import { runHandoff } from "@/lib/sync/client"
-import { useComposerDraftSync } from "@/hooks/use-composer-draft-sync"
+import type { DraftPayload } from "@/lib/sync/draft"
+import { matchBriefLore, selectBriefLore } from "@/lib/images/brief-lore"
+import { composeSentPrompt, splitSentPrompt } from "@/lib/images/styles"
+import {
+  useComposerDraftSync,
+  type AdoptedDraft,
+} from "@/hooks/use-composer-draft-sync"
 import {
   useGeneration,
   type GenerationController,
@@ -45,15 +51,6 @@ import {
 import { useSidebar } from "@/components/ui/sidebar"
 
 /** Workspace preferences are the writer's, not the story's — they survive reloads. */
-// The image lane at rest. The workspace does not drive these yet — the
-// composer that does arrives with the darkroom — but the draft payload is one
-// write, so every publish has to state the whole row.
-const IDLE_IMAGE_LANE = {
-  imagePrompt: null,
-  imageAssisted: true,
-  imageStyle: null,
-} as const
-
 const INSPECTOR_STORAGE_KEY = "draft-zero:inspector-open"
 const INSPECTOR_TAB_STORAGE_KEY = "draft-zero:inspector-tab"
 
@@ -124,6 +121,10 @@ export function StoryWorkspace({
   const imageAttachRef = React.useRef<((runId: string | null) => void) | null>(
     null
   )
+  // And the develop's, for the third channel — one bridge per registry.
+  const deriveAttachRef = React.useRef<((runId: string | null) => void) | null>(
+    null
+  )
   // The draft's twin bridge: `draft` events reach the editor through the
   // draftRelay directly, but events missed while the socket was down do not —
   // this is how the reconnect asks the editor to re-read the row.
@@ -133,12 +134,14 @@ export function StoryWorkspace({
       storyId: story.id,
       onRunStarted: (runId) => attachRef.current?.(runId),
       onImageRunStarted: (runId) => imageAttachRef.current?.(runId),
+      onDeriveRunStarted: (runId) => deriveAttachRef.current?.(runId),
       // A reconnect means run-started events may have been missed while the
       // socket was down; a null attach is the "is anything running?" probe —
       // one per channel. The draft probe rides the same moment.
       onReconnect: () => {
         attachRef.current?.(null)
         imageAttachRef.current?.(null)
+        deriveAttachRef.current?.(null)
         draftResyncRef.current?.()
       },
     }
@@ -194,11 +197,13 @@ export function StoryWorkspace({
             key={story.id}
             story={story}
             composerDraft={composerDraft}
+            lorebookEntries={lorebookEntries}
             models={models}
             profiles={profiles}
             defaultProfileId={defaultProfileId}
             attachRef={attachRef}
             imageAttachRef={imageAttachRef}
+            deriveAttachRef={deriveAttachRef}
             draftResyncRef={draftResyncRef}
           />
         </ImageRetryModelsProvider>
@@ -254,16 +259,20 @@ export function StoryWorkspace({
 function StoryEditor({
   story,
   composerDraft,
+  lorebookEntries,
   models,
   profiles,
   defaultProfileId,
   attachRef,
   imageAttachRef,
+  deriveAttachRef,
   draftResyncRef,
 }: {
   story: Story
   /** The unsent draft the DB holds — seeded once at mount, live after that. */
   composerDraft: ComposerDraft | null
+  /** For the brief's lore chips, matched here rather than on the server. */
+  lorebookEntries: LorebookEntry[]
   /** For the retry menu's one-line summary of each profile. */
   models: OpenRouterModel[]
   profiles: ModelProfile[]
@@ -272,6 +281,8 @@ function StoryEditor({
   attachRef: { current: ((runId: string | null) => void) | null }
   /** Same bridge for the image channel — image-run-started lands here. */
   imageAttachRef: { current: ((runId: string | null) => void) | null }
+  /** Same bridge for the derivation channel — derive-run-started lands here. */
+  deriveAttachRef: { current: ((runId: string | null) => void) | null }
   /** The draft's bridge: a reconnect calls through to re-read the row. */
   draftResyncRef: { current: (() => void) | null }
 }) {
@@ -289,6 +300,27 @@ function StoryEditor({
   const [mode, setMode] = React.useState<ComposerMode>(
     composerDraft?.mode ?? "do"
   )
+  // The image lane's four, seeded and synced exactly like the pair above.
+  // `imagePrompt` is the DISPLAYED developed prompt, which during a develop
+  // call is a half-written sentence; what has actually been published lives in
+  // the ref below, and the two deliberately disagree mid-stream.
+  const [imagePrompt, setImagePrompt] = React.useState(
+    composerDraft?.imagePrompt ?? null
+  )
+  const [imageAssisted, setImageAssisted] = React.useState(
+    composerDraft?.imageAssisted ?? true
+  )
+  const [imageStyle, setImageStyle] = React.useState(
+    composerDraft?.imageStyle ?? null
+  )
+  // Which lore chips the writer has muted, per send rather than per story: an
+  // exclusion is an edit to ONE develop call — "not this time" — and carrying
+  // it forward would quietly turn a tap into a lorebook setting nobody can see.
+  // Local to this device for now; it joins the synced draft payload next.
+  // Mutes for entries the brief no longer matches are simply never rendered.
+  const [excludedLoreIds, setExcludedLoreIds] = React.useState<Set<string>>(
+    () => new Set<string>()
+  )
   // For callbacks that need "what is the composer holding right now" without
   // subscribing to every keystroke. Written synchronously by the change
   // wrappers below, because a suggestion chip sets mode and text in the same
@@ -296,17 +328,40 @@ function StoryEditor({
   // keeps them honest across foreign adoptions.
   const draftRef = React.useRef(draft)
   const modeRef = React.useRef(mode)
+  const imagePromptRef = React.useRef(imagePrompt)
+  const imageAssistedRef = React.useRef(imageAssisted)
+  const imageStyleRef = React.useRef(imageStyle)
+  const excludedLoreRef = React.useRef(excludedLoreIds)
   React.useEffect(() => {
     draftRef.current = draft
     modeRef.current = mode
+    imageAssistedRef.current = imageAssisted
+    imageStyleRef.current = imageStyle
+    excludedLoreRef.current = excludedLoreIds
+    // imagePromptRef is NOT reconciled here: it is the published value, and
+    // this effect runs on every streamed chunk of a develop call.
   })
-  const adoptDraft = React.useCallback(
-    (text: string, adoptedMode: ComposerMode | null) => {
-      setDraft(text)
-      if (adoptedMode !== null) setMode(adoptedMode)
-    },
-    []
-  )
+  const adoptDraft = React.useCallback((adopted: AdoptedDraft) => {
+    setDraft(adopted.text)
+    if (adopted.mode !== undefined) setMode(adopted.mode)
+    if (adopted.imagePrompt !== undefined) {
+      imagePromptRef.current = adopted.imagePrompt
+      setImagePrompt(adopted.imagePrompt)
+    }
+    if (adopted.imageAssisted !== undefined)
+      setImageAssisted(adopted.imageAssisted)
+    if (adopted.imageStyle !== undefined) setImageStyle(adopted.imageStyle)
+  }, [])
+  /**
+   * Drop every mute. Through the ref as well as the state because the callers
+   * read the ref in the same tick — a queued setState would still be showing
+   * the old set.
+   */
+  const clearExcludedLore = React.useCallback(() => {
+    if (excludedLoreRef.current.size === 0) return
+    excludedLoreRef.current = new Set()
+    setExcludedLoreIds(excludedLoreRef.current)
+  }, [])
   const draftSync = useComposerDraftSync({
     storyId: story.id,
     initialVersion: composerDraft?.updatedAt ?? null,
@@ -314,6 +369,18 @@ function StoryEditor({
     resyncRef: draftResyncRef,
   })
   const publishDraft = draftSync.publish
+  const flushDraft = draftSync.flush
+  /** The whole unsent state as the other devices should see it right now. */
+  const draftPayload = React.useCallback(
+    (): DraftPayload => ({
+      text: draftRef.current,
+      mode: modeRef.current,
+      imagePrompt: imagePromptRef.current,
+      imageAssisted: imageAssistedRef.current,
+      imageStyle: imageStyleRef.current,
+    }),
+    []
+  )
   // Every USER-driven change goes through these so the other devices hear it.
   // Foreign adoptions go through adoptDraft above instead — routing them
   // through here would echo every adopted value straight back onto the bus.
@@ -321,41 +388,94 @@ function StoryEditor({
     (value: string) => {
       draftRef.current = value
       setDraft(value)
-      publishDraft({
-        text: value,
-        mode: modeRef.current,
-        ...IDLE_IMAGE_LANE,
-      })
+      // A cleared brief is a cleared question, so the answers to it go too.
+      if (value.trim() === "") clearExcludedLore()
+      publishDraft(draftPayload())
     },
-    [publishDraft]
+    [clearExcludedLore, draftPayload, publishDraft]
   )
+  /** A chip tapped on or off. */
+  const toggleLore = React.useCallback((id: string) => {
+    const next = new Set(excludedLoreRef.current)
+    if (!next.delete(id)) next.add(id)
+    excludedLoreRef.current = next
+    setExcludedLoreIds(next)
+  }, [])
   const changeMode = React.useCallback(
     (value: ComposerMode) => {
       modeRef.current = value
       setMode(value)
-      publishDraft({
-        text: draftRef.current,
-        mode: value,
-        ...IDLE_IMAGE_LANE,
-      })
+      publishDraft(draftPayload())
     },
-    [publishDraft]
+    [draftPayload, publishDraft]
+  )
+  /** A finished develop, or a hand-edit of the lane — both worth persisting. */
+  const changeImagePrompt = React.useCallback(
+    (value: string | null) => {
+      imagePromptRef.current = value
+      setImagePrompt(value)
+      publishDraft(draftPayload())
+    },
+    [draftPayload, publishDraft]
+  )
+  const changeImageAssisted = React.useCallback(
+    (value: boolean) => {
+      imageAssistedRef.current = value
+      setImageAssisted(value)
+      publishDraft(draftPayload())
+    },
+    [draftPayload, publishDraft]
+  )
+  const changeImageStyle = React.useCallback(
+    (value: string | null) => {
+      imageStyleRef.current = value
+      setImageStyle(value)
+      publishDraft(draftPayload())
+    },
+    [draftPayload, publishDraft]
   )
   const composerRef = React.useRef<HTMLTextAreaElement>(null)
   const composerBoxRef = React.useRef<HTMLDivElement>(null)
   const shellRef = React.useRef<HTMLDivElement>(null)
 
-  const image = useImageGeneration(story.id, {
-    onRestoreDraft: (prompt) => {
-      // Only into an EMPTY composer. A failed retry (fired from the picture's
-      // own cluster, not from here) must not overwrite a sentence the writer is
-      // halfway through typing — losing live keystrokes to a background failure
-      // is a worse trade than losing a prompt they can regenerate.
-      if (draftRef.current === "") changeDraft(prompt)
+  /**
+   * Puts a picture's prompt back in the composer as the two lanes it came from.
+   *
+   * With a brief on record the pair is restored whole — the writer's words in
+   * the brief, the developed prompt in the lane, ready to draw — because they
+   * paid for the second one and the first is the only thing they can usefully
+   * edit. Without one there is only ever one text, and it goes where the writer
+   * types, exactly as it did before briefs existed.
+   *
+   * The stored prompt carries its style sentence, so it is peeled off on the
+   * way in: leaving it would send the style twice on the next draw.
+   */
+  const restoreImagePrompt = React.useCallback(
+    (restored: { prompt: string; sourcePrompt: string | null }) => {
+      const { scene } = splitSentPrompt(restored.prompt)
+      if (restored.sourcePrompt !== null) {
+        changeDraft(restored.sourcePrompt)
+        changeImagePrompt(scene)
+      } else {
+        changeDraft(scene)
+        changeImagePrompt(null)
+      }
       // Armed for image, because the restored text IS an image prompt: handing
       // it back under Do would leave the next Send about to file a scene
       // description as the writer's turn.
       changeMode("image")
+    },
+    [changeDraft, changeImagePrompt, changeMode]
+  )
+
+  const image = useImageGeneration(story.id, {
+    onRestoreDraft: (restored) => {
+      // Only into an EMPTY composer. A failed retry (fired from the picture's
+      // own cluster, not from here) must not overwrite a sentence the writer is
+      // halfway through typing — losing live keystrokes to a background failure
+      // is a worse trade than losing a prompt they can regenerate.
+      if (draftRef.current === "") restoreImagePrompt(restored)
+      else changeMode("image")
     },
   })
   // The bridge from the workspace's sync registration: an image-run-started
@@ -368,7 +488,73 @@ function StoryEditor({
     }
   }, [imageAttachRef, attachImage])
 
-  const derivation = useImagePromptDerivation(story.id)
+  // The develop is a server-owned run now, so this hook is a watcher like the
+  // image one: it never publishes the streaming lane, and the settled prompt
+  // comes back as a `draft` event the run itself writes — which is what makes
+  // a develop survive the tab that started it.
+  const derivation = useImagePromptDerivation(story.id, {
+    // Display only. A prompt still being written is not a draft worth shipping
+    // to the writer's other devices a chunk at a time.
+    onText: setImagePrompt,
+    // A develop that produced nothing (an error, a story deleted under it)
+    // folds the lane away rather than leaving an empty box open. Only the
+    // device that asked writes that down; the others hear it as the echo.
+    onDiscard: ({ persist }) => {
+      if (persist) changeImagePrompt(null)
+      else setImagePrompt(null)
+    },
+  })
+  // The bridge from the workspace's sync registration, exactly like the image
+  // one: a derive-run-started (or the reconnect probe) calls through.
+  const attachDerive = derivation.attach
+  React.useEffect(() => {
+    deriveAttachRef.current = attachDerive
+    return () => {
+      deriveAttachRef.current = null
+    }
+  }, [deriveAttachRef, attachDerive])
+
+  const { develop } = derivation
+  const handleDevelop = React.useCallback(() => {
+    // The pending draft save goes out NOW rather than on its debounce. The run
+    // writes the lane into the same row when it settles, seconds from here, and
+    // a keystroke's save still in flight at that moment would land after it and
+    // put the old lane back. Flushing here orders the two by the only thing
+    // that can order them — arrival — and it also empties the pending slot, so
+    // the run's own `draft` event is adoptable when it arrives (see
+    // shouldAdoptDraft). A no-op when nothing is pending.
+    flushDraft()
+    void develop({
+      brief: draftRef.current.trim(),
+      excludedLoreIds: [...excludedLoreRef.current],
+    })
+  }, [develop, flushDraft])
+
+  // Matched here, with the same function the server uses, so a chip on screen
+  // and an entry in the call can never be two different lists. Cheap enough to
+  // run per keystroke — it is a substring scan over the story's own lorebook —
+  // and skipped entirely outside the one mode that shows it.
+  const loreMatches = React.useMemo(
+    () =>
+      mode === "image" && imageAssisted
+        ? matchBriefLore(lorebookEntries, draft)
+        : [],
+    [draft, imageAssisted, lorebookEntries, mode]
+  )
+  // What actually rides: the same selection the route makes from the same
+  // inputs — muted chips out, then the shared budget. Recorded on the draw as
+  // the picture's provenance, so it must be THIS list and not the chips' —
+  // when the budget bites, a chip on screen may still be an entry that fell
+  // off the far end of the cascade.
+  const includedLoreIds = React.useMemo(
+    () =>
+      mode === "image" && imageAssisted
+        ? selectBriefLore(lorebookEntries, draft, excludedLoreIds).map(
+            (match) => match.entry.id
+          )
+        : [],
+    [draft, excludedLoreIds, imageAssisted, lorebookEntries, mode]
+  )
   // Remembered across sends, like the armed mode: a writer working in portrait
   // is working in portrait until they say otherwise.
   const [aspectRatio, setAspectRatio] = React.useState<ImageAspectRatio>("16:9")
@@ -455,12 +641,39 @@ function StoryEditor({
   /** Hands a picture's prompt back to the composer, armed to redraw it. */
   const handleEditImagePrompt = React.useCallback(
     (target: StoryImage) => {
-      changeMode("image")
       setAspectRatio(target.aspectRatio)
-      changeDraft(target.prompt)
+      restoreImagePrompt({
+        prompt: target.prompt,
+        sourcePrompt: target.sourcePrompt,
+      })
       composerRef.current?.focus()
     },
-    [changeDraft, changeMode]
+    [restoreImagePrompt]
+  )
+
+  /**
+   * The send. The style is folded in HERE and nowhere else, so the string the
+   * provider gets and the string recorded as `prompt` are the same string by
+   * construction — assisted or verbatim, it is one path.
+   */
+  const handleGenerateImage = React.useCallback(
+    (send: {
+      scene: string
+      sourcePrompt: string | null
+      loreIds: string[]
+    }) => {
+      // The brief that these mutes qualified is on its way out — the composer
+      // empties it and folds the lane away in this same tick — so the answers
+      // to it go with it.
+      clearExcludedLore()
+      void image.generate({
+        prompt: composeSentPrompt(send.scene, imageStyleRef.current),
+        sourcePrompt: send.sourcePrompt,
+        promptLoreIds: send.loreIds,
+        aspectRatio,
+      })
+    },
+    [aspectRatio, clearExcludedLore, image]
   )
 
   return (
@@ -479,6 +692,11 @@ function StoryEditor({
           onImageRetry={(target, modelId) =>
             void image.generate({
               prompt: target.prompt,
+              // Carried through rather than recomputed: a retry redraws THIS
+              // take's prompt, so it was asked for by the same brief and told
+              // the same lore, whatever the composer holds now.
+              sourcePrompt: target.sourcePrompt,
+              promptLoreIds: target.promptLoreIds,
               aspectRatio: target.aspectRatio,
               // Joins the slot, so this is another draw of the same beat rather
               // than a second picture appended to the end of the story.
@@ -498,11 +716,20 @@ function StoryEditor({
           onModeChange={changeMode}
           aspectRatio={aspectRatio}
           onAspectRatioChange={setAspectRatio}
+          imagePrompt={imagePrompt}
+          onImagePromptChange={changeImagePrompt}
+          imageAssisted={imageAssisted}
+          onImageAssistedChange={changeImageAssisted}
+          imageStyle={imageStyle}
+          onImageStyleChange={changeImageStyle}
+          loreMatches={loreMatches}
+          includedLoreIds={includedLoreIds}
+          excludedLoreIds={excludedLoreIds}
+          onToggleLore={toggleLore}
           deriving={derivation.deriving}
-          onDerive={() => void derivation.derive(setDraft)}
-          onGenerateImage={(prompt) =>
-            void image.generate({ prompt, aspectRatio })
-          }
+          derivedBrief={derivation.derivedBrief}
+          onDevelop={handleDevelop}
+          onGenerateImage={handleGenerateImage}
           imageBusy={image.job !== null}
           textareaRef={composerRef}
           containerRef={composerBoxRef}

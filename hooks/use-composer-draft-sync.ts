@@ -1,7 +1,8 @@
 "use client"
 
 // hooks/use-composer-draft-sync.ts — Magic sync for the composer's unsent
-// state: the text and the armed Do/Say/Image mode, travelling as one payload.
+// state: the text, the armed Do/Say/Image mode, and the image lane's developed
+// prompt, assistance flag and style, travelling as one payload.
 //
 // The composer is unlike the §4.2 fields it joins: its value is real React
 // state (the send path clears it, the suggestion chips fill it), so there is
@@ -30,6 +31,9 @@ import { draftRelay, syncClientId } from "@/lib/sync/client"
 import { shouldAdoptDraft, type DraftPayload } from "@/lib/sync/draft"
 import type { ActionResult, ComposerMode } from "@/lib/types"
 
+/** What the composer is handed to adopt. See the `adopt` prop below. */
+export type AdoptedDraft = Partial<DraftPayload> & { text: string }
+
 export function useComposerDraftSync({
   storyId,
   initialVersion,
@@ -40,11 +44,13 @@ export function useComposerDraftSync({
   /** The seeded row's updated_at, or null when the story had no draft. */
   initialVersion: string | null
   /**
-   * Write an adopted draft into the composer state. Must be stable. `mode` is
-   * null only from the resync probe's 204 — a composer never touched has no
-   * mode on record, and the one already armed is as good an answer as any.
+   * Write an adopted draft into the composer state. Must be stable. Everything
+   * but `text` is optional, and absent means "nothing on record": that is the
+   * resync probe's 204 — a composer never touched has no armed mode, no
+   * developed prompt and no style, and whatever this device already holds is
+   * as good an answer as any.
    */
-  adopt: (text: string, mode: ComposerMode | null) => void
+  adopt: (draft: AdoptedDraft) => void
   /** Bridge from the workspace's sync registration: reconnect → re-read the row. */
   resyncRef: { current: (() => void) | null }
 }): {
@@ -54,6 +60,13 @@ export function useComposerDraftSync({
    * devices would volley the same state for ever.
    */
   publish: (value: DraftPayload) => void
+  /**
+   * Send whatever the debounce is still holding, right now. Blur does not call
+   * this — the composer is never blurred on the way to a send — but the develop
+   * does: that run writes the same row seconds later, and a keystroke's save
+   * still in flight then would land after it and undo the lane.
+   */
+  flush: () => void
 } {
   const versionRef = React.useRef(initialVersion)
   // The last user payload the server has not acknowledged. Non-null suspends
@@ -72,6 +85,9 @@ export function useComposerDraftSync({
             storyId,
             text: payload.text,
             mode: payload.mode,
+            imagePrompt: payload.imagePrompt,
+            imageAssisted: payload.imageAssisted,
+            imageStyle: payload.imageStyle,
             origin: syncClientId,
           }),
           // The last save before a tab closes is the one that matters most —
@@ -117,7 +133,13 @@ export function useComposerDraftSync({
         })
         if (!take) return
         versionRef.current = event.version
-        adopt(event.text, event.mode)
+        adopt({
+          text: event.text,
+          mode: event.mode,
+          imagePrompt: event.imagePrompt,
+          imageAssisted: event.imageAssisted,
+          imageStyle: event.imageStyle,
+        })
       }),
     [storyId, adopt]
   )
@@ -139,19 +161,28 @@ export function useComposerDraftSync({
           // still leaves a row for its mode), so anything we hold is a save
           // that never landed. The version deliberately stays — a stale event
           // that limps in later must still lose to what we knew.
-          adopt("", null)
+          adopt({ text: "" })
           return
         }
         if (!res.ok) return
         const data = (await res.json()) as {
           text: string
           mode: ComposerMode
+          imagePrompt: string | null
+          imageAssisted: boolean
+          imageStyle: string | null
           version: string
         }
         if (versionRef.current !== null && data.version <= versionRef.current)
           return
         versionRef.current = data.version
-        adopt(data.text, data.mode)
+        adopt({
+          text: data.text,
+          mode: data.mode,
+          imagePrompt: data.imagePrompt,
+          imageAssisted: data.imageAssisted,
+          imageStyle: data.imageStyle,
+        })
       } catch {
         // A probe that failed is a socket about to reconnect again; the next
         // one covers it.
@@ -176,5 +207,5 @@ export function useComposerDraftSync({
     return () => document.removeEventListener("visibilitychange", onHide)
   }, [flush])
 
-  return { publish }
+  return { publish, flush }
 }
