@@ -214,6 +214,11 @@ export type SyncWireEvent =
       imagePrompt: string | null
       imageAssisted: boolean
       imageStyle: string | null
+      /**
+       * The lore chips muted under the brief. Always an array — the row's NULL
+       * and an empty list are the same fact, and only one of them travels.
+       */
+      imageExcludedLoreIds: string[]
       version: string
       origin: string
     }

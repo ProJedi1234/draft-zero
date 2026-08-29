@@ -56,6 +56,7 @@ export type BusEvent =
       imagePrompt: string | null
       imageAssisted: boolean
       imageStyle: string | null
+      imageExcludedLoreIds: string[]
       version: string
       origin: string
     }

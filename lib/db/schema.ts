@@ -143,7 +143,7 @@ export const composerDrafts = pgTable("composer_drafts", {
     .references(() => stories.id, { onDelete: "cascade" }),
   text: text("text").notNull(),
   mode: text("mode").notNull().default("do").$type<ComposerMode>(),
-  // The image lane's three pieces of unsent state. Here rather than on the
+  // The image lane's four pieces of unsent state. Here rather than on the
   // story for the same reason `text` is: they move on a debounce cadence while
   // the writer types, and none of them is a fact any other render depends on.
   //
@@ -155,6 +155,12 @@ export const composerDrafts = pgTable("composer_drafts", {
   // the writer says otherwise.
   imageAssisted: boolean("image_assisted").notNull().default(true),
   imageStyle: text("image_style"),
+  // The lore chips the writer has muted under the brief on screen, as a JSON
+  // string[] of lorebook entry ids. NULL and '[]' would mean the same thing —
+  // nothing is muted — so only one of them is ever written: empty collapses to
+  // NULL, unlike `image_prompt`, where the absence of a develop is a real
+  // state distinct from a develop that produced nothing.
+  imageExcludedLoreJson: text("image_excluded_lore_json"),
   updatedAt: text("updated_at").notNull(),
 })
 

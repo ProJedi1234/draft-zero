@@ -63,6 +63,28 @@ export function serializeKeys(keys: string[]): string {
 }
 
 /**
+ * The draft row's muted-chip column, back into an array. Tolerant like
+ * parsePromptLoreIds below: a mute is a preference for one send, so a column
+ * that somehow holds nonsense costs the writer a second tap rather than an
+ * error.
+ */
+export function parseExcludedLoreJson(json: string | null): string[] {
+  if (json === null || json === "") return []
+  try {
+    const parsed: unknown = JSON.parse(json)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((id): id is string => typeof id === "string")
+  } catch {
+    return []
+  }
+}
+
+/** Empty collapses to NULL — see the column's note in schema.ts. */
+export function serializeExcludedLoreIds(ids: string[]): string | null {
+  return ids.length === 0 ? null : JSON.stringify(ids)
+}
+
+/**
  * Provenance for one row, or null when the row does not carry it.
  *
  * All three settings columns are written together by the generation path, so

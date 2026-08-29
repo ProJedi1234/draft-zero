@@ -316,10 +316,11 @@ function StoryEditor({
   // Which lore chips the writer has muted, per send rather than per story: an
   // exclusion is an edit to ONE develop call — "not this time" — and carrying
   // it forward would quietly turn a tap into a lorebook setting nobody can see.
-  // Local to this device for now; it joins the synced draft payload next.
-  // Mutes for entries the brief no longer matches are simply never rendered.
+  // Per send, but not per DEVICE: it rides the draft row with the brief it
+  // qualifies, so a chip tapped off on the phone is off on the tablet that hits
+  // ↵. Mutes for entries the brief no longer matches are simply never rendered.
   const [excludedLoreIds, setExcludedLoreIds] = React.useState<Set<string>>(
-    () => new Set<string>()
+    () => new Set(composerDraft?.imageExcludedLoreIds ?? [])
   )
   // For callbacks that need "what is the composer holding right now" without
   // subscribing to every keystroke. Written synchronously by the change
@@ -351,11 +352,13 @@ function StoryEditor({
     if (adopted.imageAssisted !== undefined)
       setImageAssisted(adopted.imageAssisted)
     if (adopted.imageStyle !== undefined) setImageStyle(adopted.imageStyle)
+    if (adopted.imageExcludedLoreIds !== undefined)
+      setExcludedLoreIds(new Set(adopted.imageExcludedLoreIds))
   }, [])
   /**
    * Drop every mute. Through the ref as well as the state because the callers
-   * read the ref in the same tick — a queued setState would still be showing
-   * the old set.
+   * publish in the same tick — a queued setState would still be showing the old
+   * set when the payload is read.
    */
   const clearExcludedLore = React.useCallback(() => {
     if (excludedLoreRef.current.size === 0) return
@@ -378,6 +381,7 @@ function StoryEditor({
       imagePrompt: imagePromptRef.current,
       imageAssisted: imageAssistedRef.current,
       imageStyle: imageStyleRef.current,
+      imageExcludedLoreIds: [...excludedLoreRef.current],
     }),
     []
   )
@@ -388,19 +392,25 @@ function StoryEditor({
     (value: string) => {
       draftRef.current = value
       setDraft(value)
-      // A cleared brief is a cleared question, so the answers to it go too.
+      // A cleared brief is a cleared question, so the answers to it go too —
+      // through the ref first, because the publish below is the one that
+      // carries the clear to the other devices.
       if (value.trim() === "") clearExcludedLore()
       publishDraft(draftPayload())
     },
     [clearExcludedLore, draftPayload, publishDraft]
   )
-  /** A chip tapped on or off. */
-  const toggleLore = React.useCallback((id: string) => {
-    const next = new Set(excludedLoreRef.current)
-    if (!next.delete(id)) next.add(id)
-    excludedLoreRef.current = next
-    setExcludedLoreIds(next)
-  }, [])
+  /** A chip tapped on or off. Publishes, like every other user-driven change. */
+  const toggleLore = React.useCallback(
+    (id: string) => {
+      const next = new Set(excludedLoreRef.current)
+      if (!next.delete(id)) next.add(id)
+      excludedLoreRef.current = next
+      setExcludedLoreIds(next)
+      publishDraft(draftPayload())
+    },
+    [draftPayload, publishDraft]
+  )
   const changeMode = React.useCallback(
     (value: ComposerMode) => {
       modeRef.current = value
@@ -662,9 +672,10 @@ function StoryEditor({
       sourcePrompt: string | null
       loreIds: string[]
     }) => {
-      // The brief that these mutes qualified is on its way out — the composer
-      // empties it and folds the lane away in this same tick — so the answers
-      // to it go with it.
+      // No publish of its own: the composer empties the brief and folds the
+      // lane away in this same tick, and those changes publish the payload —
+      // cleared exclusions and all. A publish here would only be the same
+      // state announced twice.
       clearExcludedLore()
       void image.generate({
         prompt: composeSentPrompt(send.scene, imageStyleRef.current),

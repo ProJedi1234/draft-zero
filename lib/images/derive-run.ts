@@ -24,6 +24,7 @@
 import "server-only"
 
 import { getDb } from "@/lib/db/client"
+import { parseExcludedLoreJson } from "@/lib/db/mappers"
 import { composerDrafts } from "@/lib/db/schema"
 import { recordCallStarted, settleCall } from "@/lib/generation/calls"
 import { chunkText } from "@/lib/generation/fixtures"
@@ -419,6 +420,7 @@ async function persistDerivedLane(
       imagePrompt,
       imageAssisted: true,
       imageStyle: null,
+      imageExcludedLoreJson: null,
       updatedAt: version,
     })
     .onConflictDoUpdate({
@@ -440,6 +442,10 @@ async function persistDerivedLane(
     imagePrompt: row.imagePrompt,
     imageAssisted: row.imageAssisted,
     imageStyle: row.imageStyle,
+    // Straight off the returned row, like everything else here: a chip muted
+    // while the model was writing is part of the composer this event hands
+    // back, not something this run is entitled to reset.
+    imageExcludedLoreIds: parseExcludedLoreJson(row.imageExcludedLoreJson),
     version: row.updatedAt,
     origin: SERVER_DRAFT_ORIGIN,
   })

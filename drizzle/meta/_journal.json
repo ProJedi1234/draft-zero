@@ -204,6 +204,13 @@
       "when": 1787956931019,
       "tag": "0028_soft_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1787961801235,
+      "tag": "0029_quick_doomsday",
+      "breakpoints": true
     }
   ]
 }

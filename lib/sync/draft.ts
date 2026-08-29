@@ -24,6 +24,36 @@ export interface DraftPayload {
   imagePrompt: string | null
   imageAssisted: boolean
   imageStyle: string | null
+  /**
+   * The lore chips muted under this brief. Per-send scratch state, but shared
+   * scratch state: the writer who tapped a chip off on the phone and picks the
+   * tablet up to hit ↵ meant that mute for the send, not for the device.
+   * Always an array on the wire — an empty exclusion set has no second meaning
+   * for a null to carry.
+   */
+  imageExcludedLoreIds: string[]
+}
+
+/** More chips than any brief can match; a longer list is a bug, not a mute. */
+export const MAX_EXCLUDED_LORE_IDS = 200
+
+/** Lorebook ids are UUIDs; this is slack, not a spec. */
+export const MAX_LORE_ID_CHARS = 100
+
+/**
+ * Whether an untrusted body's exclusion list is one the draft row may hold.
+ * Pure and exported so tests/composer-draft.test.ts can pin the bounds without
+ * standing a route up.
+ */
+export function isExcludedLoreIds(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= MAX_EXCLUDED_LORE_IDS &&
+    value.every(
+      (id) =>
+        typeof id === "string" && id !== "" && id.length <= MAX_LORE_ID_CHARS
+    )
+  )
 }
 
 /**
