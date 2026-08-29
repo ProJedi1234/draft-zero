@@ -73,6 +73,61 @@ export async function restoreIllustration(
 }
 
 /**
+ * Makes a named take of a slot the active one — the gallery's promote.
+ *
+ * By id where the canvas's selectImageByOffset takes an offset, and the
+ * difference is which side can name the target. The canvas holds only the
+ * active take, so only the server knows what "next" is; the gallery lightbox
+ * holds the whole slot and is pointing at one thumbnail, so an offset would
+ * mean recomputing on the client what it already has in hand.
+ *
+ * A no-op for a take that is already active, or one that is not a live member
+ * of this slot — a stale click from a device whose wall predates a delete.
+ */
+export async function selectImageById(
+  storyId: string,
+  imageGroupId: string,
+  imageId: string
+): Promise<ActionResult> {
+  const db = await getDb()
+  const moved = await db.transaction(async (tx) => {
+    const takes = await tx
+      .select({ id: storyImages.id, isActive: storyImages.isActive })
+      .from(storyImages)
+      .where(
+        and(
+          eq(storyImages.storyId, storyId),
+          eq(storyImages.imageGroupId, imageGroupId),
+          isNull(storyImages.deletedAt)
+        )
+      )
+    const target = takes.find((take) => take.id === imageId)
+    if (!target || target.isActive) return false
+
+    // Clears every take rather than just the one that was active: the invariant
+    // this restores is "exactly one active per slot", and a slot that had
+    // somehow acquired two would otherwise keep one of them forever.
+    await tx
+      .update(storyImages)
+      .set({ isActive: false })
+      .where(
+        and(
+          eq(storyImages.storyId, storyId),
+          eq(storyImages.imageGroupId, imageGroupId)
+        )
+      )
+    await tx
+      .update(storyImages)
+      .set({ isActive: true })
+      .where(eq(storyImages.id, target.id))
+    return true
+  })
+
+  if (moved) commitChange(storyId)
+  return { ok: true, data: null }
+}
+
+/**
  * Steps to the neighbouring take of an illustration's slot.
  *
  * Takes an OFFSET and not a sibling id, mirroring selectVariantByOffset: the

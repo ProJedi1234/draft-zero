@@ -50,6 +50,7 @@ import {
   deriveSlotMeta,
   parseLoreIdsJson,
   toAppSettings,
+  toGalleryImages,
   toGenerationDefaults,
   toGenerationSettings,
   toLorebookEntry,
@@ -160,22 +161,33 @@ export async function listStoriesWithCounts(): Promise<StorySummary[]> {
 
 /**
  * Every illustration in the library, newest first, for the gallery's photo
- * wall. The same visibility rule as the word count above: only the active take
- * of a live slot counts, because the gallery is a view over what the
- * manuscripts actually show, not over everything the disk retains. The story
- * join is for captions and grouping — title and tint are the only pieces of a
- * story the wall needs.
+ * wall. The story join is for captions and grouping — title and tint are the
+ * only pieces of a story the wall needs.
+ *
+ * Every live take, not just the active one, and toGalleryImages folds them into
+ * one tile per slot. Deleted rows still never appear: `deleted_at` covers the
+ * whole slot (deleteIllustration soft-deletes every take of a picture at once),
+ * so "show the retries" and "show deleted pictures" stay the separate questions
+ * they are.
+ *
+ * Ordering is left to toGalleryImages, which sorts by the slot's first take —
+ * SQL cannot do it here without a window function over a set small enough that
+ * one is not worth writing. The ORDER BY below is the in-slot one the mapper
+ * depends on for `takes` to come out oldest-first.
  */
 export async function listGalleryImages(): Promise<GalleryImage[]> {
   const db = await getDb()
-  return db
+  const rows = await db
     .select({
       id: storyImages.id,
       prompt: storyImages.prompt,
       aspectRatio: storyImages.aspectRatio,
       mediaType: storyImages.mediaType,
       modelId: storyImages.modelId,
+      seed: storyImages.seed,
       createdAt: storyImages.createdAt,
+      imageGroupId: storyImages.imageGroupId,
+      isActive: storyImages.isActive,
       storyId: storyImages.storyId,
       storyTitle: stories.title,
       tintHue: stories.tintHue,
@@ -183,8 +195,9 @@ export async function listGalleryImages(): Promise<GalleryImage[]> {
     })
     .from(storyImages)
     .innerJoin(stories, eq(storyImages.storyId, stories.id))
-    .where(and(isNull(storyImages.deletedAt), eq(storyImages.isActive, true)))
-    .orderBy(desc(storyImages.createdAt), desc(storyImages.id))
+    .where(isNull(storyImages.deletedAt))
+    .orderBy(asc(storyImages.imageIndex))
+  return toGalleryImages(rows)
 }
 
 /**
