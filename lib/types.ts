@@ -871,6 +871,18 @@ export const IMAGE_CONTEXT_OPTIONS = [1024, 2048, 4096, 8192, 16384] as const
 export interface ComposerDraft {
   text: string
   mode: ComposerMode
+  /**
+   * The developed image prompt sitting under the brief, or null when there
+   * isn't one. Persisted for the same reason the text is: a develop call was
+   * paid for, and losing it to a reload would make the writer buy it twice.
+   * Only ever the FINISHED result — a stream in progress is local to the device
+   * producing it.
+   */
+  imagePrompt: string | null
+  /** False is the verbatim toggle: the writer's words go to the image model untouched. */
+  imageAssisted: boolean
+  /** The art direction appended to the next send, or null for none. */
+  imageStyle: string | null
   /** ISO-8601. */
   updatedAt: string
 }
@@ -929,18 +941,26 @@ export interface StoryImage {
   /** How many takes the slot holds. 1 for an illustration never retried. */
   imageCount: number
   /**
-   * The scene prompt that was sent, WITHOUT the image profile's style line —
-   * the writer edits scene, the profile owns art direction, and mixing the two
-   * back together here would make a re-open of the editor show them words they
-   * never typed.
+   * The full text that went to the image model — scene and, when the writer
+   * chose one, the trailing style sentence (see composeSentPrompt). This is the
+   * prompt in the provenance sense: rerun it and you get this picture again,
+   * which is exactly what a retry does.
    */
   prompt: string
   /**
-   * What derivation produced before the writer touched it, or null when the
-   * prompt was never derived. Kept as provenance: it is the only way to tell a
-   * prompt the writer wrote from one they accepted.
+   * The writer's own brief, before a develop call expanded it. Null when there
+   * was nothing to expand — a verbatim send, or any picture drawn before the
+   * brief existed — and that null is what the caption row and the edit handback
+   * branch on.
    */
-  derivedPrompt: string | null
+  sourcePrompt: string | null
+  /**
+   * The lorebook entries fed to the develop call, in the order they were fed.
+   * Empty for a verbatim send and for pre-brief pictures. Provenance for the
+   * question a prompt alone cannot answer: which written details the model was
+   * working from when it decided what this character looks like.
+   */
+  promptLoreIds: string[]
   modelId: string
   aspectRatio: ImageAspectRatio
   /** Drives the mock's composition; sent as `seed` to a real provider. */

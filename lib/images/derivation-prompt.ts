@@ -59,8 +59,10 @@ const PARAGRAPH_SEPARATOR = "\n\n"
  * changed rather than expired: the scene field has to stay free of art
  * direction so a style stated somewhere the writer can see it composes with it
  * instead of fighting whatever "digital art, trending on artstation" the
- * model's priors would otherwise smuggle in. Until a story-level style exists,
- * that "somewhere" is the writer's own edit in the composer.
+ * model's priors would otherwise smuggle in. That "somewhere" is now the
+ * composer's own style control, appended after the scene by composeSentPrompt —
+ * which only works while the scene itself stays free of art direction, so the
+ * ban is load-bearing rather than historical.
  *
  * The chevron line exists because the story text arrives in the narrator's wire
  * format — composeContext marks every player turn with `> ` (markPlayerTurn in
@@ -195,5 +197,127 @@ export function renderDerivationPrompt(context: ComposedContext): string {
     boundary === -1 ? story : story.slice(boundary + PARAGRAPH_SEPARATOR.length)
   parts.push(`The moment to depict:\n${moment}`)
   parts.push("Write the image prompt for this moment.")
+  return parts.join("\n\n")
+}
+
+/**
+ * The brief-mode counterpart: the writer asked for a picture in their own
+ * shorthand, and this expands it.
+ *
+ * Every rule from DERIVATION_SYSTEM_PROMPT survives verbatim, because they are
+ * rules about what an image model can be told, not about where the scene came
+ * from: never a name, use written details as written, no style, no negations,
+ * refusable content rendered as aftermath, 40 to 90 words, most important thing
+ * first. What changes is the input and therefore the job. The other prompt
+ * reads an excerpt and CHOOSES the moment; this one is handed the moment and
+ * must not choose at all.
+ *
+ * That is the failure this prompt is shaped around. A model given "Lara at the
+ * tomb door, torch raised" and a lorebook full of a story will happily return a
+ * better scene than the one it was asked for — a different hour, a companion
+ * the writer did not mention, the confrontation the lore implies is coming.
+ * Every one of those reads as the feature ignoring the writer, so the
+ * faithfulness rules are stated first and stated as prohibitions, which is the
+ * one place a ban beats a recipe: the failure is addition, and you cannot
+ * demonstrate the absence of an invented character in an example.
+ *
+ * Expansion is what the model IS for, so the line between the two is drawn
+ * explicitly: names and places may be filled out from the details block, and
+ * anything the brief leaves open — light, framing, weather — is the model's to
+ * choose. A brief is shorthand, not a specification, and a prompt that expanded
+ * nothing would be a develop call the writer paid for and got their own words
+ * back from.
+ *
+ * Three examples again, varied on purpose for the same reason: one terse brief
+ * expanded to a close-up, one carrying a "Relevant details:" block so the
+ * name-to-appearance substitution is demonstrated rather than merely required,
+ * and one wide and atmospheric. The middle one is the load-bearing example —
+ * resolving a name against written details is the whole reason this call reads
+ * the lorebook at all.
+ */
+export const BRIEF_DERIVATION_SYSTEM_PROMPT = `You turn a writer's shorthand request for a picture into a single prompt for an image model.
+
+The request is theirs. Realize the scene they asked for — never a different one.
+
+Rules on faithfulness:
+- Depict exactly the moment they described. Do not move it earlier or later, and do not replace it with a more dramatic one.
+- Add no people, creatures or objects they did not put there. A brief naming two figures has two figures in it.
+- What they left open — the light, the framing, the weather, the texture of the place — is yours to choose. That is the expansion they are asking for.
+- When the details below describe a person or place they named, use those details, as written. They are what keeps a recurring character the same person from one picture to the next.
+
+Write one paragraph of plain description, most important thing first: the subject and what they are visibly doing, then the setting around them, then the light, time of day and weather, then whatever mood the picture should carry. Name the framing when the request implies one — wide shot, close-up, seen from behind — and choose it from the moment, not from habit.
+
+Rules on the prompt itself:
+- Never write a name. The image model has not read this story, and a name it does not know it invents a face for — a different one every time. Say what a stranger would see instead: age, build, hair, dress.
+- The story is told as "you", and that character has no appearance except what the story gave them. Use what it gave. Otherwise frame the shot from behind them, or leave them out of it, rather than inventing a face.
+- Only what a camera could record. Thoughts, dialogue, backstory and plot stay in the prose — show them as posture, expression and light instead.
+- Say what is there, never what is absent. "An empty street at dawn", not "a street with no cars": an image model asked for no cars draws the cars.
+- No art style, medium, artist names, or quality tags. You describe the scene; style is stated separately.
+- Render violence as its aftermath rather than the injury, and intimacy as an embrace or a held look. A prompt the image model refuses is worth nothing to the writer.
+- One paragraph, usually 40 to 90 words. A tight close-up may need fewer; a crowded wide shot may need more.
+
+The examples below differ in framing, mood, length and rhythm on purpose. Match your prompt to the request in front of you, not to any one of them.
+
+Example request:
+the key on the counter, nobody's hand on it yet
+
+Example prompt:
+Close-up across a scratched wooden counter: a heavy brass room key on a worn paper tag lies alone in a pool of lamplight, its shadow long across the grain. Beyond it the hall falls away into brown dark. Late, quiet, nobody reaching for it yet.
+
+Example request:
+Relevant details:
+- Sefa: the smith's daughter — broad-shouldered, red hair cropped short, soot-streaked leather apron
+- The Long Bridge: three spans of black stone over a gorge, no rails
+
+Sefa halfway across the Long Bridge, looking back
+
+Example prompt:
+A broad-shouldered young woman with short red hair and a soot-streaked leather apron stands halfway along a railless bridge of black stone, turned back the way she came, one hand loose at her side. Three long spans run out behind her over a gorge, mist standing in it. Overcast morning light, flat and grey, wind pulling at her hair.
+
+Example request:
+the whole camp burning, seen from the ridge
+
+Example prompt:
+Wide shot from a dark ridgeline looking down on a camp fully alight: rows of tents collapsing into orange fire, smoke rolling flat across the valley floor, small figures scattering between them. The foreground grass is lit from below, the sky above it starless and rust-coloured. Distant, quiet, too far away to help.
+
+Reply with the prompt only — no preamble, no quotes, no alternatives.`
+
+/**
+ * The user turn for brief mode.
+ *
+ * Lore, memory and the summary ride along and the recent manuscript does not,
+ * which is the whole inversion: the writer has already said what the picture
+ * is, so the only thing missing is what the things they named look like. Recent
+ * passages would answer a question nobody asked, and worse — they are the
+ * strongest available pull toward the moment the story is actually at, which is
+ * precisely the moment the brief is choosing NOT to draw.
+ *
+ * The brief goes last, immediately above the closing instruction, because
+ * everything above it is reference and it is the request. Its label says so
+ * outright rather than leaving the model to infer which block is the ask.
+ */
+export function renderBriefDerivationPrompt(input: {
+  brief: string
+  memory: string
+  lore: Array<{ name: string; content: string }>
+  summary: string
+}): string {
+  const parts: string[] = []
+  if (input.memory.trim() !== "") {
+    parts.push(`Setting notes:\n${input.memory.trim()}`)
+  }
+  if (input.lore.length > 0) {
+    parts.push(
+      "Relevant details:\n" +
+        input.lore
+          .map((entry) => `- ${entry.name}: ${entry.content.trim()}`)
+          .join("\n")
+    )
+  }
+  if (input.summary.trim() !== "") {
+    parts.push(`The story so far, summarized:\n${input.summary.trim()}`)
+  }
+  parts.push(`The writer's request:\n${input.brief.trim()}`)
+  parts.push("Write the image prompt for exactly this request.")
   return parts.join("\n\n")
 }

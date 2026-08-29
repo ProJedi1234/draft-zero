@@ -50,6 +50,14 @@ export interface LiveImageRun {
    */
   readonly startedAt: string
   readonly prompt: string
+  /**
+   * The writer's brief and the lore it matched — carried through the run
+   * untouched so the persist can record where the prompt came from. Never sent
+   * to the provider: `prompt` is the only thing that draws. A retry inherits
+   * both from the take it redraws, so a slot's provenance survives its takes.
+   */
+  readonly sourcePrompt: string | null
+  readonly promptLoreIds: string[]
   readonly aspectRatio: ImageAspectRatio
   /** The slot a retry redraws, or null for a new beat. */
   readonly imageGroupId: string | null
@@ -150,6 +158,8 @@ export interface LaunchImageOpts {
   storyId: string
   storyTitle: string | null
   prompt: string
+  sourcePrompt: string | null
+  promptLoreIds: string[]
   aspectRatio: ImageAspectRatio
   imageGroupId?: string
   /** Concrete, already resolved — the run records what actually draws. */
@@ -174,6 +184,8 @@ export function launchImageRun(
     startedAt: new Date().toISOString(),
     storyTitle: opts.storyTitle,
     prompt: opts.prompt,
+    sourcePrompt: opts.sourcePrompt,
+    promptLoreIds: opts.promptLoreIds,
     aspectRatio: opts.aspectRatio,
     imageGroupId: opts.imageGroupId ?? null,
     modelId: opts.modelId,
@@ -341,7 +353,8 @@ async function finishImageRun(
         storyId: run.storyId,
         imageGroupId: run.imageGroupId ?? undefined,
         prompt: run.prompt,
-        derivedPrompt: null,
+        sourcePrompt: run.sourcePrompt,
+        promptLoreIds: run.promptLoreIds,
         modelId: run.modelId,
         aspectRatio: run.aspectRatio,
         seed: run.seed,

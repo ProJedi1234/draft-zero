@@ -173,6 +173,23 @@ export function toStoryEntry(
 }
 
 /**
+ * The lore ids column, back into an array. Tolerant on purpose: this is
+ * provenance on a picture that renders fine without it, so a column that
+ * somehow holds something other than a JSON array of strings costs the caption
+ * a detail rather than costing the manuscript a figure.
+ */
+function parsePromptLoreIds(json: string | null): string[] {
+  if (json === null || json === "") return []
+  try {
+    const parsed: unknown = JSON.parse(json)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((id): id is string => typeof id === "string")
+  } catch {
+    return []
+  }
+}
+
+/**
  * `slot` is this illustration's position among its takes, resolved once in
  * `toStory` for the same reason a passage's is — it is a fact about the group,
  * not about the row.
@@ -192,7 +209,8 @@ export function toStoryImage(
     imageIndex: slot.index,
     imageCount: slot.count,
     prompt: row.prompt,
-    derivedPrompt: row.derivedPrompt,
+    sourcePrompt: row.sourcePrompt,
+    promptLoreIds: parsePromptLoreIds(row.promptLoreIdsJson),
     modelId: row.modelId,
     aspectRatio: row.aspectRatio,
     seed: row.seed,

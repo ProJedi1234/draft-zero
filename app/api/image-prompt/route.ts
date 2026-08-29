@@ -1,19 +1,32 @@
-// POST /api/image-prompt — derive an image prompt for where the story is now.
+// POST /api/image-prompt — launch a prompt derivation and return its id.
 //
-// A route rather than a server action because the answer STREAMS: the composer
-// shows the prompt writing itself, and a server action can only resolve once.
-// Small enough to own its whole lifecycle here — unlike a story generation,
-// nothing needs to survive the tab closing, since an abandoned prompt is worth
-// nothing and the writer can ask again for a fraction of a cent.
+// Two modes through one endpoint, chosen by whether `brief` arrives non-empty.
+// With a brief, the writer has said what they want drawn and the call's job is
+// to realize it: the brief matches lore, the summary and memory ride along, and
+// the recent manuscript is deliberately absent — reading it would pull the
+// prompt back toward the moment the writer chose not to draw. Without one, the
+// original behaviour is unchanged, which is how "illustrate what is happening
+// right now" survives as the same gesture rather than a second control.
+//
+// Thin, like POST /api/image: everything past the turn this route composes is a
+// detached loop in lib/images/derive-run.ts. It used to stream the answer down
+// this response body and settle the ledger from inside it, which made the
+// develop the one paid call a closed tab threw away — and the one thing the
+// writer's other devices could not watch. The client subscribes to
+// /api/image-prompt/subscribe with the runId this returns; every other device
+// on the story gets the same runId over the sync channel's derive-run-started.
 import { getAppSettings, listLorebookEntries, getStory } from "@/lib/db/queries"
 import { composeContext } from "@/lib/generation/context"
 import { LORE_BUDGET_MAX } from "@/lib/types"
-import { recordCallStarted, settleCall } from "@/lib/generation/calls"
-import { resolveOpenRouterKey } from "@/lib/generation/key"
-import { mapOpenRouterError } from "@/lib/generation/openrouter"
-import { streamDerivation } from "@/lib/images/derive-live"
+import { selectBriefLore } from "@/lib/images/brief-lore"
+import { launchDeriveRun } from "@/lib/images/derive-run"
 import { deriveImagePrompt } from "@/lib/images/derive-prompt"
-import { chunkText } from "@/lib/generation/fixtures"
+import {
+  BRIEF_DERIVATION_SYSTEM_PROMPT,
+  DERIVATION_SYSTEM_PROMPT,
+  renderBriefDerivationPrompt,
+  renderDerivationPrompt,
+} from "@/lib/images/derivation-prompt"
 
 export const runtime = "nodejs"
 
@@ -42,14 +55,35 @@ export const runtime = "nodejs"
  * model, with 4,096 as the shipped default.
  */
 
+/** A brief is a sentence or two. Past this it is not shorthand any more. */
+const MAX_BRIEF_CHARS = 4_000
+
 export async function POST(req: Request): Promise<Response> {
   let storyId: string
+  let brief: string
+  let excludedLoreIds: string[]
   try {
-    const body = (await req.json()) as { storyId?: unknown }
+    const body = (await req.json()) as {
+      storyId?: unknown
+      brief?: unknown
+      excludedLoreIds?: unknown
+    }
     if (typeof body.storyId !== "string" || body.storyId === "") {
       return Response.json({ error: "storyId is required." }, { status: 400 })
     }
+    if (
+      body.brief !== undefined &&
+      (typeof body.brief !== "string" || body.brief.length > MAX_BRIEF_CHARS)
+    ) {
+      return Response.json({ error: "Malformed brief." }, { status: 400 })
+    }
     storyId = body.storyId
+    brief = typeof body.brief === "string" ? body.brief.trim() : ""
+    excludedLoreIds = Array.isArray(body.excludedLoreIds)
+      ? body.excludedLoreIds.filter(
+          (id): id is string => typeof id === "string"
+        )
+      : []
   } catch {
     return Response.json({ error: "Malformed request." }, { status: 400 })
   }
@@ -62,7 +96,13 @@ export async function POST(req: Request): Promise<Response> {
   if (!story) {
     return Response.json({ error: "Story not found." }, { status: 404 })
   }
-  if (story.entries.length === 0) {
+
+  // A brief IS the scene, so it works on a story with nothing written yet —
+  // "the tomb door, torch raised" needs no manuscript to be drawable. The
+  // refusal below is only about the other path, where the story window is the
+  // only thing there is to describe.
+  const briefMode = brief !== ""
+  if (!briefMode && story.entries.length === 0) {
     // Nothing to describe yet. An honest refusal beats spending a call to have
     // a model invent an opening scene the story has not written.
     return Response.json(
@@ -71,119 +111,77 @@ export async function POST(req: Request): Promise<Response> {
     )
   }
 
-  const context = composeContext({
-    story,
-    lorebookEntries,
-    variant: 0,
-    contextWindow: appSettings.imageContextTokens,
-    // Lore's ceiling, not its floor: composeContext hands lore's unspent share
-    // back to story prose, so a lore-light story gets its space back for free.
-    loreBudget: LORE_BUDGET_MAX,
-  })
+  // Selected with the same function the composer uses for the ids it records
+  // on the draw, so the entries named on screen and the entries the model is
+  // handed are one list — minus the writer's muted chips, and trimmed to the
+  // shared budget when a cascade runs away (see BRIEF_LORE_CHAR_BUDGET).
+  const briefLore = briefMode
+    ? selectBriefLore(lorebookEntries, brief, new Set(excludedLoreIds)).map(
+        (match) => match.entry
+      )
+    : []
 
-  const key = resolveOpenRouterKey()
-  const encoder = new TextEncoder()
-
-  // Offline: the keyword stand-in, streamed the same way so the composer cannot
-  // tell the two apart and nothing downstream has a second code path. It costs
-  // nothing and records nothing — see lib/images/derive-prompt.ts.
-  if (!key) {
-    const text = deriveImagePrompt(context.storyText, context.approxTokens)
-    return new Response(
-      new ReadableStream<Uint8Array>({
-        async start(controller) {
-          for (const chunk of chunkText(text, 2)) {
-            controller.enqueue(encoder.encode(chunk))
-            await new Promise((resolve) => setTimeout(resolve, 40))
-          }
-          controller.close()
-        },
+  // The two turns, and the two offline stand-ins beside them. Built together
+  // so the branch is taken exactly once: everything past this point is the same
+  // run, the same ledger row and the same channel whichever mode we are in.
+  //
+  // Brief mode reads memory and the summary off the story directly rather than
+  // composing a context — it has no window to budget, and the whole point is
+  // that the recent manuscript stays out of it.
+  let turn: { system: string; user: string }
+  let offlineText: string
+  if (briefMode) {
+    turn = {
+      system: BRIEF_DERIVATION_SYSTEM_PROMPT,
+      user: renderBriefDerivationPrompt({
+        brief,
+        memory: story.memory,
+        lore: briefLore,
+        summary: story.summary,
       }),
-      { headers: { "Content-Type": "text/plain; charset=utf-8" } }
+    }
+    // Deliberately a dumb one: the brief with its matched lore stapled on,
+    // which reads as obviously unwritten. A plausible-looking offline result is
+    // how you ship a feature that was never once run against a model.
+    offlineText = [brief, ...briefLore.map((entry) => entry.content.trim())]
+      .filter((part) => part !== "")
+      .join(", ")
+  } else {
+    const context = composeContext({
+      story,
+      lorebookEntries,
+      variant: 0,
+      contextWindow: appSettings.imageContextTokens,
+      // Lore's ceiling, not its floor: composeContext hands lore's unspent
+      // share back to story prose, so a lore-light story gets its space back
+      // for free.
+      loreBudget: LORE_BUDGET_MAX,
+    })
+    turn = {
+      system: DERIVATION_SYSTEM_PROMPT,
+      user: renderDerivationPrompt(context),
+    }
+    offlineText = deriveImagePrompt(context.storyText, context.approxTokens)
+  }
+
+  const launched = launchDeriveRun({
+    storyId: story.id,
+    storyTitle: story.title,
+    brief,
+    system: turn.system,
+    user: turn.user,
+    offlineText,
+    settings: story.settings,
+  })
+  if (!launched) {
+    // A second wand tap while the first is still writing. Refused rather than
+    // queued: the writer would be billed twice for two answers to one brief,
+    // and their composer is already showing the one they are getting.
+    return Response.json(
+      { error: "A prompt is already being written for this story." },
+      { status: 409 }
     )
   }
 
-  const callId = crypto.randomUUID()
-  await recordCallStarted({
-    id: callId,
-    storyId: story.id,
-    origStoryId: story.id,
-    storyTitle: story.title,
-    // Its own kind, so image-prompt spend is separable from prose spend on the
-    // usage page rather than quietly inflating "generate".
-    requestKind: "illustrate-prompt",
-    modelId: story.settings.modelId,
-    // Forced off in streamDerivation, and recorded as what actually happened
-    // rather than as what the story's settings say.
-    thinking: "off",
-    providerName: story.settings.providerTag,
-  })
-
-  const controllerAbort = new AbortController()
-  // The client hanging up should stop the call, not just stop us reading it —
-  // and since 417441a removed the token ceiling, what sits on the other side of
-  // a closed tab is an unbounded completion rather than a bounded 160 of them.
-  req.signal.addEventListener("abort", () => controllerAbort.abort(), {
-    once: true,
-  })
-
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      let settled = false
-      try {
-        for await (const event of streamDerivation({
-          context,
-          settings: story.settings,
-          key,
-          signal: controllerAbort.signal,
-        })) {
-          if (event.type === "text" && event.value) {
-            controller.enqueue(encoder.encode(event.value))
-          } else if (event.type === "done") {
-            settled = true
-            await settleCall(callId, {
-              status: controllerAbort.signal.aborted ? "aborted" : "ok",
-              generationId: event.generationId ?? null,
-              usage: {
-                promptTokens: event.promptTokens ?? 0,
-                completionTokens: event.completionTokens ?? 0,
-                reasoningTokens: 0,
-                costUsd: event.costUsd ?? null,
-                cachedPromptTokens: null,
-                upstreamPromptCostUsd: null,
-                upstreamCompletionCostUsd: null,
-                isByok: null,
-              },
-            })
-          }
-        }
-        // Aborted before the final chunk: real tokens were billed and no usage
-        // ever arrived, so the row settles with a NULL cost rather than a zero.
-        // reconcileCall can still fill it in later from the generation id.
-        if (!settled) {
-          await settleCall(callId, {
-            status: controllerAbort.signal.aborted ? "aborted" : "ok",
-            generationId: null,
-            usage: null,
-          })
-        }
-      } catch (err) {
-        await settleCall(callId, {
-          status: "error",
-          generationId: null,
-          usage: null,
-        })
-        const { message } = mapOpenRouterError(err)
-        // The stream has already started, so an error cannot become a status
-        // code — it goes down the pipe as text the composer shows in a toast.
-        controller.enqueue(encoder.encode(` ${message}`))
-      } finally {
-        controller.close()
-      }
-    },
-  })
-
-  return new Response(stream, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
-  })
+  return Response.json({ runId: launched.runId })
 }

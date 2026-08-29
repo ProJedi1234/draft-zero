@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/queries"
 import { lorebookEntries, stories, storyEntries } from "@/lib/db/schema"
 import { discardStoryRun } from "@/lib/generation/live"
+import { discardStoryDeriveRun } from "@/lib/images/derive-run"
 import { discardStoryImageRun } from "@/lib/images/live"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
 import { clampLoreBudget, isContextWindow } from "@/lib/types"
@@ -317,6 +318,9 @@ export async function deleteStory(id: string): Promise<ActionResult> {
   // ...and its draw, for the same reason: nothing may persist into a
   // manuscript that is going away.
   discardStoryImageRun(id)
+  // ...and its develop: the loop ends by writing the story's draft row, and a
+  // row whose story is gone is an FK violation logged from a detached task.
+  discardStoryDeriveRun(id)
   const db = await getDb()
   // Child entries and lorebook entries go with it: Postgres enforces the
   // ON DELETE CASCADE declared on both story_id columns, so no explicit child

@@ -1,5 +1,5 @@
-// /api/draft — the composer's unsent state (text + armed mode), saved and
-// fanned out.
+// /api/draft — the composer's unsent state (text, armed mode, and the image
+// lane: developed prompt, assistance, style), saved and fanned out.
 //
 // POST upserts the story's draft row and publishes a `draft` bus event that
 // CARRIES the state, so every other device on the story adopts it straight
@@ -35,6 +35,9 @@ export const runtime = "nodejs"
 /** Well past any plausible move; a body over this is a bug, not a draft. */
 const MAX_DRAFT_CHARS = 100_000
 
+/** A style is a clause. Anything longer is someone pasting a manuscript into the popover. */
+const MAX_STYLE_CHARS = 500
+
 function isComposerMode(value: unknown): value is ComposerMode {
   return value === "do" || value === "say" || value === "image"
 }
@@ -43,12 +46,18 @@ export async function POST(req: Request): Promise<Response> {
   let storyId: string
   let text: string
   let mode: ComposerMode
+  let imagePrompt: string | null
+  let imageAssisted: boolean
+  let imageStyle: string | null
   let origin: string
   try {
     const body = (await req.json()) as {
       storyId?: unknown
       text?: unknown
       mode?: unknown
+      imagePrompt?: unknown
+      imageAssisted?: unknown
+      imageStyle?: unknown
       origin?: unknown
     }
     if (typeof body.storyId !== "string" || body.storyId === "") {
@@ -60,12 +69,32 @@ export async function POST(req: Request): Promise<Response> {
     if (!isComposerMode(body.mode)) {
       return Response.json({ error: "Malformed mode." }, { status: 400 })
     }
+    if (
+      body.imagePrompt !== null &&
+      (typeof body.imagePrompt !== "string" ||
+        body.imagePrompt.length > MAX_DRAFT_CHARS)
+    ) {
+      return Response.json({ error: "Malformed draft." }, { status: 400 })
+    }
+    if (typeof body.imageAssisted !== "boolean") {
+      return Response.json({ error: "Malformed draft." }, { status: 400 })
+    }
+    if (
+      body.imageStyle !== null &&
+      (typeof body.imageStyle !== "string" ||
+        body.imageStyle.length > MAX_STYLE_CHARS)
+    ) {
+      return Response.json({ error: "Malformed draft." }, { status: 400 })
+    }
     if (typeof body.origin !== "string" || body.origin === "") {
       return Response.json({ error: "origin is required." }, { status: 400 })
     }
     storyId = body.storyId
     text = body.text
     mode = body.mode
+    imagePrompt = body.imagePrompt
+    imageAssisted = body.imageAssisted
+    imageStyle = body.imageStyle
     origin = body.origin
   } catch {
     return Response.json({ error: "Malformed request." }, { status: 400 })
@@ -76,10 +105,25 @@ export async function POST(req: Request): Promise<Response> {
   try {
     await db
       .insert(composerDrafts)
-      .values({ storyId, text, mode, updatedAt: version })
+      .values({
+        storyId,
+        text,
+        mode,
+        imagePrompt,
+        imageAssisted,
+        imageStyle,
+        updatedAt: version,
+      })
       .onConflictDoUpdate({
         target: composerDrafts.storyId,
-        set: { text, mode, updatedAt: version },
+        set: {
+          text,
+          mode,
+          imagePrompt,
+          imageAssisted,
+          imageStyle,
+          updatedAt: version,
+        },
       })
   } catch {
     // The FK is the only expected failure: the story was deleted under the
@@ -87,7 +131,17 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: "Story not found." }, { status: 404 })
   }
 
-  publishBus({ kind: "draft", storyId, text, mode, version, origin })
+  publishBus({
+    kind: "draft",
+    storyId,
+    text,
+    mode,
+    imagePrompt,
+    imageAssisted,
+    imageStyle,
+    version,
+    origin,
+  })
   return Response.json({ version })
 }
 
@@ -112,6 +166,9 @@ export async function GET(req: Request): Promise<Response> {
   return Response.json({
     text: row.text,
     mode: row.mode,
+    imagePrompt: row.imagePrompt,
+    imageAssisted: row.imageAssisted,
+    imageStyle: row.imageStyle,
     version: row.updatedAt,
   })
 }

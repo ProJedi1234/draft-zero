@@ -16,10 +16,17 @@ export const runtime = "nodejs"
 interface Body {
   storyId?: unknown
   prompt?: unknown
+  sourcePrompt?: unknown
+  promptLoreIds?: unknown
   aspectRatio?: unknown
   imageGroupId?: unknown
   modelId?: unknown
 }
+
+/** A brief is a sentence or two; the ceiling only exists to bound the column. */
+const MAX_SOURCE_PROMPT_CHARS = 4_000
+/** Far past any lorebook a brief could plausibly summon. */
+const MAX_PROMPT_LORE_IDS = 200
 
 export async function POST(req: Request): Promise<Response> {
   let body: Body
@@ -31,6 +38,18 @@ export async function POST(req: Request): Promise<Response> {
 
   const storyId = typeof body.storyId === "string" ? body.storyId : ""
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : ""
+  // Provenance, not instruction: neither of these reaches the provider — they
+  // are recorded beside the picture so a finished image can say what the writer
+  // actually asked for and which lore answered.
+  const sourcePrompt =
+    typeof body.sourcePrompt === "string" && body.sourcePrompt.trim() !== ""
+      ? body.sourcePrompt.trim().slice(0, MAX_SOURCE_PROMPT_CHARS)
+      : null
+  const promptLoreIds = Array.isArray(body.promptLoreIds)
+    ? body.promptLoreIds
+        .filter((id): id is string => typeof id === "string" && id !== "")
+        .slice(0, MAX_PROMPT_LORE_IDS)
+    : []
   const aspectRatio = body.aspectRatio as ImageAspectRatio
   const imageGroupId =
     typeof body.imageGroupId === "string" ? body.imageGroupId : undefined
@@ -76,6 +95,8 @@ export async function POST(req: Request): Promise<Response> {
     storyId: story.id,
     storyTitle: story.title,
     prompt,
+    sourcePrompt,
+    promptLoreIds,
     aspectRatio,
     imageGroupId,
     modelId,

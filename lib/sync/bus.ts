@@ -19,6 +19,8 @@ export type BusEvent =
   | { kind: "run-started"; storyId: string; runId: string }
   /** An illustration began — the image channel's run-started. See SyncWireEvent. */
   | { kind: "image-run-started"; storyId: string; runId: string }
+  /** A develop began — the derivation channel's run-started. See SyncWireEvent. */
+  | { kind: "derive-run-started"; storyId: string; runId: string }
   /**
    * A run finished, and HOW it finished. `change` already fires on the same
    * persist, but a refetch can only show that the story is no longer running —
@@ -51,6 +53,9 @@ export type BusEvent =
       storyId: string
       text: string
       mode: ComposerMode
+      imagePrompt: string | null
+      imageAssisted: boolean
+      imageStyle: string | null
       version: string
       origin: string
     }

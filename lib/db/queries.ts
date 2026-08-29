@@ -747,7 +747,14 @@ export async function getComposerDraft(
     .limit(1)
     .then((rows) => rows[0])
   return row
-    ? { text: row.text, mode: row.mode, updatedAt: row.updatedAt }
+    ? {
+        text: row.text,
+        mode: row.mode,
+        imagePrompt: row.imagePrompt,
+        imageAssisted: row.imageAssisted,
+        imageStyle: row.imageStyle,
+        updatedAt: row.updatedAt,
+      }
     : null
 }
 

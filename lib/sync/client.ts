@@ -9,6 +9,7 @@
 
 import {
   SYNC_PING_INTERVAL_MS,
+  type DeriveRunWireEvent,
   type ImageRunWireEvent,
   type RunWireEvent,
   type SyncWireEvent,
@@ -67,8 +68,8 @@ export const runHandoff: {
      * the gap are gone for good — a device that slept through one would show
      * an idle composer under a live run forever — so this is where the
      * generation hook re-probes "is anything running?". Cheap when the answer
-     * is no: one 204. The image hook re-probes its own channel off the same
-     * signal.
+     * is no: one 204. The image and derivation hooks re-probe their own
+     * channels off the same signal.
      */
     onReconnect: () => void
   } | null
@@ -328,6 +329,26 @@ export async function subscribeImageRun(
   if (res.status === 204) return null
   if (!res.ok) throw new Error(`image subscribe failed (${res.status})`)
   return readNdjsonLines<ImageRunWireEvent>(res, signal)
+}
+
+/**
+ * Attaches to a story's live prompt DERIVATION — the third channel, same
+ * 204-means-idle contract, against its own route and registry.
+ */
+export async function subscribeDeriveRun(
+  storyId: string,
+  runId: string | null,
+  signal: AbortSignal
+): Promise<AsyncGenerator<DeriveRunWireEvent> | null> {
+  const params = new URLSearchParams({ storyId })
+  if (runId !== null) params.set("runId", runId)
+  const res = await fetch(`/api/image-prompt/subscribe?${params.toString()}`, {
+    signal,
+    cache: "no-store",
+  })
+  if (res.status === 204) return null
+  if (!res.ok) throw new Error(`derive subscribe failed (${res.status})`)
+  return readNdjsonLines<DeriveRunWireEvent>(res, signal)
 }
 
 /** Opens the long-lived "something changed" channel. */

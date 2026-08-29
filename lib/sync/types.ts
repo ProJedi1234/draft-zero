@@ -112,6 +112,52 @@ export type ImageRunWireEvent =
   | { type: "ping" }
   | ImageRunEndFrame
 
+/**
+ * The prompt derivation's snapshot frame, over its own channel
+ * (GET /api/image-prompt/subscribe?storyId=…[&runId=…]). Third registry, third
+ * channel, for the same reason the image one is separate from the text one: a
+ * story may be streaming prose, drawing a picture and developing a brief all at
+ * once, and a device has to be able to watch all three.
+ *
+ * `brief` is the part that has no twin on the other channels, and it is the
+ * whole reason this frame carries more than text. The composer marks its lane
+ * stale by comparing the brief the lane was developed FROM against the brief on
+ * screen, and it learns the former from the falling edge of `deriving` — so a
+ * device that attached halfway through would otherwise date the answer to
+ * whatever its own textarea happened to hold. The run states what question it
+ * is answering, and every device settles on the same one.
+ */
+export interface DeriveRunFrame {
+  type: "derive-run"
+  runId: string
+  storyId: string
+  /** The writer's brief, or "" for the older gesture: describe the story now. */
+  brief: string
+  /** The prompt so far, compressed the way RunFrame compresses prose. */
+  text: string
+}
+
+/**
+ * The derivation's terminal frame. By the time it is sent the settled prompt is
+ * already in the draft row and already announced on the bus, so a device acting
+ * on `end` is acting after the lane it is about to unlock has been handed to it.
+ */
+export interface DeriveRunEndFrame {
+  type: "end"
+  status: RunEndStatus
+  /** Everything the model wrote. Empty when nothing survived. */
+  text: string
+  /** Provider message worth a toast, error status only. */
+  error: string | null
+}
+
+export type DeriveRunWireEvent =
+  | DeriveRunFrame
+  /** One increment. `value` is the delta; the frame above carried the history. */
+  | { type: "text"; value: string }
+  | { type: "ping" }
+  | DeriveRunEndFrame
+
 export type SyncWireEvent =
   | { type: "hello" }
   | { type: "ping" }
@@ -126,6 +172,12 @@ export type SyncWireEvent =
    * once, and a device must attach to both.
    */
   | { type: "image-run-started"; storyId: string; runId: string }
+  /**
+   * A develop began — the third handoff, aimed at the derivation subscribe
+   * channel. Separate for the same reason image-run-started is: the three runs
+   * are independent, and the handler has to know which channel to attach.
+   */
+  | { type: "derive-run-started"; storyId: string; runId: string }
   /**
    * A run finished, anywhere. Unlike `run-started` this is for devices that are
    * NOT on that story: it is what lets the library mark a passage that landed
@@ -158,6 +210,10 @@ export type SyncWireEvent =
       storyId: string
       text: string
       mode: ComposerMode
+      /** The finished developed prompt, or null. Mid-stream text never rides. */
+      imagePrompt: string | null
+      imageAssisted: boolean
+      imageStyle: string | null
       version: string
       origin: string
     }

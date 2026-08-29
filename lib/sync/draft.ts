@@ -14,7 +14,31 @@ import type { ComposerMode } from "@/lib/types"
 export interface DraftPayload {
   text: string
   mode: ComposerMode
+  /**
+   * The image lane's state, travelling with the words for exactly the reason
+   * the mode does: a brief handed to another device without the prompt it
+   * developed into is a bill the writer pays a second time, and without the
+   * style or the assistance flag the next ↵ means something else there than it
+   * did here.
+   */
+  imagePrompt: string | null
+  imageAssisted: boolean
+  imageStyle: string | null
 }
+
+/**
+ * The origin a server-side write stamps on its `draft` event — today only the
+ * prompt derivation, which settles the image lane from inside its own detached
+ * run (lib/images/derive-run.ts).
+ *
+ * It lives here, beside the rule that reads origins, rather than in the module
+ * that publishes it: the whole point of the value is that NO device recognises
+ * it as its own. Device ids are base36 with no separator (see syncClientId), so
+ * the colon is what makes that structural rather than lucky — and the device
+ * that launched the develop has to adopt this event like any other, because its
+ * lane is showing streamed text nobody has persisted.
+ */
+export const SERVER_DRAFT_ORIGIN = "server:derive"
 
 export interface DraftAdoptContext {
   /** The story this composer belongs to. */

@@ -1,0 +1,84 @@
+# compose.imagev2.yaml — the image-gen-v2 branch (lazy prompts / darkroom
+# composer), up on its own so it can be looked at beside whatever else runs on
+# this box.
+#
+#   docker compose -f compose.imagev2.yaml up -d --build
+#   docker compose -f compose.imagev2.yaml down
+#
+# Its own project name, its own volume, its own ports (5454/3023 — free at
+# authoring time per docker ps -a and ss; check again at up time).
+#
+# 3023 binds to 0.0.0.0, unlike the base stack's 127.0.0.1 — the point of this
+# one is to be reachable from a phone on the LAN.
+name: draft-zero-imagev2
+
+services:
+  postgres:
+    # 18, not the base stack's 17: this database is a COPY of devpg, and devpg
+    # runs 18.x — a 17 server cannot read an 18 dump's newer catalog features.
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: draft_zero
+      POSTGRES_PASSWORD: draft_zero
+      POSTGRES_DB: draft_zero
+    ports:
+      - "127.0.0.1:5454:5432"
+    volumes:
+      # /var/lib/postgresql, NOT .../data — the 18 image refuses a mount at the
+      # data directory itself.
+      - postgres-18:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U draft_zero -d draft_zero"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: ["bun", "run", "db:migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    # The real key, read from the main checkout rather than copied into this
+    # file. It buys the develop call (text, at the story's model) and the draw
+    # (billed per image). OPENROUTER_API_KEY is deliberately ABSENT from
+    # `environment:` below — environment outranks env_file, and even an empty
+    # one there would shadow the key and silently drop to the offline mock.
+    env_file:
+      - /home/adityadhar/repos/draft-zero/.env.local
+    environment:
+      # Stated precisely BECAUSE environment outranks env_file: the file above
+      # carries a DATABASE_URL pointing at the shared devpg. This line is what
+      # guarantees the app talks to the copy in this network.
+      DATABASE_URL: postgresql://draft_zero:draft_zero@postgres:5432/draft_zero
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "0.0.0.0:3023:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-18:

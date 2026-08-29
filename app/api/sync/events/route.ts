@@ -30,6 +30,12 @@ function toWire(event: BusEvent): SyncWireEvent {
         storyId: event.storyId,
         runId: event.runId,
       }
+    case "derive-run-started":
+      return {
+        type: "derive-run-started",
+        storyId: event.storyId,
+        runId: event.runId,
+      }
     case "run-ended":
       return {
         type: "run-ended",
@@ -45,6 +51,9 @@ function toWire(event: BusEvent): SyncWireEvent {
         storyId: event.storyId,
         text: event.text,
         mode: event.mode,
+        imagePrompt: event.imagePrompt,
+        imageAssisted: event.imageAssisted,
+        imageStyle: event.imageStyle,
         version: event.version,
         origin: event.origin,
       }

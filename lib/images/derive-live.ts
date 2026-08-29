@@ -14,11 +14,6 @@ import type { GenerationSettings } from "@/lib/types"
 
 import { listModels } from "@/lib/generation/models"
 import { reasoningParam } from "@/lib/generation/openrouter"
-import type { ComposedContext } from "@/lib/generation/types"
-import {
-  DERIVATION_SYSTEM_PROMPT,
-  renderDerivationPrompt,
-} from "@/lib/images/derivation-prompt"
 
 export interface DerivationEvent {
   type: "text" | "done"
@@ -50,12 +45,19 @@ export interface DerivationEvent {
  * the instruction entirely and wrote a thousand tokens would bill about $0.001.
  */
 export async function* streamDerivation(opts: {
-  context: ComposedContext
+  /**
+   * The turn, already rendered. Two prompts reach this now — the story window's
+   * and the brief's — and they differ in every part but the call itself, so the
+   * caller composes and this module only carries. Keeping a ComposedContext
+   * here would have forced brief mode to fake one.
+   */
+  system: string
+  user: string
   settings: GenerationSettings
   key: string
   signal: AbortSignal
 }): AsyncGenerator<DerivationEvent> {
-  const { context, settings, key, signal } = opts
+  const { system, user, settings, key, signal } = opts
   const core = new OpenRouterCore({ apiKey: key, appTitle: "draft-zero" })
 
   // Cached in-process, so this is a lookup rather than a round trip. Needed
@@ -75,8 +77,8 @@ export async function* streamDerivation(opts: {
       chatRequest: {
         model: settings.modelId,
         messages: [
-          { role: "system", content: DERIVATION_SYSTEM_PROMPT },
-          { role: "user", content: renderDerivationPrompt(context) },
+          { role: "system", content: system },
+          { role: "user", content: user },
         ],
         // The story's temperature is about prose voice. A description of what
         // is visibly in front of the reader wants to be accurate, not inventive,
