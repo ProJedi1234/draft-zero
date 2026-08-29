@@ -7,7 +7,8 @@
 # One trap worth knowing: compose.yaml pins `name: draft-zero`, so the db
 # recipes here drive the ONE shared stack no matter which worktree you run them
 # from. From a branch worktree that means taking over the base stack rather than
-# sitting beside it — use a per-branch compose file if you need both at once.
+# sitting beside it — give a throwaway stack its own project name, volume and
+# ports in a compose file kept OUTSIDE the repo if you need both at once.
 
 # .env.local is what next dev and scripts/*.ts already read; loading it here
 # means `just db-url` reports the same database they will actually open.
