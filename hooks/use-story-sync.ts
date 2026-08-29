@@ -27,11 +27,19 @@
 // origin — half a dozen backgrounded tabs and every request in every tab
 // silently hangs. visibilitychange→visible was already the recovery path, so
 // going dark on hidden costs nothing but the refresh a reconnect does anyway.
+//
+// A second lane now rides the same socket: `entity` events carry the row that
+// moved, and the client store folds them straight in with no refetch at all.
+// The RSC lane is untouched by that — every `change` still schedules its
+// refresh — but a change flagged `covered` skips the store's catch-up read,
+// because the payload it would have gone to fetch already arrived here.
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
+import { scheduleStoreRevalidate } from "@/lib/store/revalidate"
+import { clientStore } from "@/lib/store/store"
 import {
   atmosphereStatus,
   draftRelay,
@@ -96,12 +104,27 @@ export function useStorySync(): void {
               router.refresh()
               runHandoff.current?.onReconnect()
             }
+            // Every hello, first connect included: hello is the proof the
+            // server is reachable, the boot snapshot may have failed, and the
+            // revalidate is idempotent.
+            scheduleStoreRevalidate(null)
             everConnected = true
             attempt = 0
             continue
           }
+          if (event.type === "entity") {
+            // Payload rides the event; the store needs no read for it.
+            clientStore.ingest(event)
+            continue
+          }
           if (event.type === "change") {
             scheduleRefresh()
+            if (!event.covered) {
+              scheduleStoreRevalidate({
+                storyId: event.storyId,
+                entities: event.entities,
+              })
+            }
             continue
           }
           if (event.type === "run-started") {

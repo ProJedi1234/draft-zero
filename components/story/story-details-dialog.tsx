@@ -1,10 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
-import { updateStoryMeta } from "@/lib/actions/stories"
+import { updateStoryMetaOptimistic } from "@/lib/store/story-mutations"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -89,24 +88,21 @@ function StoryDetailsForm({
 }) {
   const uid = React.useId()
   const [draft, setDraft] = React.useState({ title, description, genre })
-  const [isPending, startTransition] = React.useTransition()
   const trimmedTitle = draft.title.trim()
-  const canSave = trimmedTitle !== "" && !isPending
+  const canSave = trimmedTitle !== ""
 
   function handleSave() {
     if (!canSave) return
-    startTransition(async () => {
-      const res = await updateStoryMeta(storyId, {
-        title: draft.title,
-        description: draft.description,
-        genre: draft.genre,
-      })
-      if (!res.ok) {
-        toast.error(res.error)
-        return
-      }
-      onDone()
+    // The write is optimistic — the sidebar's saving line and a failure toast
+    // are the signals, not a spinner on this button.
+    void updateStoryMetaOptimistic(storyId, {
+      title: draft.title,
+      description: draft.description,
+      genre: draft.genre,
+    }).then((res) => {
+      if (!res.ok) toast.error(res.error)
     })
+    onDone()
   }
 
   return (
@@ -119,7 +115,6 @@ function StoryDetailsForm({
               id={`${uid}-title`}
               value={draft.title}
               placeholder="Untitled Story"
-              disabled={isPending}
               aria-invalid={trimmedTitle === "" || undefined}
               onChange={(event) =>
                 setDraft((d) => ({ ...d, title: event.target.value }))
@@ -147,7 +142,6 @@ function StoryDetailsForm({
               value={draft.description}
               className="min-h-16"
               placeholder="A sentence or two about this story…"
-              disabled={isPending}
               onChange={(event) =>
                 setDraft((d) => ({ ...d, description: event.target.value }))
               }
@@ -163,7 +157,6 @@ function StoryDetailsForm({
               id={`${uid}-genre`}
               value={draft.genre}
               placeholder="Literary fiction"
-              disabled={isPending}
               onChange={(event) =>
                 setDraft((d) => ({ ...d, genre: event.target.value }))
               }
@@ -179,9 +172,6 @@ function StoryDetailsForm({
           Cancel
         </DialogClose>
         <Button size="sm" disabled={!canSave} onClick={handleSave}>
-          {isPending ? (
-            <Loader2 data-icon="inline-start" className="animate-spin" />
-          ) : null}
           Save
         </Button>
       </DialogFooter>
