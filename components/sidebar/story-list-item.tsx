@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 import type { StorySummary } from "@/lib/types"
+import type { StoryView } from "@/lib/store/store"
 import { formatElapsed, formatRelativeDate } from "@/lib/format"
 import type { RunStatus } from "@/hooks/use-run-status"
 import {
@@ -86,19 +87,34 @@ export function StoryListItem({
   story,
   run,
 }: {
-  story: StorySummary
+  story: StoryView
   run: RunStatus
 }) {
   const pathname = usePathname()
   const isActive = pathname === `/story/${story.id}`
   const elapsed = useElapsed(run.state === "working" ? run.startedAt : null)
+  // A ghost create's route does not exist until the insert commits, so a
+  // pending row is a plain button rather than a link into a 404.
+  const pending = story.pending
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        isActive={isActive}
-        className="h-auto py-2"
-        render={<Link href={`/story/${story.id}`} />}
+        isActive={pending ? undefined : isActive}
+        aria-disabled={pending || undefined}
+        className={cn(
+          "h-auto py-2",
+          pending && "pointer-events-none opacity-60"
+        )}
+        // prefetch: the story route carries no data any more, so its payload is
+        // a few hundred bytes and the workspace itself comes from the client
+        // cache. Without this the navigation hop is the only thing left that
+        // makes switching stories feel slow.
+        render={
+          pending ? undefined : (
+            <Link href={`/story/${story.id}`} prefetch={true} />
+          )
+        }
       >
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate text-sm font-medium">{story.title}</span>

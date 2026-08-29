@@ -5,28 +5,35 @@ import { useRouter } from "next/navigation"
 import { Loader2, Plus } from "lucide-react"
 import { toast } from "sonner"
 
-import { createStory } from "@/lib/actions/stories"
+import { startStoryCreate } from "@/lib/store/story-mutations"
 import { Button } from "@/components/ui/button"
 
 /**
  * Shared create-story transition: creates a story and navigates to it.
  * Used by `NewStoryButton` and by the sidebar's "+" group action.
+ *
+ * Both happen at once. The id is minted on the client, so the route is known
+ * before the insert is even sent, and the workspace shell paints the ghost row
+ * the store already holds — a create that waited for the commit spent a second
+ * on a screen that had nothing left to learn.
  */
 export function useCreateStory(): {
   createNewStory: () => void
   isPending: boolean
 } {
   const router = useRouter()
-  const [isPending, startTransition] = React.useTransition()
+  const [isPending, setIsPending] = React.useState(false)
 
   const createNewStory = React.useCallback(() => {
-    startTransition(async () => {
-      const res = await createStory()
-      if (!res.ok) {
-        toast.error(res.error)
-        return
-      }
-      router.push(`/story/${res.data.id}`)
+    const { id, settled } = startStoryCreate()
+    setIsPending(true)
+    router.push(`/story/${id}`)
+
+    void settled.then((res) => {
+      setIsPending(false)
+      // The row rolls back on failure, so the shell's retry ends in the route's
+      // own not-found rather than a workspace that never fills.
+      if (!res.ok) toast.error(res.error)
     })
   }, [router])
 

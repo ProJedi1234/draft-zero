@@ -4,7 +4,6 @@ import * as React from "react"
 import { usePathname } from "next/navigation"
 import { Feather, Search, X } from "lucide-react"
 
-import type { StoryPage } from "@/lib/db/queries"
 import type { ActiveRun } from "@/lib/sync/types"
 import { useRunStatus } from "@/hooks/use-run-status"
 import { Button } from "@/components/ui/button"
@@ -22,12 +21,9 @@ import { StoryList } from "@/components/sidebar/story-list"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 export function AppSidebar({
-  storyPage,
   activeRuns,
   ...props
 }: {
-  /** The first window of the library; the rest is loaded on demand. */
-  storyPage: StoryPage
   /** Runs in flight, from the registry. Re-arrives with every RSC payload. */
   activeRuns: ActiveRun[]
 } & React.ComponentProps<typeof Sidebar>) {
@@ -82,7 +78,7 @@ export function AppSidebar({
       </SidebarHeader>
       <SidebarContent>
         <NavWorkspace />
-        <StoryList page={storyPage} query={query} runStatus={runStatus} />
+        <StoryList query={query} runStatus={runStatus} />
       </SidebarContent>
       <SidebarFooter>
         <div className="flex items-center justify-between px-2 py-1">
