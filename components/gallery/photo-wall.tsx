@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { GalleryVerticalEnd, Images, LayoutGrid } from "lucide-react"
+import { GalleryVerticalEnd, Images, LayoutGrid, Layers } from "lucide-react"
 
 import type { GalleryImage } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -46,7 +46,9 @@ export function PhotoWall({ images }: { images: GalleryImage[] }) {
   const [viewerIndex, setViewerIndex] = React.useState<number | null>(null)
 
   // The lightbox flies out of (and back into) a tile, so it needs the live
-  // element for any image id — a ref map, keyed by id, kept by each tile.
+  // element for any tile — a ref map kept by each tile, keyed by SLOT rather
+  // than by row id: promoting a take from the lightbox changes which row a tile
+  // shows, and a flight home must not be looking for the take it replaced.
   const cellRefs = React.useRef(new Map<string, HTMLButtonElement>())
 
   const sections = React.useMemo<StorySection[]>(() => {
@@ -94,7 +96,7 @@ export function PhotoWall({ images }: { images: GalleryImage[] }) {
   const closeViewer = React.useCallback(() => {
     if (viewerIndex !== null) {
       const image = ordered[viewerIndex]
-      if (image) cellRefs.current.get(image.id)?.focus()
+      if (image) cellRefs.current.get(image.imageGroupId)?.focus()
     }
     setViewerIndex(null)
   }, [ordered, viewerIndex])
@@ -104,31 +106,54 @@ export function PhotoWall({ images }: { images: GalleryImage[] }) {
     if (index >= 0) setViewerIndex(index)
   }
 
-  const renderCell = (image: GalleryImage) => (
-    <button
-      key={image.id}
-      ref={registerCell(image.id)}
-      type="button"
-      aria-label={image.prompt}
-      onClick={() => openViewer(image)}
-      className="group/cell relative aspect-square overflow-hidden bg-muted/40 outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring/60"
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={`/api/images/${image.id}`}
-        alt={image.prompt}
-        loading="lazy"
-        decoding="async"
-        className={cn(
-          "h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover/cell:scale-[1.04]",
-          // The open tile goes dark while its picture is out on the lightbox —
-          // the flying figure covers this exact rectangle, and on close it
-          // lands back here before the tile reappears.
-          viewerImage?.id === image.id && "opacity-0"
+  const renderCell = (image: GalleryImage) => {
+    // The tile is the slot, so it is out on the lightbox no matter which of its
+    // takes the lightbox is currently showing.
+    const isOut = viewerImage?.imageGroupId === image.imageGroupId
+    return (
+      <button
+        key={image.imageGroupId}
+        ref={registerCell(image.imageGroupId)}
+        type="button"
+        aria-label={
+          image.takes.length > 1
+            ? `${image.prompt} (${image.takes.length} draws)`
+            : image.prompt
+        }
+        onClick={() => openViewer(image)}
+        className="group/cell relative aspect-square overflow-hidden bg-muted/40 outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring/60"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`/api/images/${image.id}`}
+          alt={image.prompt}
+          loading="lazy"
+          decoding="async"
+          className={cn(
+            "h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover/cell:scale-[1.04]",
+            // The open tile goes dark while its picture is out on the lightbox —
+            // the flying figure covers this exact rectangle, and on close it
+            // lands back here before the tile reappears.
+            isOut && "opacity-0"
+          )}
+        />
+        {/* The wall's answer to the manuscript's "‹ 2 / 3 ›": a retried picture
+            must say so where it is seen, or the wall quietly implies retrying
+            threw the earlier draws away. Passive rather than a view toggle,
+            because a mode you have to know about cannot tell you a thing
+            exists. */}
+        {image.takes.length > 1 && !isOut && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1 right-1 flex items-center gap-0.5 rounded-full bg-black/45 px-1.5 py-0.5 text-[0.625rem] leading-none font-medium text-white tabular-nums backdrop-blur-sm"
+          >
+            <Layers className="size-2.5" />
+            {image.takes.length}
+          </span>
         )}
-      />
-    </button>
-  )
+      </button>
+    )
+  }
 
   const grid = (tiles: GalleryImage[]) => (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] gap-0.5">
