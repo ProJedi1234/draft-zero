@@ -14,6 +14,7 @@ import * as React from "react"
 import { createPersister, openIdbPersistence } from "@/lib/store/persistence"
 import type { StoryRecord } from "@/lib/store/records"
 import { revalidateStoriesNow } from "@/lib/store/revalidate"
+import { attachWorkspacePersistence } from "@/lib/story/workspace-cache"
 import { clientStore, type SnapshotRow } from "@/lib/store/store"
 
 export function StoreBoot(): null {
@@ -31,6 +32,11 @@ export function StoreBoot(): null {
         if (cached.length > 0) {
           clientStore.adoptCacheRows(cached as SnapshotRow<StoryRecord>[])
         }
+        // Manuscripts too, so opening a story after a relaunch paints prose
+        // rather than a skeleton. Awaited before the reconcile below for the
+        // same reason the rows are: cache first, correction second.
+        await attachWorkspacePersistence(persistence)
+        if (disposed) return
       }
 
       void revalidateStoriesNow("reconcile")

@@ -55,11 +55,23 @@ describe("InMemoryPersistence", () => {
   })
 })
 
+/**
+ * The workspace half of the interface, which these tests do not exercise —
+ * they are about the story table's coalescing and stamp rules. Spread into the
+ * doubles so a new method on StorePersistence does not need four edits.
+ */
+const noWorkspaces = {
+  loadWorkspaces: async () => [],
+  putWorkspace: async () => {},
+  keepWorkspaces: async () => {},
+}
+
 describe("createPersister", () => {
   test("coalesces a burst of onStoreChanged into one replaceAll", async () => {
     let calls = 0
     const inner = new InMemoryPersistence()
     const wrapper: StorePersistence = {
+      ...noWorkspaces,
       load: (e) => inner.load(e),
       destroy: () => inner.destroy(),
       replaceAll: (e, rows, stamp) => {
@@ -90,6 +102,7 @@ describe("createPersister", () => {
     let calls = 0
     const inner = new InMemoryPersistence()
     const wrapper: StorePersistence = {
+      ...noWorkspaces,
       load: (e) => inner.load(e),
       destroy: () => inner.destroy(),
       replaceAll: (e, rows, stamp) => {
@@ -123,6 +136,7 @@ describe("createPersister", () => {
 
     let call = 0
     const fake: StorePersistence = {
+      ...noWorkspaces,
       load: async () => [],
       destroy: async () => {},
       replaceAll: async () => {
@@ -160,6 +174,7 @@ describe("createPersister", () => {
 
   test("a rejecting persistence never throws out of the persister", async () => {
     const fake: StorePersistence = {
+      ...noWorkspaces,
       load: async () => [],
       destroy: async () => {},
       replaceAll: async () => {
