@@ -1,0 +1,49 @@
+# compose.localmagic.devpgcopy.yaml — swap this stack's throwaway Postgres for
+# one that can hold a COPY of devpg, so the workspace shell can be judged
+# against real manuscripts (840 entries, not the fixtures' six).
+#
+#   docker compose -f compose.localmagic.yaml -f compose.localmagic.devpgcopy.yaml up -d postgres
+#   # restore the dump, then:
+#   docker compose -f compose.localmagic.yaml -f compose.localmagic.devpgcopy.yaml up -d --no-deps app app-prod
+#
+# --no-deps is not optional: the app services depend on the `seed` one-shot, and
+# `up -d app` without it re-runs a destructive seed over the copy.
+#
+# 18-alpine to match devpg's server version (a 17 server will not load an 18
+# dump), and the mount moves off .../data because the 18 image refuses one there.
+# `!override` on the volume list rather than a merge, which would keep both.
+#
+# A copy, never a connection: devpg has no backup and no PITR, so nothing this
+# branch does — half-built features, a stray seed — is allowed near it.
+#
+# One manual step after restoring, and drizzle will NOT do it for you: devpg's
+# schema is on the image-v2 lineage, which replaced story_images.derived_prompt
+# with source_prompt + prompt_lore_ids_json. Its journal holds 30 migrations
+# against this branch's 28, so `drizzle-kit migrate` reports nothing pending and
+# every story read then fails on the missing column. Put it back on the copy:
+#
+#   alter table story_images add column if not exists derived_prompt text;
+#
+# Restoring a devpg dump onto a branch that predates image-v2 will keep needing
+# a fixup like this until that branch lands.
+
+# Illustrations are NOT in the dump. Their rows are; the bytes are files under
+# .data/images, so a copied database renders a gallery of broken thumbnails
+# until they are carried over too:
+#
+#   cp -r ../../repos/draft-zero/.data ./.data
+#
+# The dev service already sees them through its bind mount of the worktree. The
+# prod service mounts .data below, since it has no bind mount at all.
+services:
+  postgres:
+    image: postgres:18-alpine
+    volumes: !override
+      - postgres-18:/var/lib/postgresql
+
+  app-prod:
+    volumes:
+      - ./.data:/app/.data
+
+volumes:
+  postgres-18:
