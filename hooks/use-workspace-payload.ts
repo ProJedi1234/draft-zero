@@ -15,6 +15,7 @@ import { useStoreView } from "@/hooks/use-store"
 import {
   fetchWorkspacePayload,
   getCachedPayload,
+  subscribe as subscribeToWorkspaceCache,
 } from "@/lib/story/workspace-cache"
 import type { StoryWorkspacePayload } from "@/lib/story/workspace-payload"
 
@@ -39,6 +40,25 @@ export function useWorkspacePayload(
   // the loader would remount the workspace on every switch, and the inspector's
   // open/closed state is deliberately not per-story.
   if (current.storyId !== storyId) setCurrent(seed(storyId))
+
+  // The cache is empty at mount on a cold load — IndexedDB opens in the boot
+  // effect, which lands a beat after this one reads it. Without this the disk
+  // cache could only ever help the SECOND story of a session, which is the
+  // opposite of what it is for: paint on relaunch.
+  //
+  // Only ever fills a blank: anything already on screen came from a live fetch
+  // and is at least as fresh as the disk.
+  React.useEffect(() => {
+    return subscribeToWorkspaceCache(() => {
+      setCurrent((prev) => {
+        if (prev.storyId !== storyId || prev.payload !== null) return prev
+        const cached = getCachedPayload(storyId)
+        return cached === undefined
+          ? prev
+          : { storyId, payload: cached, state: "ready" }
+      })
+    })
+  }, [storyId])
 
   React.useEffect(() => {
     let cancelled = false

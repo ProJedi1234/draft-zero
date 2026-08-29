@@ -11,6 +11,22 @@ export interface PersistedRow {
   row: unknown
 }
 
+/**
+ * One story's workspace payload, held whole.
+ *
+ * Manuscripts are the only thing here big enough to need a budget: the story
+ * ROWS are a few hundred bytes each and the sidebar's search depends on having
+ * the entire library in memory, so those stay complete however many stories
+ * there are. These do not — see WORKSPACE_CACHE_LIMIT.
+ */
+export interface PersistedWorkspace {
+  id: string
+  /** The payload's story.updatedAt, for telling a stale cache from a fresh one. */
+  version: string
+  savedAt: number
+  payload: unknown
+}
+
 export interface StorePersistence {
   load(entity: EntityKind): Promise<PersistedRow[]>
   replaceAll(
@@ -18,12 +34,19 @@ export interface StorePersistence {
     rows: PersistedRow[],
     stamp: number
   ): Promise<void>
+  loadWorkspaces(): Promise<PersistedWorkspace[]>
+  putWorkspace(entry: PersistedWorkspace): Promise<void>
+  /** Drops every workspace whose id is not listed. */
+  keepWorkspaces(ids: readonly string[]): Promise<void>
   destroy(): Promise<void>
 }
 
 export const IDB_NAME = "draft-zero-store"
-export const IDB_SCHEMA_VERSION = 1
+// 2: added the workspace store. A bump discards nothing that matters — every
+// store here is a cache of server truth.
+export const IDB_SCHEMA_VERSION = 2
 
+const WORKSPACE_STORE = "workspace"
 const META_STORE = "meta"
 const META_KEY = "meta"
 
@@ -104,6 +127,55 @@ class IdbPersistence implements StorePersistence {
     }
   }
 
+  async loadWorkspaces(): Promise<PersistedWorkspace[]> {
+    try {
+      return await new Promise<PersistedWorkspace[]>((resolve, reject) => {
+        const tx = this.db.transaction(WORKSPACE_STORE, "readonly")
+        const req = tx.objectStore(WORKSPACE_STORE).getAll()
+        req.onsuccess = () => resolve(req.result as PersistedWorkspace[])
+        req.onerror = () => reject(req.error)
+      })
+    } catch {
+      return []
+    }
+  }
+
+  async putWorkspace(entry: PersistedWorkspace): Promise<void> {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = this.db.transaction(WORKSPACE_STORE, "readwrite")
+        tx.objectStore(WORKSPACE_STORE).put(entry)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+        tx.onabort = () => resolve()
+      })
+    } catch {
+      // a cache: a failed write costs one fetch
+    }
+  }
+
+  async keepWorkspaces(ids: readonly string[]): Promise<void> {
+    const keep = new Set(ids)
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = this.db.transaction(WORKSPACE_STORE, "readwrite")
+        const store = tx.objectStore(WORKSPACE_STORE)
+        const req = store.getAllKeys()
+        req.onsuccess = () => {
+          for (const key of req.result) {
+            if (!keep.has(String(key))) store.delete(key)
+          }
+        }
+        req.onerror = () => reject(req.error)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+        tx.onabort = () => resolve()
+      })
+    } catch {
+      // best-effort
+    }
+  }
+
   async destroy(): Promise<void> {
     try {
       this.db.close()
@@ -122,6 +194,9 @@ function openDb(): Promise<IDBDatabase> {
         if (!db.objectStoreNames.contains(entity)) {
           db.createObjectStore(entity, { keyPath: "id" })
         }
+      }
+      if (!db.objectStoreNames.contains(WORKSPACE_STORE)) {
+        db.createObjectStore(WORKSPACE_STORE, { keyPath: "id" })
       }
       if (!db.objectStoreNames.contains(META_STORE)) {
         db.createObjectStore(META_STORE, { keyPath: "id" })
@@ -179,6 +254,7 @@ export async function openIdbPersistence(): Promise<StorePersistence | null> {
 /** In-memory fallback for environments without IndexedDB (bun test, SSR). */
 export class InMemoryPersistence implements StorePersistence {
   private tables = new Map<EntityKind, Map<string, PersistedRow>>()
+  private workspaces = new Map<string, PersistedWorkspace>()
   private stamp = -Infinity
 
   async load(entity: EntityKind): Promise<PersistedRow[]> {
@@ -200,8 +276,24 @@ export class InMemoryPersistence implements StorePersistence {
     this.tables.set(entity, table)
   }
 
+  async loadWorkspaces(): Promise<PersistedWorkspace[]> {
+    return [...this.workspaces.values()]
+  }
+
+  async putWorkspace(entry: PersistedWorkspace): Promise<void> {
+    this.workspaces.set(entry.id, entry)
+  }
+
+  async keepWorkspaces(ids: readonly string[]): Promise<void> {
+    const keep = new Set(ids)
+    for (const id of [...this.workspaces.keys()]) {
+      if (!keep.has(id)) this.workspaces.delete(id)
+    }
+  }
+
   async destroy(): Promise<void> {
     this.tables.clear()
+    this.workspaces.clear()
   }
 }
 
