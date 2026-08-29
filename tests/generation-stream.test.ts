@@ -43,9 +43,15 @@ let script: Script = async function* () {
   throw new Error("test forgot to set a script")
 }
 
+const realOpenRouter = await import("@/lib/generation/openrouter")
 mock.module("@/lib/generation/openrouter", () => ({
   // See the note in tests/provider-routing.test.ts — the mock has to mirror
-  // the module's exports, not just the ones this file exercises.
+  // the module's exports, not just the ones this file exercises. Spread rather
+  // than list them: a module mock is process-wide, so an export missing here is
+  // an export missing for every file loaded afterwards, and the failure lands
+  // on whichever unrelated test happens to need it (reasoningParam, reached
+  // through lib/images/derive-live, was exactly that).
+  ...realOpenRouter,
   completeOnce: async () => ({
     text: "",
     truncated: false,
