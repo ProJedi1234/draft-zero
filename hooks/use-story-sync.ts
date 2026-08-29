@@ -129,6 +129,16 @@ export function useStorySync(): void {
             scheduleRefresh()
             continue
           }
+          if (event.type === "derive-run-started") {
+            // Routed like the other two, and deliberately WITHOUT a refresh:
+            // a develop persists nothing until it settles and the sidebar
+            // does not mark it, so a refetch here would buy an RSC round-trip
+            // for a tree that has not moved.
+            const target = runHandoff.current
+            if (target !== null && event.storyId === target.storyId)
+              target.onDeriveRunStarted(event.runId)
+            continue
+          }
           if (event.type === "summary-stopped") {
             // The one message this app raises that nobody asked for. It fires
             // once, when the summarizer stops retrying — not on the transient

@@ -67,6 +67,10 @@ export function ImageBlock({
 }) {
   const [isPending, startTransition] = React.useTransition()
   const [lightbox, setLightbox] = React.useState(false)
+  // Which half of the caption is showing. Local and unremembered: it is a
+  // glance at provenance, not a reading mode, and every picture asks the
+  // question separately.
+  const [showSentPrompt, setShowSentPrompt] = React.useState(false)
 
   // The lightbox is a hand-rolled overlay rather than a Dialog — it has no
   // chrome to speak of — so Escape is wired here rather than inherited.
@@ -239,6 +243,49 @@ export function ImageBlock({
               <TooltipContent>{label}</TooltipContent>
             </Tooltip>
           ))}
+        </div>
+      )}
+
+      {/* The one thing about a picture that is worth reading without hovering:
+          what the writer actually asked for. It only exists where a brief does
+          — a verbatim send has one text, and printing it here would put a
+          paragraph of machine prose under every illustration. The flip is a
+          single character rather than a labelled control because the caption is
+          quiet by design and a button that shouts undoes the whole point. */}
+      {image && !job && image.sourcePrompt !== null && (
+        <div className="mt-1.5 flex items-baseline gap-1.5 px-0.5">
+          <span
+            className={cn(
+              "min-w-0 flex-1 text-muted-foreground/80",
+              showSentPrompt
+                ? "font-mono text-[0.6875rem] leading-4 text-muted-foreground/60"
+                : "font-serif text-xs italic"
+            )}
+          >
+            {showSentPrompt ? image.prompt : image.sourcePrompt}
+          </span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-pressed={showSentPrompt}
+                  aria-label={
+                    showSentPrompt
+                      ? "Show what you asked for"
+                      : "Show what was sent to the image model"
+                  }
+                  onClick={() => setShowSentPrompt(!showSentPrompt)}
+                  className="-my-1 shrink-0 px-1 py-1 text-xs text-muted-foreground/50 transition-colors hover:text-foreground"
+                />
+              }
+            >
+              ⇄
+            </TooltipTrigger>
+            <TooltipContent>
+              {showSentPrompt ? "Your brief" : "What was sent"}
+            </TooltipContent>
+          </Tooltip>
         </div>
       )}
 

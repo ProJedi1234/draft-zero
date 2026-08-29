@@ -4,12 +4,21 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { stopIllustration } from "@/lib/actions/images"
-import { subscribeImageRun } from "@/lib/sync/client"
+import { subscribeDeriveRun, subscribeImageRun } from "@/lib/sync/client"
 import type { ImageAspectRatio } from "@/lib/types"
 
 /** What the composer hands over when the writer sends an image. */
 export interface IllustrateRequest {
+  /** What the image model is sent — the scene plus the style sentence. */
   prompt: string
+  /**
+   * The writer's brief, or null for a verbatim send. Recorded with the picture
+   * so the caption can show what was asked for rather than only what was sent,
+   * and so a retry can inherit it.
+   */
+  sourcePrompt: string | null
+  /** Lorebook entries the develop call was given. Empty when there was none. */
+  promptLoreIds: string[]
   aspectRatio: ImageAspectRatio
   /** Set only by a retry — names the slot the new draw joins. */
   imageGroupId?: string
@@ -61,7 +70,10 @@ export function useImageGeneration(
      * paid for to write it. Only the device that sent the prompt restores it:
      * an attached device never held the draft, so it has nothing to put back.
      */
-    onRestoreDraft?: (prompt: string) => void
+    onRestoreDraft?: (restore: {
+      prompt: string
+      sourcePrompt: string | null
+    }) => void
   } = {}
 ) {
   const [job, setJob] = React.useState<ImageJob | null>(null)
@@ -77,13 +89,19 @@ export function useImageGeneration(
     optionsRef.current = options
   })
 
-  // Held so a failure can hand the words back; null on attached devices.
-  const promptRef = React.useRef<string | null>(null)
+  // Held so a failure can hand the words back; null on attached devices. The
+  // brief travels with the sent prompt because it is the half the writer typed:
+  // handing back only what went to the provider would return them a developed
+  // paragraph in place of their own sentence.
+  const promptRef = React.useRef<{
+    prompt: string
+    sourcePrompt: string | null
+  } | null>(null)
 
   const restoreDraft = React.useCallback(() => {
-    const prompt = promptRef.current
+    const held = promptRef.current
     promptRef.current = null
-    if (prompt !== null) optionsRef.current.onRestoreDraft?.(prompt)
+    if (held !== null) optionsRef.current.onRestoreDraft?.(held)
   }, [])
 
   /**
@@ -198,7 +216,10 @@ export function useImageGeneration(
 
   const generate = React.useCallback(
     async (request: IllustrateRequest) => {
-      promptRef.current = request.prompt
+      promptRef.current = {
+        prompt: request.prompt,
+        sourcePrompt: request.sourcePrompt,
+      }
 
       try {
         const res = await fetch("/api/image", {
@@ -207,6 +228,8 @@ export function useImageGeneration(
           body: JSON.stringify({
             storyId,
             prompt: request.prompt,
+            sourcePrompt: request.sourcePrompt,
+            promptLoreIds: request.promptLoreIds,
             aspectRatio: request.aspectRatio,
             imageGroupId: request.imageGroupId,
             modelId: request.modelId,
@@ -266,88 +289,242 @@ export function useImageGeneration(
 }
 
 /**
- * Derives an image prompt for where the story currently is.
+ * Mirrors a story's live prompt DERIVATION — whoever started it.
  *
  * Explicitly invoked — there is no auto-derive on entering image mode. This is
  * a real model call with a real price, and a mode toggle that silently bills
  * the writer is the kind of surprise a spend ledger exists to prevent. The wand
  * is one tap, and one tap is cheap enough.
+ *
+ * Structurally the twin of useImageGeneration above, and for the same reason:
+ * the develop is a detached run on the server (lib/images/derive-run.ts) and
+ * this hook is a pure subscriber. `develop` launches one and watches it;
+ * `attach` watches one another device launched (handed over via
+ * derive-run-started) or probes "is anything developing?" with a null runId on
+ * mount and reconnect. Switching stories detaches and nothing more — and there
+ * is no stop at all, because a develop is over in seconds and the writer's
+ * cheapest out is to let it land and edit it.
+ *
+ * `deriving` is therefore true on EVERY device while a run is live, which is
+ * what makes the composer's locked brief, spinner and send slot work on the
+ * second device without any of them knowing this is a shared run.
  */
-export function useImagePromptDerivation(storyId: string) {
+export function useImagePromptDerivation(
+  storyId: string,
+  options: {
+    /**
+     * The prompt SO FAR, on every increment. Display only — the composer shows
+     * it, and nobody publishes it: a sentence still being written is not a
+     * draft worth shipping to the writer's other devices a chunk at a time.
+     * The settled text arrives as a `draft` event the run itself publishes.
+     */
+    onText: (textSoFar: string) => void
+    /**
+     * The run ended with nothing to show — an error, or a story deleted under
+     * it. Fold the lane away. `persist` is true only on the device that
+     * launched: the fold is a state worth writing down once, and N devices
+     * racing to write down the same emptiness is worse than one.
+     */
+    onDiscard: (opts: { persist: boolean }) => void
+  }
+) {
   const [deriving, setDeriving] = React.useState(false)
+  // Which brief the live — or most recently finished — run is answering. The
+  // composer dates its lane by this rather than by its own textarea, so a
+  // device that attached halfway through still marks staleness against the
+  // question that was actually asked. Deliberately NOT cleared on end: the
+  // composer reads it on the falling edge of `deriving`, which is that moment.
+  const [derivedBrief, setDerivedBrief] = React.useState<string | null>(null)
   const abortRef = React.useRef<AbortController | null>(null)
+  /** True while THIS device is the one that launched the run being watched. */
+  const launchedRef = React.useRef(false)
+  /** The run this hook is attached to, so a redundant handoff is a no-op. */
+  const watchedRunIdRef = React.useRef<string | null>(null)
 
+  const optionsRef = React.useRef(options)
   React.useEffect(() => {
-    return () => abortRef.current?.abort()
-  }, [storyId])
-
-  const cancel = React.useCallback(() => {
-    abortRef.current?.abort()
-    abortRef.current = null
-    setDeriving(false)
-  }, [])
+    optionsRef.current = options
+  })
 
   /**
-   * Streams the prompt through `onText`, which receives the text SO FAR rather
-   * than a delta — the composer's draft is controlled state, and handing it
-   * fragments would make every caller reimplement the same accumulation.
+   * The one watch loop. Subscribes (a null runId is the probe), folds frames
+   * into the lane, and re-attaches on a dropped stream — the linger window
+   * means even a run that finished during the gap still delivers its end frame,
+   * which matters more here than anywhere else: `deriving` locks the composer,
+   * and a missed end frame would lock it for good.
    */
-  const derive = React.useCallback(
-    async (onText: (textSoFar: string) => void) => {
+  const watch = React.useCallback(
+    async (runId: string | null) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
-      setDeriving(true)
-      onText("")
+      watchedRunIdRef.current = runId
 
-      try {
-        const res = await fetch("/api/image-prompt", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ storyId }),
-          signal: controller.signal,
-        })
+      let currentRunId = runId
+      let text = ""
+      for (let attempt = 0; !controller.signal.aborted; attempt++) {
+        let events: AsyncGenerator<
+          import("@/lib/sync/types").DeriveRunWireEvent
+        > | null
+        try {
+          events = await subscribeDeriveRun(
+            storyId,
+            currentRunId,
+            controller.signal
+          )
+        } catch {
+          if (controller.signal.aborted) return
+          const backoff =
+            RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)]
+          await new Promise((resolve) => setTimeout(resolve, backoff))
+          continue
+        }
 
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as {
-            error?: string
-          } | null
-          toast.error(body?.error ?? "Couldn't write a prompt for this scene.")
+        // 204: nothing developing (and nothing lingering under that id). For
+        // the probe that answer IS the state; for a named run it means the
+        // linger window closed. Either way the composer unlocks — the settled
+        // prompt, if there was one, arrived as a `draft` event.
+        if (events === null) {
+          if (!controller.signal.aborted) setDeriving(false)
           return
         }
-        if (!res.body) return
 
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let text = ""
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
+        try {
+          for await (const event of events) {
+            if (controller.signal.aborted) return
+            if (event.type === "derive-run") {
+              currentRunId = event.runId
+              watchedRunIdRef.current = event.runId
+              text = event.text
+              setDerivedBrief(event.brief)
+              setDeriving(true)
+              // The snapshot, not a delta: an attacher lands in the middle of
+              // a sentence and gets all of it at once.
+              optionsRef.current.onText(text)
+            } else if (event.type === "text") {
+              text += event.value
+              optionsRef.current.onText(text)
+            } else if (event.type === "end") {
+              const launched = launchedRef.current
+              launchedRef.current = false
+              watchedRunIdRef.current = null
+              if (event.status === "error") {
+                toast.error(
+                  event.error ?? "Couldn't write a prompt for this scene."
+                )
+              }
+              // The end frame's own text is the authority over anything this
+              // device accumulated — a socket that dropped and re-attached
+              // could have missed increments the snapshot then replaced.
+              if (event.status === "ok" && event.text !== "") {
+                optionsRef.current.onText(event.text)
+              } else {
+                optionsRef.current.onDiscard({ persist: launched })
+              }
+              // Last, so the composer's falling edge fires over settled text.
+              setDeriving(false)
+              return
+            }
+            // Pings need no handling — arriving is their whole content.
+          }
+          // The stream ended without an end frame: a dropped socket. Loop and
+          // re-attach to the same run.
+        } catch {
           if (controller.signal.aborted) return
-          text += decoder.decode(value, { stream: true })
-          onText(text)
         }
-        // Flush. A multibyte character split across the final network chunk
-        // stays inside the decoder until it is called with no argument, and em
-        // dashes and curly quotes are exactly what a literary model emits, so
-        // the dropped character is not a hypothetical one.
-        const tail = decoder.decode()
-        if (tail !== "") {
-          text += tail
-          onText(text)
-        }
-      } catch (err) {
-        // An abort is the writer changing their mind, not a failure.
-        if ((err as Error)?.name !== "AbortError") {
-          toast.error("Couldn't write a prompt for this scene.")
-        }
-      } finally {
-        if (abortRef.current === controller) abortRef.current = null
-        setDeriving(false)
       }
     },
     [storyId]
   )
 
-  return { deriving, derive, cancel }
+  // A watcher outlives the composer but not the story: switching stories
+  // detaches the listener and nothing else — the develop keeps going without
+  // us, and lands in the draft row either way.
+  React.useEffect(() => {
+    return () => abortRef.current?.abort()
+  }, [storyId])
+
+  /**
+   * Launches a develop and watches it.
+   *
+   * An empty `brief` is the V1 gesture: derive from where the story is now.
+   * A brief present is the develop call, and `excludedLoreIds` are the chips
+   * the writer muted — sent as ids rather than as a filtered lore list because
+   * the server does its own matching, and the client's job is to say what to
+   * leave out, not to decide what was in.
+   */
+  const develop = React.useCallback(
+    async (
+      input: { brief: string; excludedLoreIds: string[] } = {
+        brief: "",
+        excludedLoreIds: [],
+      }
+    ) => {
+      // Shown before the launch resolves, so the lane opens on the tap rather
+      // than a round-trip later — the same reason the image job is set
+      // optimistically. Cleared below if the launch is refused.
+      launchedRef.current = true
+      setDerivedBrief(input.brief)
+      setDeriving(true)
+      optionsRef.current.onText("")
+
+      try {
+        const res = await fetch("/api/image-prompt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storyId,
+            brief: input.brief,
+            excludedLoreIds: input.excludedLoreIds,
+          }),
+        })
+        const body = (await res.json().catch(() => null)) as {
+          runId?: string
+          error?: string
+        } | null
+        if (!res.ok || !body?.runId) {
+          toast.error(body?.error ?? "Couldn't write a prompt for this scene.")
+          launchedRef.current = false
+          setDeriving(false)
+          // Persisted, unlike an attached device's fold: this tap is the only
+          // reason the lane opened at all, and nothing was launched to close
+          // it. Leaving it local would show an empty lane over a row that
+          // still holds the last developed prompt.
+          optionsRef.current.onDiscard({ persist: true })
+          return
+        }
+        // The bus echo of our own launch may have beaten this reply and
+        // attached us already; re-watching would drop a live socket for an
+        // identical one.
+        if (watchedRunIdRef.current !== body.runId) void watch(body.runId)
+      } catch {
+        toast.error("Couldn't write a prompt for this scene.")
+        launchedRef.current = false
+        setDeriving(false)
+        optionsRef.current.onDiscard({ persist: true })
+      }
+    },
+    [storyId, watch]
+  )
+
+  /** Attach to a run someone else started (derive-run-started), or re-probe (null). */
+  const attach = React.useCallback(
+    (runId: string | null) => {
+      // Already watching that very run — including the echo of our own launch,
+      // which comes back around the bus like anyone else's. A reattach would
+      // drop the socket to open an identical one.
+      if (runId !== null && watchedRunIdRef.current === runId) return
+      void watch(runId)
+    },
+    [watch]
+  )
+
+  // The magic moment, same as the other two channels': a device that merely
+  // OPENS the story while a develop is live adopts it — lane open, brief
+  // locked — with no interaction and no UI. One 204 when nothing is running.
+  React.useEffect(() => {
+    attach(null)
+  }, [attach])
+
+  return { deriving, derivedBrief, develop, attach }
 }

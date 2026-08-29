@@ -63,6 +63,8 @@ export const runHandoff: {
     onRunStarted: (runId: string) => void
     /** An image run began on this story somewhere — attach to that channel. */
     onImageRunStarted: (runId: string) => void
+    /** A develop began on this story somewhere — attach to that channel. */
+    onDeriveRunStarted: (runId: string) => void
     /**
      * The socket came back after being down. run-started events emitted in
      * the gap are gone for good — a device that slept through one would show

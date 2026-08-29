@@ -7,8 +7,11 @@ import {
   ImagePlus,
   Loader2,
   MessageSquareQuote,
+  Palette,
+  PenLine,
   RectangleHorizontal,
   Redo2,
+  Sparkles,
   RotateCcw,
   Square,
   Swords,
@@ -21,12 +24,20 @@ import {
   type ComposerMode,
   type ImageAspectRatio,
 } from "@/lib/types"
+import type { LoreMatch } from "@/lib/generation/lorebook"
+import { IMAGE_STYLE_PRESETS } from "@/lib/images/styles"
 import type { GenerationStatus } from "@/hooks/use-generation"
 import { cn } from "@/lib/utils"
 import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { RetryButton } from "@/components/story/retry-profile-menu"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import {
   Tooltip,
   TooltipContent,
@@ -60,9 +71,15 @@ const MODES = [
     value: "image",
     label: "Image",
     icon: ImagePlus,
-    placeholder: "Describe the image…",
+    // The brief's placeholder, not a prompt's: what goes here is shorthand in
+    // the writer's own words, and asking for a "description" invites them to do
+    // the work the develop call exists to do for them.
+    placeholder: "What's the picture? A few words is plenty…",
   },
 ] as const
+
+/** The image mode's placeholder when assistance is off — nothing expands it. */
+const VERBATIM_PLACEHOLDER = "Describe the image…"
 
 /** The icon rotation that shows a frame's shape rather than naming it. */
 const ASPECT_ICON_ROTATION: Record<ImageAspectRatio, string> = {
@@ -78,8 +95,19 @@ export function Composer({
   onModeChange,
   aspectRatio,
   onAspectRatioChange,
+  imagePrompt,
+  onImagePromptChange,
+  imageAssisted,
+  onImageAssistedChange,
+  imageStyle,
+  onImageStyleChange,
+  loreMatches,
+  includedLoreIds,
+  excludedLoreIds,
+  onToggleLore,
   deriving,
-  onDerive,
+  derivedBrief,
+  onDevelop,
   onGenerateImage,
   imageBusy,
   textareaRef,
@@ -106,12 +134,58 @@ export function Composer({
   /** The frame the next image is asked for in. Remembered across sends. */
   aspectRatio: ImageAspectRatio
   onAspectRatioChange: (ratio: ImageAspectRatio) => void
-  /** True while the wand's model call is streaming into the draft. */
+  /**
+   * The developed prompt under the brief, or null when there is none. Null and
+   * "" are different states here: "" is a develop call that has started and not
+   * yet produced a word, which is why the lane is already on screen.
+   */
+  imagePrompt: string | null
+  /** A hand-edit of the lane. Published and persisted, unlike the stream. */
+  onImagePromptChange: (value: string | null) => void
+  /** False is verbatim: no develop call, one beat, the words go as typed. */
+  imageAssisted: boolean
+  onImageAssistedChange: (assisted: boolean) => void
+  /** The art direction appended to the next send, or null for none. */
+  imageStyle: string | null
+  onImageStyleChange: (style: string | null) => void
+  /** What the brief currently matches in the lorebook — one chip each. */
+  loreMatches: LoreMatch[]
+  /**
+   * What the develop call will actually carry — the workspace's budgeted
+   * selection, recorded on the draw. Kept beside `loreMatches` rather than
+   * derived here so the ids sent are the route's own arithmetic, not a second
+   * copy of it.
+   */
+  includedLoreIds: string[]
+  /** Chips the writer muted. Per-send: the workspace clears them on a draw. */
+  excludedLoreIds: ReadonlySet<string>
+  onToggleLore: (id: string) => void
+  /**
+   * True while a develop is streaming into the lane — on EVERY device on the
+   * story, not only the one that asked. The develop is a server-owned run, so
+   * this composer locks and shows the prompt writing itself whether the tap
+   * happened here or on the writer's phone.
+   */
   deriving: boolean
-  /** Asks the story's model for a prompt. A real, billed call — never automatic. */
-  onDerive: () => void
-  /** Sends the draft to the image provider. */
-  onGenerateImage: (prompt: string) => void
+  /**
+   * The brief the live — or most recently finished — develop is answering, or
+   * null if this device has not seen one. Not the same thing as `value`: a
+   * device that attached mid-run never typed the brief, and dating the answer
+   * to its own empty textarea would mark a perfectly fresh lane stale.
+   */
+  derivedBrief: string | null
+  /**
+   * Expands the brief into the lane, or — with an empty brief — derives from
+   * where the story is now. A real, billed call either way, which is why it is
+   * always a keystroke or a tap the writer made and never a mode change.
+   */
+  onDevelop: () => void
+  /** Sends to the image provider. `scene` is the text; the rest is provenance. */
+  onGenerateImage: (send: {
+    scene: string
+    sourcePrompt: string | null
+    loreIds: string[]
+  }) => void
   /** True while an illustration is being drawn. */
   imageBusy: boolean
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
@@ -187,22 +261,127 @@ export function Composer({
     onModeChange(MODES[(index + 1) % MODES.length].value)
   }, [mode, onModeChange])
 
+  // Which brief the lane on screen was developed FROM. Editing the brief past
+  // that point makes the lane an answer to a question nobody is asking any
+  // more, and the second ↵ has to re-develop rather than draw — silently
+  // drawing the old prompt is the one outcome the writer cannot undo cheaply.
+  //
+  // Seeded from the brief at mount (the editor is keyed per story, so mount IS
+  // story open) because a persisted pair is taken as consistent: the writer
+  // left them together, and greeting them with "stale" on every reload would
+  // make the word meaningless.
+  const [developedFor, setDevelopedFor] = React.useState(() =>
+    imagePrompt !== null ? value.trim() : null
+  )
+  const [announceLane, setAnnounceLane] = React.useState(false)
+  // Whether the folded rider chips are shown. Session-local and unremembered:
+  // it is a look under the hood, not a preference.
+  const [riderChipsOpen, setRiderChipsOpen] = React.useState(false)
+  const riderCount = loreMatches.filter(
+    (match) => match.triggeredBy?.kind !== "source"
+  ).length
+  const wasDeriving = React.useRef(deriving)
+  React.useEffect(() => {
+    // The stream finishing is the only moment the lane becomes authoritative.
+    // Falling edge rather than a callback so a develop started on this device,
+    // one started on another, and one that failed mid-stream all settle
+    // through the same path.
+    //
+    // Dated by the run's OWN brief. Reading `value` here was right while the
+    // develop was this device's private call — it could only ever be the text
+    // in the box beside it — and is wrong now: a device that attached to
+    // somebody else's develop may hold a draft that has not caught up, and
+    // would mark the arriving lane stale against a brief nobody asked.
+    if (wasDeriving.current && !deriving) {
+      setDevelopedFor(derivedBrief ?? value.trim())
+      setAnnounceLane(true)
+    }
+    wasDeriving.current = deriving
+  }, [deriving, derivedBrief, value])
+
+  const brief = value.trim()
+  const lane = imagePrompt?.trim() ?? ""
+  const laneStale = developedFor !== null && developedFor !== brief
+  const laneReady = imageAssisted && lane !== "" && !laneStale && !deriving
+  // The lane is on screen from the instant a develop starts, so the first
+  // streamed word arrives into a box that already exists rather than shoving
+  // the toolbar down under the writer's thumb.
+  const laneVisible = imageAssisted && (deriving || imagePrompt !== null)
+  const laneAnnouncement = announceLane && laneReady
+
+  /**
+   * What the image mode's send slot does next.
+   *
+   * "develop" and "draw" are the two beats: the first ↵ buys the prompt, the
+   * second spends it. Verbatim collapses them — with assistance off there is
+   * nothing to buy.
+   */
+  const imageSendAction: "develop" | "draw" = !imageAssisted
+    ? "draw"
+    : laneReady
+      ? "draw"
+      : "develop"
+
+  const dispatchImage = React.useCallback(() => {
+    // No round-trip to check: an image is appended at the end of the
+    // manuscript and cannot fail validation the way a turn can.
+    onGenerateImage(
+      imageAssisted
+        ? {
+            scene: lane,
+            sourcePrompt: brief === "" ? null : brief,
+            loreIds: includedLoreIds,
+          }
+        : // Verbatim records no brief and no lore: nothing was developed, so
+          // there is no "what they asked for" distinct from what was sent.
+          { scene: brief, sourcePrompt: null, loreIds: [] }
+    )
+    onValueChange("")
+    onImagePromptChange(null)
+    setDevelopedFor(null)
+    setAnnounceLane(false)
+  }, [
+    brief,
+    imageAssisted,
+    includedLoreIds,
+    lane,
+    onGenerateImage,
+    onImagePromptChange,
+    onValueChange,
+  ])
+
   const handleSend = React.useCallback(() => {
-    if (busy || !hasText) return
+    if (busy) return
     if (isImage) {
-      // No round-trip to check: an image is appended at the end of the
-      // manuscript and cannot fail validation the way a turn can.
-      onGenerateImage(value.trim())
-      onValueChange("")
+      if (imageBusy || deriving) return
+      if (imageSendAction === "draw") {
+        if (imageAssisted ? lane === "" : brief === "") return
+        dispatchImage()
+        return
+      }
+      // Develop — but never from an empty brief. ↵ on an empty composer is a
+      // stray keystroke far more often than a request to spend money, which is
+      // the same reason Continue lives on ⌘↵. The wand is where the empty-brief
+      // call (describe what is happening right now) is asked for out loud.
+      if (brief === "") return
+      onDevelop()
       return
     }
+    if (!hasText) return
     if (onSend(value, mode)) onValueChange("")
   }, [
+    brief,
     busy,
+    deriving,
+    dispatchImage,
     hasText,
+    imageAssisted,
+    imageBusy,
+    imageSendAction,
     isImage,
+    lane,
     mode,
-    onGenerateImage,
+    onDevelop,
     onSend,
     onValueChange,
     value,
@@ -240,6 +419,18 @@ export function Composer({
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [stoppable, onStop, textareaRef])
 
+  // The lane answers ↵ the same way the brief does, so a writer who tabbed in
+  // to fix one word does not have to travel back up to send. Shift and Option
+  // keep their newline; nothing else here is claimed, because this is a plain
+  // field of machine text and the markdown shortcuts have no business in it.
+  const onLaneKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter") return
+    if (event.nativeEvent.isComposing) return
+    if (event.shiftKey || event.altKey) return
+    event.preventDefault()
+    handleSend()
+  }
+
   const onTextareaKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>
   ) => {
@@ -252,8 +443,12 @@ export function Composer({
       if (event.metaKey || event.ctrlKey) {
         event.preventDefault()
         if (busy) return
-        if (hasText) handleSend()
-        else if (!isImage) onContinue()
+        // In image mode handleSend decides for itself whether there is
+        // anything to do — with a developed prompt waiting, an empty brief is
+        // still a send.
+        if (isImage) handleSend()
+        else if (hasText) handleSend()
+        else onContinue()
         return
       }
 
@@ -271,8 +466,11 @@ export function Composer({
 
       event.preventDefault()
       // Continue stays on Cmd/Ctrl+Enter: Enter on an empty composer is a
-      // stray keystroke far more often than it is a request to generate.
-      if (busy || !hasText) return
+      // stray keystroke far more often than it is a request to generate. Image
+      // mode guards itself instead — an empty brief under a developed prompt
+      // is the wand's own path, and ↵ there draws what was already paid for.
+      if (busy) return
+      if (!isImage && !hasText) return
       handleSend()
       return
     }
@@ -317,7 +515,17 @@ export function Composer({
             value={value}
             onChange={(event) => onValueChange(event.target.value)}
             onKeyDown={onTextareaKeyDown}
-            placeholder={active.placeholder}
+            // Locked while the develop call streams, like the lane below it:
+            // the call is answering THIS brief, and an edit mid-stream would
+            // land the answer already stale — the writer watches one thing
+            // finish rather than racing it. readOnly, not disabled, so focus
+            // and the caret survive the few seconds it takes.
+            readOnly={isImage && deriving}
+            placeholder={
+              isImage && !imageAssisted
+                ? VERBATIM_PLACEHOLDER
+                : active.placeholder
+            }
             // Deliberately avoids the word "person". Safari classifies fields
             // by regexing their accessible name for tokens like name/person,
             // and with no `name` or `id` on this textarea the aria-label is the
@@ -327,7 +535,9 @@ export function Composer({
             // phrased that way here.
             aria-label={
               isImage
-                ? "Image — describe the picture"
+                ? imageAssisted
+                  ? "Image — say what the picture is"
+                  : "Image — describe the picture"
                 : `${active.label} — write your next move`
             }
             // Belt and braces, not the fix — the aria-label above is what
@@ -345,8 +555,133 @@ export function Composer({
             spellCheck
             className="max-h-52 min-h-14 resize-none overflow-y-auto border-0 bg-transparent px-3 font-serif text-base leading-7 shadow-none focus-visible:ring-0"
           />
+          {/* The lore the brief summoned, between the words that summoned it
+              and the prompt it will shape. Nothing renders when nothing
+              matched, so a resting composer is exactly as tall as it was.
+
+              Split on WHO summoned it. An entry the brief named is the reason
+              the chips exist and is always on screen; the riders — always-on
+              entries and everything the cascade dragged in behind a name — can
+              be dozens in a dense lorebook, and forty pills over a two-line
+              brief buries the composer under its own provenance. They fold
+              behind a count until asked for, and stay mutable once shown. */}
+          {isImage && imageAssisted && loreMatches.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1 px-3 pb-1">
+              {(riderChipsOpen
+                ? loreMatches
+                : loreMatches.filter(
+                    (match) => match.triggeredBy?.kind === "source"
+                  )
+              ).map((match) => {
+                const muted = excludedLoreIds.has(match.entry.id)
+                return (
+                  <Tooltip key={match.entry.id}>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          // Included is the pressed state: the chip is the
+                          // entry's presence in the call, and tapping it takes
+                          // that away.
+                          aria-pressed={!muted}
+                          aria-label={`${match.entry.name} — ${
+                            muted ? "left out of" : "included in"
+                          } this prompt`}
+                          onClick={() => onToggleLore(match.entry.id)}
+                          className={cn(
+                            // h-7 is the smallest comfortable thumb target that
+                            // does not turn a row of names into a row of pills.
+                            "inline-flex h-7 max-w-52 items-center truncate border px-2 text-[0.6875rem] tracking-wide uppercase transition-colors",
+                            muted
+                              ? "border-dashed border-border/60 text-muted-foreground/60 line-through"
+                              : "border-border/60 text-muted-foreground hover:text-foreground"
+                          )}
+                        />
+                      }
+                    >
+                      {match.entry.name}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {muted
+                        ? `${match.entry.name} — left out; tap to put back`
+                        : `${match.entry.name} — tap to leave out`}
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              })}
+              {riderCount > 0 && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-expanded={riderChipsOpen}
+                        aria-label={
+                          riderChipsOpen
+                            ? "Hide the entries that ride along"
+                            : `Show ${riderCount} more entries that ride along`
+                        }
+                        onClick={() => setRiderChipsOpen(!riderChipsOpen)}
+                        className="inline-flex h-7 items-center px-2 text-[0.6875rem] tracking-wide text-muted-foreground/60 uppercase transition-colors hover:text-foreground"
+                      />
+                    }
+                  >
+                    {riderChipsOpen ? "less" : `+${riderCount}`}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {riderChipsOpen
+                      ? "Hide the riders"
+                      : `${riderCount} more ride along — always-on lore and the cascade`}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          )}
+
+          {/* The developed prompt. Mono and small because it is machine text
+              addressed to a machine — the writer edits it, but it is not their
+              prose, and setting it in the same serif as the brief above would
+              claim otherwise. */}
+          {isImage && laneVisible && (
+            <div className="border-t border-border/60 px-3 pt-1.5 pb-1">
+              <div className="flex items-baseline justify-between gap-2 pb-0.5">
+                <span
+                  id="developed-prompt-label"
+                  className="text-[0.625rem] tracking-widest text-muted-foreground uppercase"
+                >
+                  {deriving
+                    ? "Developing…"
+                    : laneStale
+                      ? "Brief changed — ↵ develops again"
+                      : "Developed prompt — ↵ draws"}
+                </span>
+              </div>
+              <textarea
+                value={imagePrompt ?? ""}
+                onChange={(event) => onImagePromptChange(event.target.value)}
+                onKeyDown={onLaneKeyDown}
+                aria-labelledby="developed-prompt-label"
+                readOnly={deriving}
+                spellCheck={false}
+                enterKeyHint="send"
+                className="field-sizing-content max-h-40 w-full resize-none overflow-y-auto bg-transparent font-mono text-[0.76rem] leading-5 text-muted-foreground outline-none"
+              />
+            </div>
+          )}
+
           <span role="status" aria-live="polite" className="sr-only">
             {announceKind ? `${active.label} — ${active.placeholder}` : ""}
+          </span>
+          {/* Its own region: the develop call is the one thing here that starts
+              and finishes without moving focus or changing what is on screen
+              above it, so it is the one thing a screen reader would otherwise
+              miss entirely. */}
+          <span role="status" aria-live="polite" className="sr-only">
+            {deriving
+              ? "Developing the image prompt."
+              : laneAnnouncement
+                ? "Image prompt ready. Press Enter to draw."
+                : ""}
           </span>
           <div className="flex items-center gap-1 px-2 pb-2">
             <div className="flex items-center gap-0.5">
@@ -432,8 +767,11 @@ export function Composer({
 
             {/* Retry and Continue are moves on PROSE — there is no "continue"
                 for a picture, and retrying one is done on the picture itself.
-                In image mode the two slots become the frame and the wand, so
-                the toolbar keeps its width and nothing shifts on a mode swap. */}
+                In image mode those slots become the picture's own controls:
+                the frame, the style, the assistance switch and the wand. The
+                row is two buttons wider here than in Do/Say, which is the
+                honest shape — an image send has more to say about it — and
+                nothing inside image mode moves as the send slot cycles. */}
             {isImage ? (
               <>
                 <Tooltip>
@@ -461,25 +799,76 @@ export function Composer({
                   <TooltipContent>Frame {aspectRatio}</TooltipContent>
                 </Tooltip>
 
+                <StyleButton
+                  style={imageStyle}
+                  onStyleChange={onImageStyleChange}
+                />
+
+                {/* Assistance, as a switch rather than a setting: it changes
+                    what the very next ↵ costs, so it belongs under the thumb
+                    that is about to press it. Pressed means "the model helps",
+                    which is the state the icon shows. */}
                 <Tooltip>
                   <TooltipTrigger
                     render={
                       <Button
-                        variant="secondary"
+                        variant={imageAssisted ? "secondary" : "ghost"}
                         size="icon-sm"
-                        aria-label="Write a prompt from the story"
+                        className={cn(
+                          imageAssisted
+                            ? "border-border text-foreground"
+                            : "text-muted-foreground"
+                        )}
+                        aria-label={
+                          imageAssisted
+                            ? "Assisted — the model expands your brief"
+                            : "Verbatim — your words go as written"
+                        }
+                        aria-pressed={imageAssisted}
                         disabled={deriving || imageBusy}
-                        onClick={onDerive}
+                        onClick={() => onImageAssistedChange(!imageAssisted)}
                       />
                     }
                   >
-                    <WandSparkles className={cn(deriving && "animate-pulse")} />
+                    {imageAssisted ? <WandSparkles /> : <PenLine />}
                   </TooltipTrigger>
-                  {/* Says outright that this spends money. The wand exists
-                      instead of auto-deriving on mode switch precisely so the
-                      writer is the one who decides to pay for it. */}
                   <TooltipContent>
-                    Write a prompt from the story · costs a call
+                    {imageAssisted
+                      ? "Assisted — ↵ develops, then draws"
+                      : "Verbatim — ↵ draws your words as written"}
+                  </TooltipContent>
+                </Tooltip>
+
+                {/* The re-develop. With a brief it buys another expansion of
+                    it; with the brief empty it is the older gesture — describe
+                    whatever the story has just reached — which is the one place
+                    an empty composer may still spend money, because here the
+                    writer asked for it by name. */}
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={
+                          brief === ""
+                            ? "Write a prompt from the story"
+                            : "Develop this brief again"
+                        }
+                        disabled={!imageAssisted || deriving || imageBusy}
+                        onClick={onDevelop}
+                      />
+                    }
+                  >
+                    <RotateCcw className={cn(deriving && "animate-pulse")} />
+                  </TooltipTrigger>
+                  {/* Says outright that this spends money. Nothing here
+                      develops on its own precisely so the writer is the one who
+                      decides to pay for it. */}
+                  <TooltipContent>
+                    {brief === ""
+                      ? "Write a prompt from the story · costs a call"
+                      : "Develop again · costs a call"}
                   </TooltipContent>
                 </Tooltip>
               </>
@@ -519,7 +908,53 @@ export function Composer({
                 open one, and the canvas already announces the generation.
                 Both waiting states are about a PROSE run; a picture reports
                 its own progress in the placeholder it draws into. */}
-            {waiting && !isImage ? (
+            {isImage && deriving ? (
+              <Button
+                variant="default"
+                size="icon-sm"
+                aria-label="Developing"
+                // Same reasoning as the prose spinner below: inert but at full
+                // contrast, because this state is "it's working", not "you
+                // can't". A develop is seconds, and Escape is not offered for
+                // it — the writer's cheapest out is to let it land and edit.
+                disabled
+                className="disabled:opacity-100"
+              >
+                <Loader2 aria-hidden className="animate-spin" />
+              </Button>
+            ) : isImage ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="default"
+                      size="icon-sm"
+                      aria-label={
+                        imageSendAction === "draw"
+                          ? "Draw this image"
+                          : "Develop the prompt"
+                      }
+                      disabled={
+                        imageBusy ||
+                        (imageSendAction === "draw"
+                          ? imageAssisted
+                            ? lane === ""
+                            : brief === ""
+                          : brief === "")
+                      }
+                      onClick={handleSend}
+                    />
+                  }
+                >
+                  {imageSendAction === "draw" ? <ArrowUp /> : <Sparkles />}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {imageSendAction === "draw"
+                    ? "Draw (Enter)"
+                    : "Develop the prompt (Enter) · costs a call"}
+                </TooltipContent>
+              </Tooltip>
+            ) : waiting ? (
               <Button
                 variant="default"
                 size="icon-sm"
@@ -532,7 +967,7 @@ export function Composer({
               >
                 <Loader2 aria-hidden className="animate-spin" />
               </Button>
-            ) : stoppable && !isImage ? (
+            ) : stoppable ? (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -555,26 +990,123 @@ export function Composer({
                     <Button
                       variant="default"
                       size="icon-sm"
-                      aria-label={isImage ? "Generate image" : "Send"}
-                      disabled={
-                        isImage
-                          ? imageBusy || deriving || !hasText
-                          : busy || !hasText
-                      }
+                      aria-label="Send"
+                      disabled={busy || !hasText}
                       onClick={handleSend}
                     />
                   }
                 >
                   <ArrowUp />
                 </TooltipTrigger>
-                <TooltipContent>
-                  {isImage ? "Generate image (Enter)" : "Send (Enter)"}
-                </TooltipContent>
+                <TooltipContent>Send (Enter)</TooltipContent>
               </Tooltip>
             )}
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * The style control: eight offers and a free-text field.
+ *
+ * A popover rather than a row of choices, because style is chosen rarely and
+ * then left alone for a whole story — it is remembered per story on the draft
+ * row — while the composer's other controls are pressed several times a
+ * paragraph. The trigger carries the state at a glance: filled when a style is
+ * set, ghost when none is.
+ *
+ * Custom is a field rather than a thirteenth preset because the presets are a
+ * starting point, not a taxonomy. Typing in it clears the preset selection by
+ * construction: there is only ever one active string, and what the popover
+ * shows is which preset — if any — that string came from.
+ */
+function StyleButton({
+  style,
+  onStyleChange,
+}: {
+  style: string | null
+  onStyleChange: (style: string | null) => void
+}) {
+  const active = IMAGE_STYLE_PRESETS.find((preset) => preset.text === style)
+  const label = active?.label ?? (style === null ? "None" : "Custom")
+
+  // Controlled so a preset can CLOSE it: picking from a short list is a
+  // one-tap decision, and a popover that lingers afterwards demands a second
+  // tap to dismiss what the first already settled. The Custom field is the
+  // exception — typing is not a decision's end, so it leaves the popover be.
+  const [open, setOpen] = React.useState(false)
+  const pick = (next: string | null) => {
+    onStyleChange(next)
+    setOpen(false)
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger
+              render={
+                <Button
+                  variant={style === null ? "ghost" : "secondary"}
+                  size="icon-sm"
+                  className={cn(
+                    style === null
+                      ? "text-muted-foreground"
+                      : "border-border text-foreground"
+                  )}
+                  aria-label={`Style: ${label}`}
+                />
+              }
+            />
+          }
+        >
+          <Palette />
+        </TooltipTrigger>
+        <TooltipContent>Style — {label}</TooltipContent>
+      </Tooltip>
+      <PopoverContent align="end" side="top" className="gap-2 p-2">
+        <div className="flex flex-col">
+          <button
+            type="button"
+            aria-pressed={style === null}
+            onClick={() => pick(null)}
+            className={cn(
+              "flex h-8 items-center px-2 text-left text-xs transition-colors hover:bg-muted",
+              style === null ? "text-foreground" : "text-muted-foreground"
+            )}
+          >
+            None
+          </button>
+          {IMAGE_STYLE_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              aria-pressed={preset.text === style}
+              onClick={() => pick(preset.text)}
+              className={cn(
+                "flex h-8 items-center px-2 text-left text-xs transition-colors hover:bg-muted",
+                preset.text === style
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              )}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <Input
+          value={active ? "" : (style ?? "")}
+          onChange={(event) =>
+            onStyleChange(event.target.value === "" ? null : event.target.value)
+          }
+          placeholder="Custom…"
+          aria-label="Custom style"
+          className="h-8 px-2 text-xs"
+        />
+      </PopoverContent>
+    </Popover>
   )
 }
