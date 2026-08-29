@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
-import { deleteStory } from "@/lib/actions/stories"
+import { deleteStoryOptimistic } from "@/lib/store/story-mutations"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -34,15 +34,19 @@ export function DeleteStoryDialog({
 
   function handleDelete() {
     startTransition(async () => {
+      // The row's removal is optimistic, but navigation is not reversible by
+      // dropping an overlay entry: a rejected delete has to leave the writer
+      // exactly where they were, row restored — so navigation and the success
+      // toast wait for confirm.
       const wasOpen = pathname === `/story/${storyId}`
-      const res = await deleteStory(storyId)
-      if (!res.ok) {
-        toast.error(res.error)
-        return
-      }
-      toast.success("Story deleted")
       onOpenChange(false)
-      if (wasOpen) router.push("/")
+      const res = await deleteStoryOptimistic(storyId)
+      if (res.ok) {
+        toast.success("Story deleted")
+        if (wasOpen) router.push("/")
+      } else {
+        toast.error(res.error)
+      }
     })
   }
 

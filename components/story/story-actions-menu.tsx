@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Copy, Loader2, MoreHorizontal, PencilLine, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
-import { duplicateStory } from "@/lib/actions/stories"
+import { duplicateStoryOptimistic } from "@/lib/store/story-mutations"
 import type { StorySummary } from "@/lib/types"
 import {
   DropdownMenu,
@@ -84,7 +84,18 @@ export function StoryActionsMenu({
 
   function handleDuplicate() {
     startTransition(async () => {
-      const res = await duplicateStory(story.id)
+      // seed is StorySummary-shaped; duplicateStoryOptimistic only reads the
+      // fields below, but id/createdAt/updatedAt are required by the type.
+      const res = await duplicateStoryOptimistic(story.id, {
+        id: story.id,
+        title: story.title,
+        description: story.description,
+        genre: story.genre,
+        createdAt: story.createdAt,
+        updatedAt: story.updatedAt,
+        tintHue: story.tintHue,
+        tintStrength: story.tintStrength,
+      })
       if (!res.ok) {
         toast.error(res.error)
         return

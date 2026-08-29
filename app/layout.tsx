@@ -3,6 +3,7 @@ import { Geist_Mono, Inter, Source_Serif_4 } from "next/font/google"
 
 import "./globals.css"
 import { AppSidebar } from "@/components/sidebar/app-sidebar"
+import { StoreBoot } from "@/components/store-boot"
 import { SyncListener } from "@/components/sync-listener"
 import { StatusBarTint } from "@/components/status-bar-tint"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -11,7 +12,6 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/sonner"
 import { listActiveRuns } from "@/lib/generation/live"
 import { listActiveImageRuns } from "@/lib/images/live"
-import { listStories } from "@/lib/db/queries"
 import { cn } from "@/lib/utils"
 
 const fontSans = Inter({
@@ -91,7 +91,6 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const storyPage = await listStories()
   // Synchronous and in-process — the registries are Maps on globalThis, not
   // queries. Read here rather than inside listStories because it is not
   // database state: a run lives and dies with this server, and folding it into
@@ -118,12 +117,13 @@ export default async function RootLayout({
             {/* Inside the provider: it tints the status bar from the sheet's
                 open state, which only exists in this context. */}
             <StatusBarTint />
-            <AppSidebar storyPage={storyPage} activeRuns={activeRuns} />
+            <AppSidebar activeRuns={activeRuns} />
             <SidebarInset>{children}</SidebarInset>
           </SidebarProvider>
           <Toaster />
           <ViewportHeightSync />
           <SyncListener />
+          <StoreBoot />
         </ThemeProvider>
       </body>
     </html>
