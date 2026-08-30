@@ -449,9 +449,11 @@
  * first.
  */
 :root {
-    /* Transitioned so a tint change breathes. Only the strength: interpolating
-       a hue from 25 to 305 sweeps the entire wheel, which reads as a rainbow
-       wipe rather than a room changing colour. Hue snaps, chroma fades. */
+    /* The fallback clock, for a tint that moves with no StoryTint mounted to
+       stage it. Where one is mounted it restates this transition on :root and
+       drives both variables itself: a hue change has to travel the short way
+       round the wheel and dip through the middle, and neither is expressible
+       here. See components/story/story-tint.tsx. */
     transition: --story-c 500ms ease;
 
     --background: oklch(calc(1 - 0.075 * var(--story-c)) calc(0.07 * var(--story-c)) var(--story-h));
