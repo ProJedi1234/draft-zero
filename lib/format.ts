@@ -160,7 +160,9 @@ export function formatRelativeDate(
   }
   // Round, not floor: a DST change between the two midnights leaves the gap
   // an hour off a whole day.
-  const days = Math.round((dayStart(nowMs) - dayStart(Date.parse(iso))) / DAY_MS)
+  const days = Math.round(
+    (dayStart(nowMs) - dayStart(Date.parse(iso))) / DAY_MS
+  )
   if (days <= 0) return "today"
   if (days === 1) return "yesterday"
   if (days < 7) return `${days}d ago`
