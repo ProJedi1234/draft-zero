@@ -9,6 +9,7 @@
 
 import {
   SYNC_PING_INTERVAL_MS,
+  type ActiveRun,
   type DeriveRunWireEvent,
   type ImageRunWireEvent,
   type RunWireEvent,
@@ -99,6 +100,48 @@ export const runEndings = {
     for (const listener of this.listeners) {
       try {
         listener(event)
+      } catch {
+        // One broken subscriber must not mute the rest, same as the bus.
+      }
+    }
+  },
+}
+
+/**
+ * Which stories the SERVER says are generating, as of its last render.
+ *
+ * The third answer to "is this story running?", and the only one that cannot
+ * be missed. The subscribe stream is authoritative but reachable only while
+ * the network is; `run-started` is a single delivery that a dead socket eats.
+ * This is neither — it is a fact that rides every RSC payload the app already
+ * fetches, the same one the sidebar's status marks are drawn from, so a device
+ * that is wrong about a run is corrected on the next refresh whatever went
+ * wrong in between.
+ *
+ * TEXT runs only, deliberately: the library merges the picture registry into
+ * its own list because "working" is one state to a reader, but a subscriber
+ * routes to one channel and a runId from the wrong registry is a 204 it paid
+ * a round trip for.
+ *
+ * A module singleton like runHandoff, and for the same reason: the list is
+ * rendered by the root layout while the hook that reconciles against it lives
+ * in the story subtree. It REMEMBERS, like atmosphereStatus does, because the
+ * workspace mounts long after the layout published.
+ */
+export const liveRuns = {
+  last: [] as ActiveRun[],
+  listeners: new Set<(runs: ActiveRun[]) => void>(),
+  subscribe(listener: (runs: ActiveRun[]) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  },
+  publish(runs: ActiveRun[]): void {
+    this.last = runs
+    for (const listener of this.listeners) {
+      try {
+        listener(runs)
       } catch {
         // One broken subscriber must not mute the rest, same as the bus.
       }
