@@ -4,7 +4,7 @@ import * as React from "react"
 import { Loader2 } from "lucide-react"
 
 import { loadOlderEntries } from "@/lib/actions/entries"
-import { mergeWindowedEntries } from "@/lib/story-window"
+import { mergeWindowedEntries, reconcileHeldEntries } from "@/lib/story-window"
 import type { Story, StoryEntry, StoryImage } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { formatDateShort } from "@/lib/format"
@@ -130,6 +130,24 @@ export function StoryCanvas({
   /** Loaded-but-not-rendered passages, read by requestLand without re-arming
       the callback on every reveal. */
   const hiddenCountRef = React.useRef(0)
+  /**
+   * Passages hidden ahead of the server's answer. A delete or a rewind takes
+   * its prose off the canvas on the click, not a round trip later — and a
+   * rewind from a passage the reader scrolled up to is the case that needs it
+   * most, because the prose it cuts lives in `older`, which no revalidation
+   * touches.
+   *
+   * An id stays here exactly as long as the loaded data still carries it —
+   * the pruning below drops it in the same commit the read does. That is what
+   * keeps the set from outliving its write: an undo that restores a rewound
+   * passage finds no entry here holding it hidden.
+   */
+  const [removedIds, setRemovedIds] = React.useState<ReadonlySet<string>>(
+    () => new Set()
+  )
+  /** The rendered manuscript, for the removal callback — a ref so the callback
+      stays stable and the memoised blocks do not re-render on every commit. */
+  const loadedRef = React.useRef<StoryEntry[]>([])
   /** A reveal of already-loaded prose waiting on the same rest gate a fetched
       page waits on: growing the rendered slice prepends DOM exactly as a page
       does, so it needs the same compensation and the same timing. */
@@ -166,8 +184,29 @@ export function StoryCanvas({
   const removing = new Set(removingEntryIds)
   // Paged-in prose first, then the server tail; the tail's copy wins any
   // overlap — the window can slide back across passages already paged in.
-  const loaded = mergeWindowedEntries(older, story.entries).filter(
-    (entry) => !removing.has(entry.id)
+  const merged = mergeWindowedEntries(older, story.entries)
+
+  // An optimistic hide is released the moment the data agrees with it, and an
+  // id the data no longer carries is dropped here rather than in an effect —
+  // it is derived from the read, not synchronised with it. Doing it in render
+  // is also what keeps the prose from flickering back: the id stops hiding a
+  // row in the very commit that stops delivering it, with no frame in between.
+  // Skipped entirely while nothing is pending, which is every frame of a
+  // generation — this walks the whole loaded manuscript.
+  let hidden = removedIds
+  if (hidden.size > 0) {
+    const present = new Set(merged.map((entry) => entry.id))
+    const kept = new Set([...hidden].filter((id) => present.has(id)))
+    if (kept.size !== hidden.size) {
+      hidden = kept
+      // The render-phase adjustment React sanctions for state that follows
+      // props: it re-renders this component before anything paints.
+      setRemovedIds(kept)
+    }
+  }
+
+  const loaded = merged.filter(
+    (entry) => !removing.has(entry.id) && !hidden.has(entry.id)
   )
   // The tail of what is loaded. Slicing from the END is what makes a new
   // passage always visible: generation appends, so the live edge is never the
@@ -182,7 +221,39 @@ export function StoryCanvas({
   // ref only fires after paint, so the commit is early enough.
   useIsomorphicLayoutEffect(() => {
     hiddenCountRef.current = hiddenCount
-  }, [hiddenCount])
+    loadedRef.current = loaded
+  })
+
+  /**
+   * Hide a passage — and, for a rewind, everything the cut takes with it —
+   * before the action that removes it has answered. Returns the undo, for the
+   * caller to run if the server refuses: the prose comes straight back.
+   *
+   * The ids are resolved HERE rather than passed in because this is where the
+   * manuscript is assembled; a block knows how many passages follow it (that
+   * is what it counts in the confirmation) but not which ones.
+   */
+  const removeOptimistically = React.useCallback(
+    (entryId: string, scope: "passage" | "rewind") => {
+      const shown = loadedRef.current
+      const at = shown.findIndex((entry) => entry.id === entryId)
+      const cut =
+        scope === "passage"
+          ? [entryId]
+          : at === -1
+            ? []
+            : shown.slice(at + 1).map((entry) => entry.id)
+      if (cut.length === 0) return () => {}
+      setRemovedIds((prev) => new Set([...prev, ...cut]))
+      return () =>
+        setRemovedIds((prev) => {
+          const next = new Set(prev)
+          for (const id of cut) next.delete(id)
+          return next
+        })
+    },
+    []
+  )
 
   // Passages and pictures share one ordering sequence (see nextStoryPosition),
   // so the manuscript is a single list sorted by position — no interleaving
@@ -431,28 +502,36 @@ export function StoryCanvas({
 
   // Foreign edits reach the tail through router.refresh(), but a paged-in
   // passage lives in state — so when the story moves, re-read the range this
-  // canvas holds and MERGE fresh copies over the held ones, by id. Never a
-  // replacement: pages can land while this request is in flight, and an
-  // effect re-run (dev Fast Refresh re-runs them all) must not be able to
-  // shrink the loaded window, move the paging cursor, or shift the view —
-  // exactly what a count-sized replacement did. Rows deleted on another
-  // device keep a stale copy here until the next story switch; that is the
-  // cheapest honest answer for a read this rare. On failure the held prose
-  // stands; it is almost always identical.
+  // canvas holds and re-seat it on that read. The read is authoritative for
+  // the range it covers, which is what carries removals and restorations that
+  // never touch the tail: the passages a rewind cuts from a scrolled-up
+  // anchor, and the passages its undo puts back. A merge by id could express
+  // neither, and left cut prose on the canvas until a reload.
+  //
+  // Still never the count-sized replacement this once was: pages can land
+  // while this request is in flight, and an effect re-run (dev Fast Refresh
+  // re-runs them all) must not shrink the loaded window, move the paging
+  // cursor, or shift the view. Prose below the read's floor is kept exactly as
+  // held, which covers every one of those. On failure the held prose stands.
+  //
+  // The optimistic hide above is what the reader actually sees in the meantime;
+  // this is the read that settles it.
   const heldCount = older.length
   React.useEffect(() => {
     if (heldCount === 0) return
     if (story.windowStartPosition === undefined) return
+    const windowStart = story.windowStartPosition
     let cancelled = false
-    void loadOlderEntries(story.id, story.windowStartPosition, heldCount).then(
-      (res) => {
-        if (cancelled || !res.ok) return
-        const fresh = new Map(
-          res.data.entries.map((entry) => [entry.id, entry])
+    void loadOlderEntries(story.id, windowStart, heldCount).then((res) => {
+      if (cancelled || !res.ok) return
+      setOlder((prev) =>
+        reconcileHeldEntries(
+          prev,
+          res.data.entries,
+          res.data.windowStartPosition
         )
-        setOlder((prev) => prev.map((entry) => fresh.get(entry.id) ?? entry))
-      }
-    )
+      )
+    })
     return () => {
       cancelled = true
     }
@@ -677,6 +756,7 @@ export function StoryCanvas({
                     busy={busy}
                     followingCount={entries.length - 1 - item.index}
                     onRetry={onRetry}
+                    onOptimisticRemove={removeOptimistically}
                   />
                 ) : (
                   <ImageBlock
