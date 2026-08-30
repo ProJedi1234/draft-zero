@@ -57,11 +57,12 @@ export const STORY_CARD_FILE_ACCEPT = ".json"
 // drift without one importer silently redefining the other's limit.
 //
 // 1MB, not the 5MB this started at, because 5MB was a ceiling that never bound:
-// Next caps a Server Action request body at 1MB by default and next.config.ts
-// sets no bodySizeLimit, so anything between the two limits previewed happily
-// and then died on submit with a rejection no reader could explain. Matching
-// the real limit turns that into an honest "too large" before the file is even
-// parsed. A 26-card export is about 20KB, so this is still ~50x any real file.
+// Next capped a Server Action request body at 1MB, so anything between the two
+// limits previewed happily and then died on submit with a rejection no reader
+// could explain. next.config.ts has since raised that limit for the backup
+// importer, but this stays where it is — it was never really the transport's
+// number. A 26-card export is about 20KB, so 1MB is still ~50x any real file,
+// and a "card export" past it is not one.
 /** Refuse anything larger than this before parsing — card exports are tiny. */
 export const MAX_CARDS_BYTES = 1024 * 1024
 
@@ -113,15 +114,15 @@ export type ParseResult =
 // Field readers (every one tolerates a wrong-typed or absent value)
 // ---------------------------------------------------------------------------
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-function str(value: unknown): string {
+export function str(value: unknown): string {
   return typeof value === "string" ? value : ""
 }
 
-function strArray(value: unknown): string[] {
+export function strArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value
     .filter((item): item is string => typeof item === "string")
@@ -145,7 +146,7 @@ function normalizeNewlines(text: string): string {
  * by "\n\n". AI Dungeon writes hard breaks as single "\n", so every single
  * newline is promoted and runs of blank lines collapse.
  */
-function toParagraphText(text: string): string {
+export function toParagraphText(text: string): string {
   return normalizeNewlines(text)
     .split(/\n+/)
     .map((line) => line.trim())
@@ -164,7 +165,7 @@ function toParagraphText(text: string): string {
  * "Elara\nAge: 24\n  Home: Somara" became three paragraphs with the alignment
  * stripped, in the editor and in every prompt the entry fired into.
  */
-function toLoreText(text: string): string {
+export function toLoreText(text: string): string {
   return normalizeNewlines(text).trim()
 }
 
@@ -352,7 +353,7 @@ function toContent(value: string, description: string): string {
   return `${value}\n\n${description}`
 }
 
-interface ReadCards {
+export interface ReadCards {
   entries: NewLorebookEntry[]
   settings: NewLorebookEntry[]
   worldDescription: string
@@ -360,7 +361,7 @@ interface ReadCards {
   worldTitle: string
 }
 
-function readCards(raw: unknown[], warnings: string[]): ReadCards {
+export function readCards(raw: unknown[], warnings: string[]): ReadCards {
   const entries: NewLorebookEntry[] = []
   const settings: NewLorebookEntry[] = []
   const worldTexts: string[] = []
