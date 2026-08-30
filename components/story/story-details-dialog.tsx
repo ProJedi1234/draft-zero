@@ -111,23 +111,32 @@ function StoryDetailsForm({
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <Label htmlFor={`${uid}-title`}>Title</Label>
-            <Input
-              id={`${uid}-title`}
-              value={draft.title}
-              placeholder="Untitled Story"
-              aria-invalid={trimmedTitle === "" || undefined}
-              onChange={(event) =>
-                setDraft((d) => ({ ...d, title: event.target.value }))
-              }
-              // The one field where Enter still means "save" — renaming was a
-              // one-field form before this dialog grew, and losing the keystroke
-              // would make the commonest edit here slower than it was.
-              onKeyDown={(event) => {
-                if (event.key !== "Enter") return
-                event.preventDefault()
-                handleSave()
-              }}
-            />
+            {/* The only single-line field in the app that needs a form owner.
+                iOS substring-matches a field's strings against contact fields,
+                and "Untitled Story" contains "title" — organization-title, the
+                job-title field — which raises the AutoFill Contact bar. The
+                form owner suppresses it; renaming the id does not, since the
+                placeholder alone is enough to trip it. Same mechanism as
+                <Textarea>, documented there. */}
+            <form className="contents" onSubmit={(e) => e.preventDefault()}>
+              <Input
+                id={`${uid}-title`}
+                value={draft.title}
+                placeholder="Untitled Story"
+                aria-invalid={trimmedTitle === "" || undefined}
+                onChange={(event) =>
+                  setDraft((d) => ({ ...d, title: event.target.value }))
+                }
+                // The one field where Enter still means "save" — renaming was a
+                // one-field form before this dialog grew, and losing the keystroke
+                // would make the commonest edit here slower than it was.
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return
+                  event.preventDefault()
+                  handleSave()
+                }}
+              />
+            </form>
             <p className="text-xs text-muted-foreground">
               {trimmedTitle === ""
                 ? "A title is required."
