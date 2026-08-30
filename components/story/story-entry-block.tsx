@@ -44,7 +44,8 @@ import { VariantSwitcher } from "@/components/story/variant-switcher"
  * the switcher's three once a slot has more than one take) re-renders on every
  * chunk. `followingCount` holds still through a stream for the same reason the
  * rest do — the persisted entries do not change until the turn settles — and
- * `onRetry` needs no entry id because the only retryable passage is the last.
+ * `onRetry` and `onOptimisticRemove` need no entry id: the only retryable
+ * passage is the last, and the canvas resolves a removal's cut itself.
  */
 export const StoryEntryBlock = React.memo(function StoryEntryBlock({
   entry,
@@ -52,6 +53,7 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
   busy,
   followingCount,
   onRetry,
+  onOptimisticRemove,
 }: {
   entry: StoryEntry
   storyId: string
@@ -64,6 +66,15 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
    */
   followingCount: number
   onRetry: () => void
+  /**
+   * Takes this passage — or, for a rewind, every passage after it — off the
+   * canvas now, and hands back the undo for a server that refuses. The canvas
+   * owns it because the cut spans blocks this one cannot see.
+   */
+  onOptimisticRemove: (
+    entryId: string,
+    scope: "passage" | "rewind"
+  ) => () => void
 }) {
   const [editing, setEditing] = React.useState(false)
   const [confirmOpen, setConfirmOpen] = React.useState(false)
@@ -74,28 +85,33 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
   const isLast = followingCount === 0
   const locked = busy || editing || isDeleting || isRewinding
 
+  // Both removals take their prose off the canvas first and ask the server
+  // after, and both close their dialog in the same commit: it is confirming a
+  // cut that has already happened, and leaving it up over the gap reads as a
+  // click that did nothing. Silent on success (§4.6) — the prose going is the
+  // confirmation, and for a rewind the manuscript ending here is a larger one
+  // than any toast. A refusal puts every passage back and says why.
   function handleDelete() {
+    const restore = onOptimisticRemove(entry.id, "passage")
+    setConfirmOpen(false)
     startDeleting(async () => {
       const res = await deleteEntry(storyId, entry.id)
       if (!res.ok) {
+        restore()
         toast.error(res.error)
-        return
       }
-      // Silent on success (§4.6) — the block vanishing is the confirmation.
-      setConfirmOpen(false)
     })
   }
 
   function handleRewind() {
+    const restore = onOptimisticRemove(entry.id, "rewind")
+    setRewindOpen(false)
     startRewinding(async () => {
       const res = await rewindToEntry(storyId, entry.id)
       if (!res.ok) {
+        restore()
         toast.error(res.error)
-        return
       }
-      // Silent for the same reason as delete, and more so: the manuscript
-      // ending here is a larger confirmation than any toast.
-      setRewindOpen(false)
     })
   }
 
