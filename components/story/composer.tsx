@@ -580,13 +580,11 @@ export function Composer({
                 ? VERBATIM_PLACEHOLDER
                 : active.placeholder
             }
-            // Deliberately avoids the word "person". Safari classifies fields
-            // by regexing their accessible name for tokens like name/person,
-            // and with no `name` or `id` on this textarea the aria-label is the
-            // only string it has — "write in first person" made it a contact
-            // field, which is what summoned the AutoFill Contact bar and turned
-            // autocorrect off. The guidance is worth keeping; it just cannot be
-            // phrased that way here.
+            // Reads "write your next move" rather than "write in first
+            // person" because PR #22 believed the word "person" was what
+            // summoned the contact bar. It was not — the form owner above is —
+            // but the shorter phrasing is the better label anyway, so it
+            // stays.
             aria-label={
               isImage
                 ? imageAssisted
@@ -594,12 +592,9 @@ export function Composer({
                   : "Image — describe the picture"
                 : `${active.label} — write your next move`
             }
-            // Belt and braces, not the fix — the aria-label above is what
-            // actually stopped Safari classifying this as a name field, and
-            // `autocomplete="off"` alone did nothing there, because WebKit
-            // ignores it for autofill. These stay for the engines that do honour
-            // it, and to state outright that a field of prose wants autocorrect
-            // and sentence case rather than leaving it to be inferred again.
+            // WebKit ignores `autocomplete="off"` for autofill, so this is
+            // for the engines that honour it. The rest states outright that a
+            // field of prose wants autocorrect and sentence case.
             autoComplete="off"
             autoCorrect="on"
             autoCapitalize="sentences"
@@ -716,16 +711,22 @@ export function Composer({
                       : "Developed prompt — ↵ draws"}
                 </span>
               </div>
-              <textarea
-                value={imagePrompt ?? ""}
-                onChange={(event) => onImagePromptChange(event.target.value)}
-                onKeyDown={onLaneKeyDown}
-                aria-labelledby="developed-prompt-label"
-                readOnly={deriving}
-                spellCheck={false}
-                enterKeyHint="send"
-                className="field-sizing-content max-h-40 w-full resize-none overflow-y-auto bg-transparent font-mono text-[0.76rem] leading-5 text-muted-foreground outline-none"
-              />
+              {/* A raw textarea rather than <Textarea>, because this is machine
+                  text and wants none of that component's prose defaults — so
+                  it needs its own form owner, for the reason documented
+                  there. */}
+              <form className="contents" onSubmit={(e) => e.preventDefault()}>
+                <textarea
+                  value={imagePrompt ?? ""}
+                  onChange={(event) => onImagePromptChange(event.target.value)}
+                  onKeyDown={onLaneKeyDown}
+                  aria-labelledby="developed-prompt-label"
+                  readOnly={deriving}
+                  spellCheck={false}
+                  enterKeyHint="send"
+                  className="field-sizing-content max-h-40 w-full resize-none overflow-y-auto bg-transparent font-mono text-[0.76rem] leading-5 text-muted-foreground outline-none"
+                />
+              </form>
             </div>
           )}
 
