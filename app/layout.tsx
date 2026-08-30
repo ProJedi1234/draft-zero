@@ -96,13 +96,9 @@ export default async function RootLayout({
   // queries. Read here rather than inside listStories because it is not
   // database state: a run lives and dies with this server, and folding it into
   // the read layer would put a fact with no row in it behind a Postgres round
-  // trip.
-  //
-  // Two audiences, so two lists. The library merges both kinds, because to it
-  // "working" is one state — a story drawing a picture is busy in exactly the
-  // way one streaming prose is, and the mark does not owe the reader the
-  // distinction. The workspace reconciles against a runId it is going to
-  // subscribe to, and only the text registry answers on the text channel.
+  // trip. Two lists because the audiences differ: the library merges both
+  // kinds, since a story drawing a picture is busy in exactly the way one
+  // streaming prose is, while the workspace subscribes on the text channel.
   const textRuns = listActiveRuns()
   const activeRuns = [...textRuns, ...listActiveImageRuns()]
 
