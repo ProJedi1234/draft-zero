@@ -49,7 +49,9 @@ installQueryMocks()
 const createLorebookEntryMock = mock(
   async (_storyId: string, _input: unknown) => ({
     ok: true as const,
-    data: { id: "lore-new" },
+    // The action returns the row it wrote, not just its id — that record is
+    // what confirms an optimistic patch on the client.
+    data: { record: { id: "lore-new" } },
   })
 )
 type WriteResult = { ok: true; data: null } | { ok: false; error: string }
@@ -116,7 +118,7 @@ beforeEach(() => {
   listLorebookEntriesMock.mockImplementation(async () => [])
   createLorebookEntryMock.mockImplementation(async () => ({
     ok: true as const,
-    data: { id: "lore-new" },
+    data: { record: { id: "lore-new" } },
   }))
   updateLorebookEntryMock.mockImplementation(async () => ({
     ok: true,

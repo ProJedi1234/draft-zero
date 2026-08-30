@@ -62,7 +62,7 @@ export function NewEntryDialog({
       }
       setOpen(false)
       toast.success("Entry created")
-      onCreated?.(res.data.id)
+      onCreated?.(res.data.record.id)
     })
   }
 

@@ -8,7 +8,11 @@ import "server-only"
 
 import { revalidatePath } from "next/cache"
 
-import type { EntityKind, StoryRecord } from "@/lib/store/records"
+import type {
+  EntityKind,
+  LorebookEntryRecord,
+  StoryRecord,
+} from "@/lib/store/records"
 import { publishBus } from "@/lib/sync/bus"
 
 /**
@@ -64,6 +68,52 @@ export function commitStoryUpsert(
 ): void {
   revalidatePath("/", "layout")
   publishStoryUpsert(record, origin, changeScope)
+}
+
+/**
+ * A committed lorebook write, announced the way story writes are: the row rides
+ * the bus so a store-lane device needs no read, and revalidatePath still fires
+ * for the RSC lane, which renders the same entries in the inspector's lore tab.
+ *
+ * Scoped to the story rather than null — lore belongs to exactly one story, and
+ * a device reading a different one has nothing to catch up on.
+ */
+export function commitLorebookUpsert(
+  record: LorebookEntryRecord,
+  origin: string | null
+): void {
+  revalidatePath("/", "layout")
+  publishBus({
+    kind: "entity",
+    op: "upsert",
+    entity: "lorebook-entry",
+    id: record.id,
+    storyId: record.storyId,
+    version: record.updatedAt,
+    origin,
+    data: record,
+  })
+  publishBus({ kind: "change", storyId: record.storyId, covered: true })
+}
+
+/** The delete half. `version` is the deleting write's clock — see the store. */
+export function commitLorebookDelete(
+  id: string,
+  storyId: string,
+  version: string,
+  origin: string | null
+): void {
+  revalidatePath("/", "layout")
+  publishBus({
+    kind: "entity",
+    op: "delete",
+    entity: "lorebook-entry",
+    id,
+    storyId,
+    version,
+    origin,
+  })
+  publishBus({ kind: "change", storyId, covered: true })
 }
 
 /** The delete half of publishStoryUpsert. Scope is always null: the story is gone. */

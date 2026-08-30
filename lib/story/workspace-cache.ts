@@ -16,6 +16,7 @@ import {
   type PersistedWorkspace,
   type StorePersistence,
 } from "@/lib/store/persistence"
+import { clientStore } from "@/lib/store/store"
 import type { StoryWorkspacePayload } from "@/lib/story/workspace-payload"
 
 /**
@@ -97,7 +98,26 @@ export async function attachWorkspacePersistence(
   for (const entry of saved) {
     if (cache.has(entry.id)) continue // a live fetch already won
     if (cache.size >= WORKSPACE_CACHE_LIMIT) break
-    cache.set(entry.id, entry.payload as StoryWorkspacePayload)
+    const payload = entry.payload as StoryWorkspacePayload
+    cache.set(entry.id, payload)
+    // Cache adoption, NOT a complete read: these rows are as old as the disk
+    // they came from, and calling that partition live would let a stale set
+    // outlive an entry added on another device. The mount's read corrects it.
+    //
+    // Shape-checked because this is the one place that reads a payload written
+    // by a PREVIOUS VERSION of the app — a build that predates lore living in
+    // the store wrote no such field, and a throw here would cost the writer the
+    // whole disk cache, manuscripts included, on their first launch after an
+    // update. The lore read on mount fills it in either way.
+    if (Array.isArray(payload.lorebookEntries)) {
+      clientStore.adoptLoreCacheRows(
+        payload.lorebookEntries.map((row) => ({
+          id: row.id,
+          version: row.updatedAt,
+          row,
+        }))
+      )
+    }
   }
   if (saved.length > 0) announce()
 }
@@ -152,7 +172,15 @@ export function fetchWorkspacePayload(storyId: string): Promise<FetchOutcome> {
       if (!res.ok)
         return { kind: "error", message: `Request failed (${res.status}).` }
       const payload = (await res.json()) as StoryWorkspacePayload
+      // Captured before the adopt so the store's sweep guard is honest about
+      // what was learned while this request was in flight.
+      const issueSeq = clientStore.currentIngestSeq()
       putCachedPayload(storyId, payload)
+      // The payload already carries this story's whole lorebook, read by the
+      // same query the lore snapshot would run. Adopting it here is what makes
+      // opening the lorebook from the story free: by the time the writer can
+      // click, the entries are already in the store.
+      clientStore.adoptLorePayload(storyId, payload.lorebookEntries, issueSeq)
       return { kind: "ok", payload }
     } catch {
       // Offline, or the tab was suspended mid-flight. The caller keeps whatever
