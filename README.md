@@ -131,7 +131,8 @@ reads the file itself — drizzle-kit needs no flags.
 - `lib/generation/` — provider interface + mock provider, plus the two OpenRouter
   catalogs: `models.ts` (every model) and `endpoints.ts` (who serves one model)
 - `lib/import/` — `novelai.ts` reads NovelAI `.scenario` files, `aidungeon.ts`
-  reads AI Dungeon story-card exports (see below)
+  reads AI Dungeon story-card exports, `aidungeon-backup.ts` reads AI Dungeon
+  backup archives on top of the dependency-free `zip.ts` (see below)
 - `lib/story/` — `action-voice.ts` turns a player action into prose (see below)
 - `docs/` — milestone specs; `MILESTONE2.md` predates the Postgres move
 
@@ -187,11 +188,12 @@ model, that shorter window becomes the context ceiling.
 
 ## Importing
 
-The upload icon beside the sidebar's Library heading takes **either** a NovelAI
-`.scenario` or an AI Dungeon story-card export. Both are `.json`, so the picker
-sniffs the file rather than asking which one you have: each reader reports
-whether it *recognises* a file separately from whether it could *read* it, and
-the first to claim it wins.
+The upload icon beside the sidebar's Library heading takes a NovelAI
+`.scenario`, an AI Dungeon story-card export, or an AI Dungeon backup `.zip`.
+The picker sniffs the file rather than asking which one you have: an archive is
+recognised by its magic bytes, and the two `.json` formats are offered to each
+reader in turn — each reports whether it *recognises* a file separately from
+whether it could *read* it, and the first to claim it wins.
 
 **NovelAI `.scenario`** becomes a story: prompt → the opening passage,
 `context[0]`/`context[1]` → memory and author's note, tags → genre, and the
@@ -217,6 +219,53 @@ one copy is kept either way.
 On a merge, a card whose name the story already holds is **skipped** and
 counted — never overwritten, never duplicated. Cards that collide only with each
 other are all kept, the same as the new-story path.
+
+**AI Dungeon backups** are the whole adventure rather than a world: the archive
+carries `metadata.json` (the adventure, its story cards and its state) beside
+`actions-NNN.json` parts holding every action ever taken. It imports as a new
+story with the manuscript already in it — the story cards go through the same
+reader as a card export, and the actions become passages:
+
+| Action | Becomes |
+|---|---|
+| `start`, `story` | a passage you wrote |
+| `continue` | a generated passage |
+| `do`, `say` | a player turn, chevroned at prompt time like any other |
+| `see` | dropped — a backup carries the image prompt, not the image |
+
+AI Dungeon stores a player turn **already rendered** (`> You open the door.`),
+not as the first-person line you typed, so the input is reconstructed from the
+rendering — the chevron comes off, a Say's quoted line is unwrapped back to what
+was said — and run through the same `translateAction` the composer uses. An
+imported turn is byte-identical to one typed here, and stays re-editable as a
+Say or a Do.
+
+The adventure's memory — AI Dungeon's Plot Essentials — becomes the story's
+memory, and its author's note and tags carry over. AI Dungeon's own rolling
+summary is adopted as the story's first recap version, so a long adventure
+arrives with its context already caught up.
+
+**AI instructions replace the narrator prompt.** That is what AI Dungeon writes
+them as, so that is where they land — `stories.system_prompt`, which is a
+whole-prompt override. A backup carrying instructions therefore also drops the
+built-in prompt, including the rules that explain what a `>` player turn is.
+That is deliberate for now: the Narrator dialog shows exactly what was stored,
+with the built-in prompt as its placeholder, so it can be edited or cleared. The
+real fix is a split in the prompt itself — the creative direction an import may
+replace, apart from the mechanics of this app that it never should.
+
+`state.memories` is **not** imported. It is AI Dungeon's own recall store —
+entries it writes and retrieves as the adventure runs — and nothing here behaves
+like that. Appending them to memory would turn entries meant to be retrieved
+into standing context injected into every prompt, which is the one property the
+store exists not to have. The dialog says how many were dropped.
+
+Backups cross the wire as the archive itself rather than as inflated JSON, which
+is what keeps a long adventure inside a Server Action body. `lib/import/zip.ts`
+is a small stored/deflate reader built on `DecompressionStream`, so the same
+bytes parse in the browser for the preview and on the server for the write; it
+refuses ZIP64, encryption and split archives by name rather than misreading
+them.
 
 Not imported: NovelAI's model, repetition penalties and `max_length` (its
 sampler has no OpenRouter equivalent — temperature and top-p carry over), user
