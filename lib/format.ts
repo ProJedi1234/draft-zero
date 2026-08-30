@@ -141,12 +141,26 @@ export function formatDateShort(iso: string): string {
   })
 }
 
-/** Day-granularity relative label against `nowMs` (default: now): "today", "yesterday", "3d ago", "2w ago", "4mo ago", "1y ago". */
+/**
+ * Day-granularity relative label against `nowMs` (default: now): "today",
+ * "yesterday", "3d ago", "2w ago", "4mo ago", "1y ago".
+ *
+ * Days are calendar days in the runtime's zone, not rolling 24-hour windows —
+ * elapsed-ms math calls last evening's work "today" all morning. The server
+ * shares the host's zone (compose mounts /etc/localtime), so SSR and the
+ * browser agree on where midnight is.
+ */
 export function formatRelativeDate(
   iso: string,
   nowMs: number = Date.now()
 ): string {
-  const days = Math.floor((nowMs - Date.parse(iso)) / DAY_MS)
+  const dayStart = (ms: number) => {
+    const d = new Date(ms)
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
+  }
+  // Round, not floor: a DST change between the two midnights leaves the gap
+  // an hour off a whole day.
+  const days = Math.round((dayStart(nowMs) - dayStart(Date.parse(iso))) / DAY_MS)
   if (days <= 0) return "today"
   if (days === 1) return "yesterday"
   if (days < 7) return `${days}d ago`
