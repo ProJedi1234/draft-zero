@@ -6,6 +6,12 @@
 // load under `bun test`, because the reducers below ARE the specification of
 // how two devices converge and the tests are the only place that gets proved.
 //
+// Two tables are populated: `story`, which is the whole library and reconciles
+// as one, and `lorebook-entry`, which is PARTITIONED BY STORY — no device ever
+// holds every story's lore, so "complete" is a fact about one story's slice
+// rather than the table. That is the only structural difference between them,
+// and applyPartitionSnapshot plus partitionStatus below are the whole of it.
+//
 // Two version comparators live here on purpose. EVENTS arbitrate on strict `>`:
 // the server mints stories.updated_at inside the UPDATE (lib/db/story-version),
 // so it cannot produce two different row states at one version, which makes an
@@ -17,6 +23,7 @@
 import type {
   EntityKind,
   EntityRecordMap,
+  LorebookEntryRecord,
   StoryRecord,
 } from "@/lib/store/records"
 import type {
@@ -210,6 +217,51 @@ export function applyScopedResult<T>(
 }
 
 /**
+ * Rule 4, narrowed to one partition — the read that says "this is ALL of story
+ * X's lore" and nothing at all about story Y's.
+ *
+ * The sweep is the only part that differs from applySnapshot: it considers only
+ * held rows that `belongs` accepts, so a complete read of one story can never
+ * collect another story's rows as absent. `issueSeq` and `protectedIds` guard
+ * it exactly as they guard the table-wide sweep, and for the same two reasons —
+ * a row learned about in flight, and a row a pending create is still placing.
+ *
+ * Status is left alone. A partition being live is not the table being live, so
+ * that fact is tracked per partition (see partitionStatus) rather than here.
+ */
+export function applyPartitionSnapshot<T>(
+  table: TableState<T>,
+  rows: ReadonlyArray<SnapshotRow<T>>,
+  belongs: (row: T) => boolean,
+  issueSeq: number,
+  protectedIds: ReadonlySet<string>,
+  nowMs: number,
+  seqAlloc: SeqAlloc
+): TableState<T> {
+  let next = table
+  for (const entry of rows) {
+    next = adoptSnapshotRow(next, entry, seqAlloc)
+  }
+
+  const returned = new Set(rows.map((entry) => entry.id))
+  const nextRows = new Map(next.rows)
+  const nextTombstones = new Map(next.tombstones)
+  let swept = false
+  for (const [id, held] of next.rows) {
+    if (returned.has(id)) continue
+    if (!belongs(held.row)) continue
+    if (protectedIds.has(id)) continue
+    if (held.ingestSeq > issueSeq) continue
+    nextRows.delete(id)
+    nextTombstones.set(id, { version: held.version, at: nowMs })
+    swept = true
+  }
+
+  if (!swept) return next
+  return { rows: nextRows, tombstones: nextTombstones, status: next.status }
+}
+
+/**
  * Rule 7 (cache adoption): IndexedDB is a cache, not an authority, so strict
  * `>` and the status ladder only ever climbs empty → cache.
  */
@@ -295,6 +347,9 @@ export function deriveStoryView(
 
   pending.forEach((mutation, index) => {
     for (const patch of mutation.patches) {
+      // One queue serves every table, so a lorebook patch rides in the same
+      // list; folding it in here would invent a story row out of a lore row.
+      if (patch.entity !== "story") continue
       const id = patchTargetId(patch)
       touched.set(id, index)
       if (patch.op === "upsert") {
@@ -337,6 +392,59 @@ export function deriveStoryView(
   }
 }
 
+/** One story's lore, confirmed rows with the pending overlay folded on top. */
+export interface LoreView {
+  entries: LorebookEntryRecord[]
+  /** Liveness of THIS story's partition, not of the table. */
+  status: TableStatus
+}
+
+/**
+ * The lorebook's twin of deriveStoryView, scoped to one story.
+ *
+ * Sorted by name to match listLorebookEntries' ORDER BY, so a row confirmed by
+ * the server lands where the optimistic one already was and the list does not
+ * jump under the writer. Ties break on id for a total order — two entries may
+ * legitimately share a name.
+ */
+export function deriveLoreView(
+  confirmed: TableState<LorebookEntryRecord>,
+  pending: ReadonlyArray<QueuedMutation>,
+  storyId: string,
+  status: TableStatus
+): LoreView {
+  const visible = new Map<string, LorebookEntryRecord>()
+  for (const [id, held] of confirmed.rows) {
+    if (held.row.storyId !== storyId) continue
+    visible.set(id, held.row)
+  }
+
+  for (const mutation of pending) {
+    for (const patch of mutation.patches) {
+      if (patch.entity !== "lorebook-entry") continue
+      if (patch.op === "upsert") {
+        // A create for another story must not surface in this one's list.
+        if (patch.row.storyId !== storyId) continue
+        visible.set(patch.row.id, patch.row)
+      } else if (patch.op === "merge") {
+        const current = visible.get(patch.id)
+        if (current === undefined) continue // merge onto a deleted row: no-op
+        visible.set(patch.id, { ...current, ...patch.fields })
+      } else {
+        visible.delete(patch.id)
+      }
+    }
+  }
+
+  const entries = [...visible.values()]
+  entries.sort((a, b) => {
+    if (a.name !== b.name) return a.name < b.name ? -1 : 1
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  })
+
+  return { entries, status }
+}
+
 function patchTargetId(patch: StorePatch): string {
   return patch.op === "upsert" ? patch.row.id : patch.id
 }
@@ -351,6 +459,17 @@ const EMPTY_VIEW: StoreView = Object.freeze({
   storyStatus: "empty" as TableStatus,
   pendingCount: 0,
 })
+
+/**
+ * The tables a client actually holds. Everything else in EntityKind is typed
+ * ahead of its migration and deliberately ignored on the wire.
+ */
+const POPULATED = new Set<EntityKind>(["story", "lorebook-entry"])
+type PopulatedKind = "story" | "lorebook-entry"
+
+function partitionKey(storyId: string): string {
+  return `lorebook-entry:${storyId}`
+}
 
 function emptyState(): StoreState {
   return {
@@ -373,6 +492,10 @@ interface StoreHolder {
   lastCompleteApplyAt: number
   listeners: Set<() => void>
   view: StoreView | null
+  /** `${entity}:${partitionId}` → liveness of that slice. See PARTITIONED. */
+  partitionStatus: Map<string, TableStatus>
+  /** Lore views by story id, rebuilt whenever `version` moves past `at`. */
+  loreViews: Map<string, { at: number; view: LoreView }>
 }
 
 // Held on globalThis for exactly the reason lib/sync/bus.ts holds its listener
@@ -390,6 +513,8 @@ const holder = (globalForStore.__draftZeroStore ??= {
   lastCompleteApplyAt: 0,
   listeners: new Set<() => void>(),
   view: null,
+  partitionStatus: new Map<string, TableStatus>(),
+  loreViews: new Map<string, { at: number; view: LoreView }>(),
 })
 
 function nextIngestSeq(): number {
@@ -398,6 +523,10 @@ function nextIngestSeq(): number {
 
 function markDirty(): void {
   holder.view = null
+  // Cleared rather than pruned: a change to any table can move a lore view
+  // (the pending overlay is one list), and rebuilding one is a sort of a few
+  // hundred rows.
+  holder.loreViews.clear()
   holder.version += 1
   for (const listener of holder.listeners) {
     try {
@@ -408,11 +537,16 @@ function markDirty(): void {
   }
 }
 
-/** Ids a pending mutation is trying to CREATE — the sweep must spare them. */
-function pendingCreatedIds(): Set<string> {
+/**
+ * Ids a pending mutation is trying to CREATE in `entity` — the sweep must spare
+ * them. Scoped by table: a snapshot of one table has nothing to say about a row
+ * being created in another, and sparing a foreign id would only mask a delete.
+ */
+function pendingCreatedIds(entity: EntityKind): Set<string> {
   const ids = new Set<string>()
   for (const mutation of holder.state.pending) {
     for (const patch of mutation.patches) {
+      if (patch.entity !== entity) continue
       if (patch.op === "upsert") ids.add(patch.row.id)
     }
   }
@@ -468,23 +602,109 @@ export const clientStore = {
   },
 
   ingest(event: EntityWireEvent): void {
-    // Slice 1 populates only the story table; the other seven kinds are typed
-    // so a later migration is additive, and ignored until then.
-    if (event.entity !== "story") return
-    const table = holder.state.story
+    // Only the populated tables. The other six kinds are typed so a later
+    // migration is additive, and ignored until then — an event for one is not
+    // an error, it is news for a table nobody reads yet.
+    if (!POPULATED.has(event.entity)) return
+    const entity = event.entity as PopulatedKind
+    const table = holder.state[entity] as TableState<unknown>
     const next =
       event.op === "upsert"
         ? adoptUpsert(
             table,
             event.id,
             event.version,
-            event.data as StoryRecord,
+            event.data as unknown,
             nextIngestSeq()
           )
         : adoptDelete(table, event.id, event.version, Date.now())
     if (next === table) return
-    holder.state = { ...holder.state, story: next }
+    holder.state = { ...holder.state, [entity]: next }
     markDirty()
+  },
+
+  /**
+   * A complete read of ONE story's lore. Rows absent from it are deletions for
+   * that story and no other — see applyPartitionSnapshot.
+   */
+  applyLoreSnapshot(
+    storyId: string,
+    rows: ReadonlyArray<SnapshotRow<LorebookEntryRecord>>,
+    issueSeq: number
+  ): void {
+    const table = holder.state["lorebook-entry"]
+    const next = applyPartitionSnapshot(
+      table,
+      rows,
+      (row) => row.storyId === storyId,
+      issueSeq,
+      pendingCreatedIds("lorebook-entry"),
+      Date.now(),
+      nextIngestSeq
+    )
+    const key = partitionKey(storyId)
+    const wasLive = holder.partitionStatus.get(key) === "live"
+    holder.partitionStatus.set(key, "live")
+    if (next === table && wasLive) return
+    holder.state = { ...holder.state, "lorebook-entry": next }
+    markDirty()
+  },
+
+  /**
+   * Lore lifted from a workspace payload — the story route already fetched it,
+   * so arriving at the lorebook costs nothing. A payload IS a complete read of
+   * that story's lore (same query, same request), so it counts as one.
+   */
+  adoptLorePayload(
+    storyId: string,
+    entries: ReadonlyArray<LorebookEntryRecord>,
+    issueSeq: number
+  ): void {
+    clientStore.applyLoreSnapshot(
+      storyId,
+      entries.map((row) => ({ id: row.id, version: row.updatedAt, row })),
+      issueSeq
+    )
+  },
+
+  /** Cache adoption for lore, from IndexedDB. Never authoritative (rule 7). */
+  adoptLoreCacheRows(
+    rows: ReadonlyArray<SnapshotRow<LorebookEntryRecord>>
+  ): void {
+    const table = holder.state["lorebook-entry"]
+    const next = adoptCache(table, rows, nextIngestSeq)
+    if (next === table) return
+    holder.state = { ...holder.state, "lorebook-entry": next }
+    markDirty()
+  },
+
+  /** Every held lore row, for the persister. Confirmed only, like stories. */
+  confirmedLoreRows(): SnapshotRow<LorebookEntryRecord>[] {
+    const rows: SnapshotRow<LorebookEntryRecord>[] = []
+    for (const [id, held] of holder.state["lorebook-entry"].rows) {
+      rows.push({ id, version: held.version, row: held.row })
+    }
+    return rows
+  },
+
+  /**
+   * One story's lore, memoized against the store version so a component that
+   * re-renders on every store change does not re-sort on each of them.
+   */
+  getLoreView(storyId: string): LoreView {
+    const cached = holder.loreViews.get(storyId)
+    if (cached !== undefined && cached.at === holder.version) return cached.view
+    const view = deriveLoreView(
+      holder.state["lorebook-entry"],
+      holder.state.pending,
+      storyId,
+      holder.partitionStatus.get(partitionKey(storyId)) ??
+        // Cache rows are a real paint but not a complete read — the same
+        // empty/cache/live ladder the tables use, one partition at a time.
+        (holder.state["lorebook-entry"].status === "empty" ? "empty" : "cache")
+    )
+    holder.loreViews.set(storyId, { at: holder.version, view })
+    return view
   },
 
   applySnapshot(
@@ -498,7 +718,7 @@ export const clientStore = {
       rows,
       allIds,
       issueSeq,
-      pendingCreatedIds(),
+      pendingCreatedIds("story"),
       Date.now(),
       nextIngestSeq
     )
@@ -560,26 +780,29 @@ export const clientStore = {
    * bus echo of the same write arriving before or after.
    */
   confirmPending(id: string, canonical: ReadonlyArray<CanonicalRow>): void {
-    let table = holder.state.story
     const now = Date.now()
+    const tables: Partial<Record<PopulatedKind, TableState<unknown>>> = {}
     for (const entry of canonical) {
-      if (entry.entity !== "story") continue
-      table =
+      if (!POPULATED.has(entry.entity)) continue
+      const entity = entry.entity as PopulatedKind
+      const table = (tables[entity] ??
+        holder.state[entity]) as TableState<unknown>
+      tables[entity] =
         entry.op === "upsert"
           ? adoptUpsert(
               table,
               entry.id,
               entry.version,
-              entry.row as StoryRecord,
+              entry.row as unknown,
               nextIngestSeq()
             )
           : adoptDelete(table, entry.id, entry.version, now)
     }
     holder.state = {
       ...holder.state,
-      story: table,
+      ...tables,
       pending: holder.state.pending.filter((m) => m.id !== id),
-    }
+    } as StoreState
     markDirty()
   },
 
@@ -596,6 +819,8 @@ export const clientStore = {
     holder.seq = 0
     holder.lastCompleteApplyAt = 0
     holder.view = null
+    holder.partitionStatus.clear()
+    holder.loreViews.clear()
     holder.version += 1
   },
 }

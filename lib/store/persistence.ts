@@ -297,9 +297,15 @@ export class InMemoryPersistence implements StorePersistence {
   }
 }
 
+/** One table's rows, as the persister asks for them at flush time. */
+export interface PersistedTable {
+  entity: EntityKind
+  getRows: () => PersistedRow[]
+}
+
 export function createPersister(
   p: StorePersistence,
-  getRows: () => PersistedRow[],
+  tables: readonly PersistedTable[],
   getStamp: () => number,
   opts?: { delayMs?: number }
 ): { onStoreChanged(): void; flush(): void; dispose(): void } {
@@ -310,12 +316,17 @@ export function createPersister(
 
   function writeNow(): void {
     // Chain onto the previous write so overlapping calls serialize instead of
-    // racing two transactions against the same store.
-    chain = chain
-      .then(() => p.replaceAll("story", getRows(), getStamp()))
-      .catch(() => {
-        // rejections swallowed — persistence is a cache
-      })
+    // racing two transactions against the same store. Rows are read inside the
+    // chain, not before it, so a queued write persists the state at ITS turn
+    // rather than the state when it was scheduled.
+    const stamp = getStamp()
+    for (const table of tables) {
+      chain = chain
+        .then(() => p.replaceAll(table.entity, table.getRows(), stamp))
+        .catch(() => {
+          // rejections swallowed — persistence is a cache
+        })
+    }
   }
 
   function clearTimer(): void {
