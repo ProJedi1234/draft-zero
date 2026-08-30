@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { getStory, listLorebookEntries } from "@/lib/db/queries"
 
 import { LorebookView } from "@/components/lorebook/lorebook-view"
+import { StoryTint } from "@/components/story/story-tint"
 
 type LorebookPageProps = {
   params: Promise<{ storyId: string }>
@@ -32,10 +33,17 @@ export default async function LorebookPage({ params }: LorebookPageProps) {
   }
 
   return (
-    <LorebookView
-      storyId={story.id}
-      storyTitle={story.title}
-      entries={entries}
-    />
+    <>
+      {/* The lorebook is still inside the story, so it wears the story's
+          colour — see StoryTint. Rendered here rather than in a shared layout
+          because the workspace's copy is fed by the client store, where the
+          atmosphere slider's optimistic value lives. */}
+      <StoryTint hue={story.tintHue} strength={story.tintStrength} />
+      <LorebookView
+        storyId={story.id}
+        storyTitle={story.title}
+        entries={entries}
+      />
+    </>
   )
 }
