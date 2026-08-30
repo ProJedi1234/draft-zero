@@ -49,11 +49,28 @@ export function NewStoryButton({
   size = "sm",
   className,
 }: {
-  variant?: "default" | "outline"
+  /** "icon" is the library header's unlabelled affordance. */
+  variant?: "default" | "outline" | "icon"
   size?: "xs" | "sm"
   className?: string
 }) {
   const { createNewStory, isPending } = useCreateStory()
+
+  if (variant === "icon") {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="New story"
+        className={className}
+        disabled={isPending}
+        onClick={createNewStory}
+      >
+        {isPending ? <Loader2 className="animate-spin" /> : <Plus />}
+      </Button>
+    )
+  }
 
   return (
     <Button

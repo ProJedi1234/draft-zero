@@ -88,8 +88,11 @@ function isZip(bytes: Uint8Array): boolean {
 export function ImportScenarioButton({
   variant = "group-action",
 }: {
-  /** "group-action" is the sidebar's icon affordance; "button" is a labelled one. */
-  variant?: "group-action" | "button"
+  /**
+   * "group-action" is the sidebar's icon affordance, "button" a labelled one,
+   * and "icon" the library header's — the same picker in three chromes.
+   */
+  variant?: "group-action" | "button" | "icon"
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [pendingScenario, setPendingScenario] =
@@ -190,6 +193,16 @@ export function ImportScenarioButton({
           <Upload />
           <span className="sr-only">{LABEL}</span>
         </SidebarGroupAction>
+      ) : variant === "icon" ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={LABEL}
+          onClick={() => inputRef.current?.click()}
+        >
+          <Upload />
+        </Button>
       ) : (
         <Button
           type="button"
