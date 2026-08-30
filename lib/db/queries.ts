@@ -266,7 +266,7 @@ export async function listStoryExcerpts(): Promise<Record<string, string>> {
 
 /**
  * Every illustration in the library, newest first, for the gallery's photo
- * wall. The story join is for captions and grouping — title and tint are the
+ * wall — or the newest `limit` of them, which is the library's picture rail. The story join is for captions and grouping — title and tint are the
  * only pieces of a story the wall needs.
  *
  * Every live take, not just the active one, and toGalleryImages folds them into
@@ -280,7 +280,9 @@ export async function listStoryExcerpts(): Promise<Record<string, string>> {
  * one is not worth writing. The ORDER BY below is the in-slot one the mapper
  * depends on for `takes` to come out oldest-first.
  */
-export async function listGalleryImages(): Promise<GalleryImage[]> {
+export async function listGalleryImages(
+  options: { limit?: number } = {}
+): Promise<GalleryImage[]> {
   const db = await getDb()
   const rows = await db
     .select({
@@ -302,7 +304,14 @@ export async function listGalleryImages(): Promise<GalleryImage[]> {
     .innerJoin(stories, eq(storyImages.storyId, stories.id))
     .where(isNull(storyImages.deletedAt))
     .orderBy(asc(storyImages.imageIndex))
-  return toGalleryImages(rows)
+  const images = toGalleryImages(rows)
+  // Sliced after folding rather than with a SQL LIMIT: a slot's takes have to
+  // arrive together or the newest picture comes back missing its retries, and
+  // "the newest N slots" is not a window SQL can take without ordering by
+  // something this query deliberately leaves to the mapper. The rows carry no
+  // image bytes — the media is a separate route — so the read this trims is a
+  // metadata scan either way.
+  return options.limit === undefined ? images : images.slice(0, options.limit)
 }
 
 /**
