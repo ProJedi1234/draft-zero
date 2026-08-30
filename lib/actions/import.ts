@@ -5,8 +5,18 @@ import { eq } from "drizzle-orm"
 import { commitChange } from "@/lib/actions/commit"
 import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
-import { lorebookEntries, stories, storyEntries } from "@/lib/db/schema"
+import {
+  lorebookEntries,
+  stories,
+  storyEntries,
+  storyRecaps,
+} from "@/lib/db/schema"
 import { MAX_CARDS_BYTES, parseStoryCards } from "@/lib/import/aidungeon"
+import {
+  MAX_BACKUP_BYTES,
+  parseBackup,
+  type ParsedBackupPassage,
+} from "@/lib/import/aidungeon-backup"
 import {
   fillScenarioPlaceholders,
   MAX_SCENARIO_BYTES,
@@ -293,6 +303,182 @@ export async function importStoryCards(input: {
       title: cards.title,
       lorebookEntryCount: lore.length,
       warnings: cards.warnings,
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AI Dungeon backups
+// ---------------------------------------------------------------------------
+
+export interface BackupImportSummary {
+  storyId: string
+  title: string
+  /** How many passages the manuscript arrived with. */
+  passageCount: number
+  /** How many cards became lorebook entries. */
+  lorebookEntryCount: number
+  warnings: string[]
+}
+
+/**
+ * One insertable manuscript row per parsed passage.
+ *
+ * Every row is its own variant group, named after itself: an imported passage
+ * is a slot with one take in it, exactly like the opening passage the other two
+ * importers write, and a later retry inserts beside it rather than over it.
+ *
+ * `createdAt` is the import's timestamp for every row rather than the action's
+ * own `createdAt` from the backup. The column is provenance for *this* story,
+ * the manuscript is ordered by `position` and never by time, and a backup's
+ * timestamps are frequently all identical anyway (the sample's two actions
+ * share one to the millisecond) — so carrying them in would put a false history
+ * on rows whose real one is "imported, just now".
+ */
+function passageRows(
+  passages: ParsedBackupPassage[],
+  storyId: string,
+  now: string
+): (typeof storyEntries.$inferInsert)[] {
+  return passages.map((passage, position) => {
+    const id = crypto.randomUUID()
+    return {
+      id,
+      storyId,
+      position,
+      variantGroupId: id,
+      variantIndex: 0,
+      isActive: true,
+      source: passage.source,
+      text: passage.text,
+      // Null together or set together — see the schema. The reader guarantees
+      // the pair, so nothing here has to reconcile them.
+      actionKind: passage.actionKind,
+      inputText: passage.inputText,
+      createdAt: now,
+    }
+  })
+}
+
+/**
+ * Imports an AI Dungeon backup archive as a new story: the manuscript, the
+ * lorebook, the memory, the author's note and AI Dungeon's own rolling summary,
+ * all in one write.
+ *
+ * The archive crosses the wire as a `File` and not as text, unlike the two JSON
+ * importers. A backup is mostly action JSON, which deflates by roughly an order
+ * of magnitude, so sending the zip is what keeps a long adventure inside a
+ * Server Action body at all — and the server re-reads those bytes rather than
+ * trusting the preview the client parsed from them.
+ */
+export async function importAiDungeonBackup(input: {
+  /** The raw `.zip` backup. */
+  file: File
+}): Promise<ActionResult<BackupImportSummary>> {
+  // Same reasoning as readFileText: the argument type is a hope, not a check.
+  // `size` is read before any bytes are, so an oversized archive is refused
+  // without ever being held in memory.
+  if (!(input.file instanceof File)) {
+    return { ok: false, error: "That import didn't arrive as a file." }
+  }
+  if (input.file.size > MAX_BACKUP_BYTES) {
+    return { ok: false, error: "That backup is too large to import." }
+  }
+
+  const parsed = await parseBackup(await input.file.arrayBuffer())
+  if (!parsed.ok) return { ok: false, error: parsed.error }
+  const backup = parsed.data
+
+  const db = await getDb()
+  const appSettings = await getAppSettings()
+  const now = new Date().toISOString()
+  const storyId = crypto.randomUUID()
+
+  // `settingEntries` is dropped for the same reason importStoryCards drops it:
+  // this path seeds memory from the same text, and keeping both copies would
+  // inject the setting bible into every prompt twice.
+  const lore = backup.lorebookEntries
+  const rows = passageRows(backup.passages, storyId, now)
+
+  const memory = [backup.memory, backup.worldDescription]
+    .filter((text) => text !== "")
+    .join("\n\n")
+
+  await db.transaction(async (tx) => {
+    await tx.insert(stories).values({
+      id: storyId,
+      title: backup.title,
+      description: backup.description,
+      // Same mapping importStoryCards makes: AI Dungeon has no genre field, and
+      // its tags are the free-form plural taxonomy the story header renders
+      // there.
+      genre: backup.tags.join(", "),
+      memory,
+      authorsNote: backup.authorsNote,
+      // AI Dungeon's AI instructions ARE a system prompt, so they land as one —
+      // replacing the built-in narrator prompt rather than being folded into
+      // the story's context blocks. NULL when the adventure carried none, which
+      // is what keeps a story that never had instructions following
+      // DEFAULT_SYSTEM_PROMPT as that text keeps changing; writing "" instead
+      // would resolve to the same prompt today and freeze nothing, but it makes
+      // "no override" and "an override that happens to be empty" the same row.
+      systemPrompt: backup.instructions === "" ? null : backup.instructions,
+      // A backup names no sampler settings — AI Dungeon's are per-model and
+      // per-account, not per-adventure — so the app defaults stand.
+      ...DEFAULT_GENERATION_SETTINGS,
+      modelId: appSettings.defaultModelId,
+      thinking: appSettings.defaultThinking,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    for (const batch of chunk(rows, INSERT_CHUNK_ROWS)) {
+      await tx.insert(storyEntries).values(batch)
+    }
+
+    // AI Dungeon's own summary, adopted as the story's first recap version
+    // rather than folded into memory. It is the same object our summarizer
+    // writes — a rolling recap covering everything up to a passage — so it
+    // belongs in the same table, where the next summarization supersedes it by
+    // writing a wider version and a rewind past its coverage retires it.
+    //
+    // It needs a passage to hang from: `through_entry_id` is what resolves a
+    // recap, so a summary with no manuscript behind it has nothing to cover and
+    // is dropped rather than pointed at a row that does not exist.
+    const last = rows.at(-1)
+    if (backup.summary !== "" && last) {
+      await tx.insert(storyRecaps).values({
+        id: crypto.randomUUID(),
+        storyId,
+        throughEntryId: last.id,
+        throughPosition: last.position,
+        text: backup.summary,
+        // Null, not the app default: AI Dungeon wrote this, and naming one of
+        // our models would be a record of something that never happened.
+        genModelId: null,
+        createdAt: now,
+      })
+    }
+
+    for (const batch of chunk(
+      loreRows(lore, storyId, now),
+      INSERT_CHUNK_ROWS
+    )) {
+      await tx.insert(lorebookEntries).values(batch)
+    }
+  })
+
+  // Library-level, same as every other import: the story did not exist a moment
+  // ago, so no device can be sitting on it.
+  commitChange(null)
+  return {
+    ok: true,
+    data: {
+      storyId,
+      title: backup.title,
+      passageCount: rows.length,
+      lorebookEntryCount: lore.length,
+      warnings: backup.warnings,
     },
   }
 }

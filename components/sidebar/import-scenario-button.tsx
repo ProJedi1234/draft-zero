@@ -10,12 +10,21 @@ import {
   STORY_CARD_FILE_ACCEPT,
 } from "@/lib/import/aidungeon"
 import {
+  BACKUP_FILE_ACCEPT,
+  MAX_BACKUP_BYTES,
+  parseBackup,
+} from "@/lib/import/aidungeon-backup"
+import {
   MAX_SCENARIO_BYTES,
   parseScenario,
   SCENARIO_FILE_ACCEPT,
 } from "@/lib/import/novelai"
 import { Button } from "@/components/ui/button"
 import { SidebarGroupAction } from "@/components/ui/sidebar"
+import {
+  ImportBackupDialog,
+  type PendingBackup,
+} from "@/components/sidebar/import-backup-dialog"
 import {
   ImportScenarioDialog,
   type PendingScenario,
@@ -27,30 +36,54 @@ import {
 
 const LABEL = "Import story"
 
-/** Both formats, de-duplicated — a NovelAI scenario and a card export are both .json. */
+/** Every format, de-duplicated — two of the three are both .json. */
 const FILE_ACCEPT = [
   ...new Set(
-    `${SCENARIO_FILE_ACCEPT},${STORY_CARD_FILE_ACCEPT}`
+    `${SCENARIO_FILE_ACCEPT},${STORY_CARD_FILE_ACCEPT},${BACKUP_FILE_ACCEPT}`
       .split(",")
       .map((ext) => ext.trim())
   ),
 ].join(",")
 
 // The format isn't known until the file is read, so the picker guards with the
-// larger of the two ceilings; each action re-checks its own.
-const MAX_BYTES = Math.max(MAX_SCENARIO_BYTES, MAX_CARDS_BYTES)
+// largest of the ceilings; each action re-checks its own.
+const MAX_BYTES = Math.max(
+  MAX_SCENARIO_BYTES,
+  MAX_CARDS_BYTES,
+  MAX_BACKUP_BYTES
+)
 
 /**
- * Picks a NovelAI `.scenario` or an AI Dungeon story-card export and opens the
- * matching import confirmation.
+ * "PK\x03\x04" — a zip's local file header, and the only sniff that separates
+ * the archive format from the two JSON ones.
  *
- * The writer never declares which format they have: both arrive as .json and
- * the two readers recognise disjoint shapes — a card export is an array or an
- * object with a card list, a scenario is an object with a story prompt — so the
- * file is offered to each in turn and whichever one accepts it wins.
+ * The magic bytes rather than the ".zip" extension: the picker also takes files
+ * from mobile document providers, which routinely hand over a name with no
+ * extension at all, and decoding an archive as UTF-8 to hunt for a `{` produces
+ * mojibake rather than an error.
+ */
+function isZip(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 4 &&
+    bytes[0] === 0x50 &&
+    bytes[1] === 0x4b &&
+    bytes[2] === 0x03 &&
+    bytes[3] === 0x04
+  )
+}
+
+/**
+ * Picks a NovelAI `.scenario`, an AI Dungeon story-card export or an AI Dungeon
+ * backup archive, and opens the matching import confirmation.
+ *
+ * The writer never declares which format they have. An archive is sniffed by
+ * its magic bytes and goes straight to the backup reader; the other two both
+ * arrive as .json and recognise disjoint shapes — a card export is an array or
+ * an object with a card list, a scenario is an object with a story prompt — so
+ * the file is offered to each in turn and whichever one accepts it wins.
  *
  * The parse happens here purely to preview the file and to fail fast on
- * garbage; the actions re-parse the same text server-side.
+ * garbage; the actions re-read the same bytes server-side.
  */
 export function ImportScenarioButton({
   variant = "group-action",
@@ -63,6 +96,8 @@ export function ImportScenarioButton({
     React.useState<PendingScenario | null>(null)
   const [pendingCards, setPendingCards] =
     React.useState<PendingStoryCards | null>(null)
+  const [pendingBackup, setPendingBackup] =
+    React.useState<PendingBackup | null>(null)
 
   async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -79,14 +114,34 @@ export function ImportScenarioButton({
     // removable volume, or have moved between the picker closing and this call,
     // which is routine on mobile document providers. Unguarded, the rejection
     // escapes the handler and the button simply appears dead.
-    let json: string
+    //
+    // Read once, as bytes, and decode from those: a backup has to stay binary
+    // and the JSON readers want text, and reading the file twice would give the
+    // two halves of this handler different bytes if the file moved in between.
+    let bytes: Uint8Array
     try {
-      json = await file.text()
+      bytes = new Uint8Array(await file.arrayBuffer())
     } catch {
       toast.error("That file couldn't be read. Try picking it again.")
       return
     }
 
+    if (isZip(bytes)) {
+      const backup = await parseBackup(bytes)
+      if (backup.ok) {
+        // The File, not the bytes: the action takes the archive itself, and
+        // handing it the same object avoids re-encoding a multi-megabyte body.
+        setPendingBackup({ file, backup: backup.data })
+        return
+      }
+      // No fallback to the JSON readers. Nothing that starts "PK\x03\x04" is
+      // going to parse as either of them, and offering it to both would replace
+      // the archive reader's real error with "that file isn't valid JSON".
+      toast.error(backup.error)
+      return
+    }
+
+    const json = new TextDecoder().decode(bytes)
     const cards = parseStoryCards(json)
     if (cards.ok) {
       setPendingCards({ json, cards: cards.data })
@@ -156,6 +211,12 @@ export function ImportScenarioButton({
         pending={pendingCards}
         onOpenChange={(open) => {
           if (!open) setPendingCards(null)
+        }}
+      />
+      <ImportBackupDialog
+        pending={pendingBackup}
+        onOpenChange={(open) => {
+          if (!open) setPendingBackup(null)
         }}
       />
     </>

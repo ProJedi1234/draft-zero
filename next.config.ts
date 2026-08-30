@@ -1,6 +1,17 @@
 import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Server Actions default to a 1MB request body, which is generous for the
+    // two JSON importers and far too small for the third: an AI Dungeon backup
+    // is a zip of a whole adventure, and the action takes the archive itself
+    // rather than its inflated JSON precisely so the compressed bytes are what
+    // has to fit. 20mb is the reader's own MAX_BACKUP_BYTES plus headroom for
+    // the multipart framing around it, so an archive the reader would accept
+    // can never be rejected by the transport first — a rejection that arrives
+    // as a thrown action with no message anyone can act on.
+    serverActions: { bodySizeLimit: "20mb" },
+  },
   // Dev-only: Next blocks requests to /_next/* dev resources unless the
   // browser's origin is localhost. Allow this box's LAN addresses so the
   // dev server is usable from phones/other machines on olympus.lan.
