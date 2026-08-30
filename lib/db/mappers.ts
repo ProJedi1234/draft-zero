@@ -336,6 +336,31 @@ export function toGalleryImages(rows: GalleryImageRow[]): GalleryImage[] {
   })
 }
 
+/**
+ * How much of a passage's tail the library reads. Long enough for the front
+ * door's three-line block at a phone's width, and short enough that asking for
+ * every story's costs less than one manuscript window.
+ */
+export const EXCERPT_CHARS = 360
+
+/**
+ * A tail cut to a word boundary, with a leading ellipsis when it is one.
+ *
+ * The boundary trim is the whole point of taking the length back: `right()`
+ * cuts mid-word about as often as not, and "…ing the lamps twice" reads as a
+ * rendering bug where "…the lamps twice" reads as a quotation.
+ */
+export function toExcerpt(tail: string, length: number): string {
+  const text = tail.trim()
+  if (length <= EXCERPT_CHARS) return text
+  // Leading whitespace on the RAW tail means the cut fell between words, so
+  // every word in it is whole. Deciding this after the trim would throw the
+  // first one away exactly when it was the one word that survived intact.
+  if (/^\s/.test(tail)) return `…${text}`
+  const space = text.search(/\s/)
+  return space === -1 ? `…${text}` : `…${text.slice(space).trim()}`
+}
+
 /** A story's own columns, which are always concrete — Custom or not. */
 export function toGenerationSettings(row: StoryRow): GenerationSettings {
   return {

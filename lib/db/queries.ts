@@ -62,6 +62,8 @@ import {
   toStoryEntry,
   toStoryRecap,
   toStorySummary,
+  EXCERPT_CHARS,
+  toExcerpt,
 } from "./mappers"
 import {
   appSettings,
@@ -225,6 +227,41 @@ export async function listStoryIdVersions(
     .select({ id: stories.id, version: stories.updatedAt })
     .from(stories)
   return rows
+}
+
+/**
+ * The last thing that happened in each story, as prose — the front door's
+ * Continue block and the excerpt line on every library row.
+ *
+ * The TAIL of the latest live passage rather than its head: this is the text a
+ * writer is resuming *after*, and the opening of a passage they have already
+ * read answers a question nobody asked. Truncation happens in Postgres, so a
+ * hundred-thousand-word manuscript sends 360 characters over the wire.
+ *
+ * DISTINCT ON is doing the real work: one row per story, and `position DESC`
+ * inside the story picks the newest. Live rows only, on both counts — a
+ * soft-deleted tail or a superseded take is prose the canvas no longer shows,
+ * and quoting it on the home screen would be quoting a rewind back at someone
+ * who just undid it.
+ */
+export async function listStoryExcerpts(): Promise<Record<string, string>> {
+  const db = await getDb()
+  const rows = await db
+    .selectDistinctOn([storyEntries.storyId], {
+      storyId: storyEntries.storyId,
+      tail: sql<string>`right(btrim(${storyEntries.text}), ${EXCERPT_CHARS})`,
+      length: sql<number>`length(btrim(${storyEntries.text}))`,
+    })
+    .from(storyEntries)
+    .where(and(isNull(storyEntries.deletedAt), eq(storyEntries.isActive, true)))
+    .orderBy(storyEntries.storyId, desc(storyEntries.position))
+
+  const excerpts: Record<string, string> = {}
+  for (const row of rows) {
+    const text = toExcerpt(row.tail, Number(row.length))
+    if (text !== "") excerpts[row.storyId] = text
+  }
+  return excerpts
 }
 
 /**
