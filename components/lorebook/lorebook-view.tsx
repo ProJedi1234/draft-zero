@@ -53,11 +53,18 @@ export function LorebookView({
   storyId,
   storyTitle,
   entries,
+  loading = false,
 }: {
   /** Lore is scoped to this story; every entry here belongs to it. */
   storyId: string
   storyTitle: string
   entries: LorebookEntry[]
+  /**
+   * No entries AND no complete read yet — a cold deep link, not an empty
+   * lorebook. Only the two differ on screen: "write your first entry" is a
+   * claim this component is not entitled to make until the read has landed.
+   */
+  loading?: boolean
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(
     entries[0]?.id ?? null
@@ -129,8 +136,11 @@ export function LorebookView({
         </Tooltip>
         <h1 className="truncate text-sm font-medium">{storyTitle}</h1>
         <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-          Lorebook · {entries.length}{" "}
-          {entries.length === 1 ? "entry" : "entries"}
+          {loading
+            ? "Lorebook"
+            : `Lorebook · ${entries.length} ${
+                entries.length === 1 ? "entry" : "entries"
+              }`}
         </span>
         <div className="flex-1" />
         <ImportCardsDialog

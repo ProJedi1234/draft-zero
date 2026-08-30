@@ -12,6 +12,7 @@ import * as React from "react"
 
 import {
   clientStore,
+  type LoreView,
   type StoreView,
   type StoryView,
   type TableStatus,
@@ -31,6 +32,43 @@ export function useStories(): { rows: StoryView[]; status: TableStatus } {
     () => ({ rows: view.stories, status: view.storyStatus }),
     [view]
   )
+}
+
+/**
+ * One story's lorebook, with the pending overlay folded in.
+ *
+ * Subscribes to the whole store rather than the one table, like every other
+ * hook here — getLoreView is memoized against the store version, so a change to
+ * an unrelated table costs a map lookup rather than a re-sort.
+ */
+export function useLorebook(storyId: string): LoreView {
+  const subscribe = React.useCallback(
+    (onChange: () => void) => clientStore.subscribe(onChange),
+    []
+  )
+  const getSnapshot = React.useCallback(
+    () => clientStore.getLoreView(storyId),
+    [storyId]
+  )
+  return React.useSyncExternalStore(subscribe, getSnapshot, EMPTY_LORE)
+}
+
+/** Frozen so the server snapshot has a stable identity across renders. */
+const EMPTY_LORE_VIEW: LoreView = Object.freeze({
+  entries: [],
+  status: "empty" as TableStatus,
+})
+
+function EMPTY_LORE(): LoreView {
+  return EMPTY_LORE_VIEW
+}
+
+/**
+ * Empty entries alone are not an empty lorebook — they are also a partition
+ * whose read has not landed. Mirrors showLibrarySkeleton exactly.
+ */
+export function showLorebookSkeleton(view: LoreView): boolean {
+  return view.entries.length === 0 && view.status !== "live"
 }
 
 /** Nonzero while writes are applied-but-unconfirmed — the "Saving…" affordance. */
