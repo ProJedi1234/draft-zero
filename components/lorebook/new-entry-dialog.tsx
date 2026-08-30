@@ -16,7 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { createLorebookEntry } from "@/lib/actions/lorebook"
+import { startLorebookCreate } from "@/lib/store/lorebook-mutations"
 import type { NewLorebookEntry } from "@/lib/types"
 
 import {
@@ -51,18 +51,22 @@ export function NewEntryDialog({
 
   function handleCreate() {
     if (draft.name.trim() === "") return
+
+    // The id is available synchronously and the row is in the store before this
+    // returns, so the dialog closes into a real editor rather than waiting on
+    // the insert. `settled` is only interesting for the error toast.
+    const { id, settled } = startLorebookCreate(storyId, {
+      ...draft,
+      name: draft.name.trim(),
+    })
+    setOpen(false)
+    onCreated?.(id)
+
     startTransition(async () => {
-      const res = await createLorebookEntry(storyId, {
-        ...draft,
-        name: draft.name.trim(),
-      })
-      if (!res.ok) {
-        toast.error(res.error)
-        return
-      }
-      setOpen(false)
-      toast.success("Entry created")
-      onCreated?.(res.data.record.id)
+      const res = await settled
+      // The overlay is already gone — the queue rolled it back — so this is
+      // telling the writer why the entry they were just editing vanished.
+      if (!res.ok) toast.error(res.error)
     })
   }
 

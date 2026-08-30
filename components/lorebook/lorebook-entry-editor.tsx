@@ -38,9 +38,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { useAutosave } from "@/hooks/use-autosave"
 import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import {
-  deleteLorebookEntry,
-  updateLorebookEntry,
-} from "@/lib/actions/lorebook"
+  deleteLorebookEntryOptimistic,
+  updateLorebookEntryOptimistic,
+} from "@/lib/store/lorebook-mutations"
 import { formatRelativeDate } from "@/lib/format"
 import {
   LOREBOOK_CATEGORIES,
@@ -138,7 +138,7 @@ export function LorebookEntryEditor({
         if (next.name !== undefined && next.name.trim() === "") delete next.name
         if (Object.keys(next).length === 0)
           return { ok: true as const, data: null }
-        return updateLorebookEntry(entryId, next)
+        return updateLorebookEntryOptimistic(entryId, next)
       },
       [entryId]
     )
@@ -157,7 +157,7 @@ export function LorebookEntryEditor({
     (patch: Partial<NewLorebookEntry>) => {
       if (!persists || !entryId) return
       startSave(async () => {
-        const res = await updateLorebookEntry(entryId, patch)
+        const res = await updateLorebookEntryOptimistic(entryId, patch)
         if (!res.ok) toast.error(res.error)
       })
     },
@@ -185,14 +185,14 @@ export function LorebookEntryEditor({
 
   function handleDelete() {
     if (!entryId) return
+    // Closed first: the row is out of the store the moment the queue takes the
+    // mutation, so leaving the dialog up until the server answers would hold a
+    // confirmation over an entry that is already gone from the list behind it.
+    setConfirmOpen(false)
     startDelete(async () => {
-      const res = await deleteLorebookEntry(entryId)
-      if (!res.ok) {
-        toast.error(res.error)
-        return
-      }
-      setConfirmOpen(false)
-      toast.success("Entry deleted")
+      const res = await deleteLorebookEntryOptimistic(entryId)
+      // A rollback puts the entry back; this says why it reappeared.
+      if (!res.ok) toast.error(res.error)
     })
   }
 

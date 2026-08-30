@@ -294,7 +294,11 @@ export function StoryHeader({
         <TooltipTrigger
           className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
           aria-label="Open lorebook"
-          render={<Link href={`/story/${story.id}/lorebook`} />}
+          // Prefetched because the route is now dataless: what comes back is
+          // the shell, not the lorebook, so warming it costs a few KB and
+          // removes the last round trip between the click and the entries —
+          // which the store is already holding.
+          render={<Link href={`/story/${story.id}/lorebook`} prefetch />}
         >
           <NotebookText className="size-4" />
         </TooltipTrigger>
