@@ -83,7 +83,7 @@ describe("createPersister", () => {
     const stamp = 0
     const persister = createPersister(
       wrapper,
-      () => [row("a")],
+      [{ entity: "story", getRows: () => [row("a")] }],
       () => stamp,
       { delayMs: 5 }
     )
@@ -113,7 +113,7 @@ describe("createPersister", () => {
 
     const persister = createPersister(
       wrapper,
-      () => [row("a")],
+      [{ entity: "story", getRows: () => [row("a")] }],
       () => 1,
       { delayMs: 500 }
     )
@@ -153,7 +153,7 @@ describe("createPersister", () => {
 
     const persister = createPersister(
       fake,
-      () => [],
+      [{ entity: "story", getRows: () => [] }],
       () => 1,
       { delayMs: 0 }
     )
@@ -184,7 +184,7 @@ describe("createPersister", () => {
 
     const persister = createPersister(
       fake,
-      () => [row("a")],
+      [{ entity: "story", getRows: () => [row("a")] }],
       () => 1,
       { delayMs: 0 }
     )

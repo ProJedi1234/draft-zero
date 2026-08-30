@@ -9,19 +9,27 @@
 // write, because both go through the store's event rule.
 
 import { clientStore } from "@/lib/store/store"
-import type { EntityKind, StoryRecord } from "@/lib/store/records"
+import type { EntityKind, EntityRecordMap } from "@/lib/store/records"
 import { localRefresh } from "@/lib/sync/client"
 
-export type StorePatch =
-  | { entity: "story"; op: "upsert"; row: StoryRecord }
+/**
+ * The three patch shapes, for one table. Written generically so a table joining
+ * the store is a line in StorePatch below rather than three more branches —
+ * and so a patch can never name one entity while carrying another's row.
+ */
+type PatchFor<K extends EntityKind> =
+  | { entity: K; op: "upsert"; row: EntityRecordMap[K] }
   | {
-      entity: "story"
+      entity: K
       op: "merge"
       id: string
-      /** Never includes updatedAt — the client does not mint versions. */
-      fields: Partial<StoryRecord>
+      /** Never includes the version field — the client does not mint versions. */
+      fields: Partial<EntityRecordMap[K]>
     }
-  | { entity: "story"; op: "delete"; id: string }
+  | { entity: K; op: "delete"; id: string }
+
+/** One queue serves every table; the readers filter by `entity`. */
+export type StorePatch = PatchFor<"story"> | PatchFor<"lorebook-entry">
 
 export interface QueuedMutation {
   id: string

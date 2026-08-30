@@ -12,7 +12,7 @@
 import * as React from "react"
 
 import { createPersister, openIdbPersistence } from "@/lib/store/persistence"
-import type { StoryRecord } from "@/lib/store/records"
+import type { LorebookEntryRecord, StoryRecord } from "@/lib/store/records"
 import { revalidateStoriesNow } from "@/lib/store/revalidate"
 import { attachWorkspacePersistence } from "@/lib/story/workspace-cache"
 import { clientStore, type SnapshotRow } from "@/lib/store/store"
@@ -27,10 +27,21 @@ export function StoreBoot(): null {
       if (disposed) return
 
       if (persistence !== null) {
-        const cached = await persistence.load("story")
+        const [cached, cachedLore] = await Promise.all([
+          persistence.load("story"),
+          persistence.load("lorebook-entry"),
+        ])
         if (disposed) return
         if (cached.length > 0) {
           clientStore.adoptCacheRows(cached as SnapshotRow<StoryRecord>[])
+        }
+        // Lore from disk for the same reason manuscripts are: opening the
+        // lorebook after a relaunch should paint entries, not a skeleton. Still
+        // a cache — the partition read that follows on mount corrects it.
+        if (cachedLore.length > 0) {
+          clientStore.adoptLoreCacheRows(
+            cachedLore as SnapshotRow<LorebookEntryRecord>[]
+          )
         }
         // Manuscripts too, so opening a story after a relaunch paints prose
         // rather than a skeleton. Awaited before the reconcile below for the
@@ -44,7 +55,13 @@ export function StoreBoot(): null {
 
       const persister = createPersister(
         persistence,
-        () => clientStore.confirmedStoryRows(),
+        [
+          { entity: "story", getRows: () => clientStore.confirmedStoryRows() },
+          {
+            entity: "lorebook-entry",
+            getRows: () => clientStore.confirmedLoreRows(),
+          },
+        ],
         () => clientStore.getLastCompleteApplyAt()
       )
       const unsubscribe = clientStore.subscribe(persister.onStoreChanged)
