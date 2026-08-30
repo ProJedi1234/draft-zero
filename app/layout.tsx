@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next"
 import { Geist_Mono, Inter, Source_Serif_4 } from "next/font/google"
 
 import "./globals.css"
+import { LiveRunsBeacon } from "@/components/live-runs-beacon"
 import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { StoreBoot } from "@/components/store-boot"
 import { SyncListener } from "@/components/sync-listener"
@@ -95,10 +96,11 @@ export default async function RootLayout({
   // queries. Read here rather than inside listStories because it is not
   // database state: a run lives and dies with this server, and folding it into
   // the read layer would put a fact with no row in it behind a Postgres round
-  // trip. Both kinds merged, because to the library "working" is one state —
-  // a story drawing a picture is busy in exactly the way one streaming prose
-  // is, and the mark does not owe the reader the distinction.
-  const activeRuns = [...listActiveRuns(), ...listActiveImageRuns()]
+  // trip. Two lists because the audiences differ: the library merges both
+  // kinds, since a story drawing a picture is busy in exactly the way one
+  // streaming prose is, while the workspace subscribes on the text channel.
+  const textRuns = listActiveRuns()
+  const activeRuns = [...textRuns, ...listActiveImageRuns()]
 
   return (
     <html
@@ -123,6 +125,7 @@ export default async function RootLayout({
           <Toaster />
           <ViewportHeightSync />
           <SyncListener />
+          <LiveRunsBeacon runs={textRuns} />
           <StoreBoot />
         </ThemeProvider>
       </body>

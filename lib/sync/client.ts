@@ -9,6 +9,7 @@
 
 import {
   SYNC_PING_INTERVAL_MS,
+  type ActiveRun,
   type DeriveRunWireEvent,
   type ImageRunWireEvent,
   type RunWireEvent,
@@ -99,6 +100,36 @@ export const runEndings = {
     for (const listener of this.listeners) {
       try {
         listener(event)
+      } catch {
+        // One broken subscriber must not mute the rest, same as the bus.
+      }
+    }
+  },
+}
+
+/**
+ * Which stories the SERVER says are generating, as of its last render — TEXT
+ * runs only, because a subscriber routes to one channel.
+ *
+ * The one answer to "is this story running?" that cannot be missed: it rides
+ * every RSC payload rather than being delivered once. A module singleton like
+ * runHandoff, and it REMEMBERS like atmosphereStatus, because the workspace
+ * mounts long after the layout published.
+ */
+export const liveRuns = {
+  last: [] as ActiveRun[],
+  listeners: new Set<(runs: ActiveRun[]) => void>(),
+  subscribe(listener: (runs: ActiveRun[]) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  },
+  publish(runs: ActiveRun[]): void {
+    this.last = runs
+    for (const listener of this.listeners) {
+      try {
+        listener(runs)
       } catch {
         // One broken subscriber must not mute the rest, same as the bus.
       }

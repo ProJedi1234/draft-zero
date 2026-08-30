@@ -45,8 +45,13 @@ import { redoStoryOp, undoStoryOp } from "@/lib/actions/history"
 import type { GenerationUsage } from "@/lib/generation/types"
 import { randomId } from "@/lib/id"
 import { translateAction } from "@/lib/story/action-voice"
-import { localRefresh, subscribeRun } from "@/lib/sync/client"
-import type { RunEndFrame, RunFrame, RunWireEvent } from "@/lib/sync/types"
+import { liveRuns, localRefresh, subscribeRun } from "@/lib/sync/client"
+import type {
+  ActiveRun,
+  RunEndFrame,
+  RunFrame,
+  RunWireEvent,
+} from "@/lib/sync/types"
 import type {
   ActionKind,
   ActionResult,
@@ -106,14 +111,18 @@ const RECONCILE_SETTLE_MS = 17_000
 const REATTACH_BACKOFF_MS = [500, 1000, 2000]
 
 /**
- * Consecutive subscribe failures before the reader stops retrying. A subscribe
- * that keeps failing outright (a proxy answering 502, the server half-down) is
- * not a blip the next attempt will ride out, and a loop that retries it
- * forever holds the composer busy with no sign of trouble. Past the cap the
- * writer gets a toast and their composer back; the sync channel's reconnect
- * probe re-attaches if the run turns out to still be live.
+ * Where the ladder above settles, and it never stops: a run this device cannot
+ * reach is still running, so only an ANSWER — a 204 or a terminal frame — may
+ * end it locally. There is no failure count that ends it instead.
  */
-const SUBSCRIBE_FAILURE_LIMIT = 5
+const REATTACH_IDLE_BACKOFF_MS = 10_000
+
+/**
+ * Consecutive failures before the writer is told. Not a give-up: below this a
+ * blip fixes itself before a toast can be read, past it the caret has been
+ * frozen too long to say nothing.
+ */
+const SUBSCRIBE_FAILURE_NOTICE = 4
 
 /** What the server calls a generation that arrived with no move attached. */
 const DEFAULT_REQUEST_KIND: GenerationRequestKind = "generate"
@@ -276,6 +285,9 @@ export function useGeneration(
   const costRefreshRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
   )
+  // Readers asleep in a re-attach backoff, so waking the device can cut their
+  // wait short.
+  const sleepersRef = React.useRef(new Set<() => void>())
 
   React.useEffect(
     () => () => {
@@ -554,6 +566,7 @@ export function useGeneration(
    */
   const runReader = React.useCallback(
     async (runId: string | null, controller: AbortController) => {
+      const sleepers = sleepersRef.current
       let adopted = false
       let attempt = 0
       while (!controller.signal.aborted) {
@@ -566,38 +579,16 @@ export function useGeneration(
           )
         } catch {
           if (controller.signal.aborted) return
-          attempt += 1
-          if (attempt >= SUBSCRIBE_FAILURE_LIMIT) {
-            if (adopted || runIdRef.current !== null) {
-              // This device is showing (or started) a run it can no longer
-              // reach. Same synthetic ending as the missed-204 path below —
-              // the refresh delivers whatever the tree holds — but with a
-              // toast, because unlike a clean 204 this is a failure the
-              // writer should hear about.
-              toast.error("Lost the connection to the generation.")
-              runEnded({
-                type: "end",
-                status: "aborted",
-                entryId: null,
-                error: null,
-                usage: null,
-              })
-            } else if (abortRef.current === controller) {
-              // A probe that cannot get an answer gives the slot back
-              // quietly; the sync channel's reconnect probe retries later.
-              abortRef.current = null
-              const pending = pendingAttachRef.current
-              pendingAttachRef.current = null
-              if (pending !== null) attachFnRef.current?.(pending)
-            }
-            return
+          // Once per outage, and only where there is a run on screen to
+          // explain. Deliberately not an ending — see the constant.
+          if (
+            attempt + 1 === SUBSCRIBE_FAILURE_NOTICE &&
+            (adopted || runIdRef.current !== null)
+          ) {
+            toast.error("Lost the connection to the generation — retrying.")
           }
-          await delay(
-            REATTACH_BACKOFF_MS[
-              Math.min(attempt - 1, REATTACH_BACKOFF_MS.length - 1)
-            ],
-            controller.signal
-          )
+          await delay(backoffFor(attempt), controller.signal, sleepers)
+          attempt += 1
           continue
         }
 
@@ -645,12 +636,7 @@ export function useGeneration(
         }
         // Stream died mid-run (blip, HMR, backgrounded tab): re-attach. The
         // next snapshot frame replays nothing and loses nothing.
-        await delay(
-          REATTACH_BACKOFF_MS[
-            Math.min(attempt, REATTACH_BACKOFF_MS.length - 1)
-          ],
-          controller.signal
-        )
+        await delay(backoffFor(attempt), controller.signal, sleepers)
         attempt += 1
       }
     },
@@ -694,6 +680,61 @@ export function useGeneration(
   React.useEffect(() => {
     attach(null)
   }, [attach])
+
+  /**
+   * Waking and coming back online, as the sync channel treats them (see
+   * use-story-sync.ts). An attached device swaps its socket rather than
+   * waiting on the stall guard: on iOS a backgrounded socket dies with no
+   * error and no close, so only the guard notices, STALL_TIMEOUT_MS later.
+   * Re-attaching costs nothing — the snapshot frame replays the run.
+   */
+  const wake = React.useCallback(() => {
+    // Copied: done() mutates the set as it drains it.
+    for (const sleeper of [...sleepersRef.current]) sleeper()
+
+    if (runIdRef.current !== null) {
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+      void runReader(runIdRef.current, controller)
+      return
+    }
+    // activeRef without a runId is a start in flight or a settle waiting on
+    // its rows; neither holds a socket worth replacing.
+    if (activeRef.current) return
+    attach(null)
+  }, [attach, runReader])
+
+  React.useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") wake()
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    window.addEventListener("online", wake)
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange)
+      window.removeEventListener("online", wake)
+    }
+  }, [wake])
+
+  /**
+   * The backstop (see components/live-runs-beacon.tsx). Every other attach is
+   * a delivery that can be missed; this one is re-stated on every refresh.
+   *
+   * Probes with null rather than the runId: a list rendered a moment before
+   * the run ended would otherwise reach it in the linger map and re-live a
+   * finish this device has already seen.
+   */
+  React.useEffect(() => {
+    const reconcile = (runs: ActiveRun[]) => {
+      // Anything attached, probing or mid-settle knows more than the list.
+      if (activeRef.current || abortRef.current !== null) return
+      if (!runs.some((run) => run.storyId === storyId)) return
+      attach(null)
+    }
+    reconcile(liveRuns.last)
+    return liveRuns.subscribe(reconcile)
+  }, [attach, storyId])
 
   // The sync channel's run-started handoff (see GenerationOptions.attachRef).
   React.useEffect(() => {
@@ -954,15 +995,30 @@ export function useGeneration(
   }
 }
 
-/** Abort-aware sleep: resolves early (never rejects) when the signal fires. */
-function delay(ms: number, signal: AbortSignal): Promise<void> {
+/** 500ms, 1s, 2s, then every 10s for as long as it takes. */
+function backoffFor(failures: number): number {
+  return REATTACH_BACKOFF_MS[failures] ?? REATTACH_IDLE_BACKOFF_MS
+}
+
+/**
+ * Abort-aware sleep: resolves early (never rejects) when the signal fires, or
+ * when woken through `sleepers` — otherwise a reader spends most of an
+ * outage's recovery asleep in a ten-second backoff.
+ */
+function delay(
+  ms: number,
+  signal: AbortSignal,
+  sleepers: Set<() => void>
+): Promise<void> {
   return new Promise((resolve) => {
     if (signal.aborted) return resolve()
     const timer = setTimeout(done, ms)
     signal.addEventListener("abort", done, { once: true })
+    sleepers.add(done)
     function done() {
       clearTimeout(timer)
       signal.removeEventListener("abort", done)
+      sleepers.delete(done)
       resolve()
     }
   })
