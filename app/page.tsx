@@ -1,4 +1,7 @@
 import { LibraryView } from "@/components/library/library-view"
+import { listStoryExcerpts } from "@/lib/db/queries"
+import { listActiveImageRuns } from "@/lib/images/live"
+import { listActiveRuns } from "@/lib/generation/live"
 
 /**
  * The library index, and — more load-bearing than it looks — the one URL in
@@ -8,7 +11,16 @@ import { LibraryView } from "@/components/library/library-view"
  * every installed copy: iOS saves whatever URL you are on when you add to the
  * home screen and offers no way to edit it, so a non-story URL has to exist
  * and stay reachable for the PWA `start_url` to mean anything.
+ *
+ * The stories themselves still come from the client store. What is read here
+ * is only what the store does not hold: the prose of each story's latest
+ * passage.
  */
-export default function Page() {
-  return <LibraryView />
+export default async function Page() {
+  const excerpts = await listStoryExcerpts()
+  // Both kinds, like the sidebar: a story drawing a picture is busy in exactly
+  // the way one streaming prose is.
+  const activeRuns = [...listActiveRuns(), ...listActiveImageRuns()]
+
+  return <LibraryView excerpts={excerpts} activeRuns={activeRuns} />
 }
