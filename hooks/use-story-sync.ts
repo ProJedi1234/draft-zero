@@ -38,6 +38,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
+import { scheduleLoreRevalidate } from "@/lib/store/lore-revalidate"
 import { scheduleStoreRevalidate } from "@/lib/store/revalidate"
 import { clientStore } from "@/lib/store/store"
 import {
@@ -124,6 +125,16 @@ export function useStorySync(): void {
                 storyId: event.storyId,
                 entities: event.entities,
               })
+              // Lore is story-scoped, so an uncovered write only needs a read
+              // when we know which story moved. A null-scoped change is a
+              // library write and never touches a lorebook.
+              if (
+                event.storyId !== null &&
+                (event.entities === undefined ||
+                  event.entities.includes("lorebook-entry"))
+              ) {
+                scheduleLoreRevalidate(event.storyId)
+              }
             }
             continue
           }

@@ -283,7 +283,7 @@ export const registerLoreWrite: RegisterTool = (server) => {
         const set = CREATE_FIELDS.filter((field) => args[field] !== undefined)
 
         return structured(`created "${name}"`, {
-          id: result.data.id,
+          id: result.data.record.id,
           name,
           created: true,
           changed: ["name", ...set],

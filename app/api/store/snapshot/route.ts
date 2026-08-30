@@ -7,7 +7,12 @@
 // for boot only, `delta` runs it over what has moved and pays a single-table
 // scan for the deletion sweep's ground truth, `scoped` reads one story.
 import { getDb } from "@/lib/db/client"
-import { listStoryIdVersions, listStoryRecords } from "@/lib/db/queries"
+import {
+  listLorebookEntries,
+  listStoryIdVersions,
+  listStoryRecords,
+} from "@/lib/db/queries"
+import { isValidEntityId } from "@/lib/store/records"
 
 // Node, matching every other route here: the pg pool is a singleton in this
 // process, and the aggregate below is not something to run on an edge isolate.
@@ -17,6 +22,29 @@ export async function GET(request: Request): Promise<Response> {
   const params = new URL(request.url).searchParams
   const storyId = params.get("storyId")
   const since = params.get("since")
+  const entity = params.get("entity") ?? "story"
+
+  // Lore is PARTITIONED BY STORY: there is no library-wide read of it and no
+  // delta, because no device holds every story's lore. One story's rows are
+  // the whole answer, and the client sweeps that story's slice against them.
+  if (entity === "lorebook-entry") {
+    if (storyId === null || !isValidEntityId(storyId)) {
+      return json({ error: "A lorebook snapshot needs a storyId." }, 400)
+    }
+    const rows = await listLorebookEntries(storyId)
+    return json({
+      serverTime: new Date().toISOString(),
+      entity: "lorebook-entry",
+      mode: "partition",
+      // The row IS the record — same shape, same field names — so the version
+      // is its own updated_at, exactly as the story rows carry theirs.
+      rows: rows.map((row) => ({ id: row.id, version: row.updatedAt, row })),
+    })
+  }
+
+  if (entity !== "story") {
+    return json({ error: `Unknown entity "${entity}".` }, 400)
+  }
 
   const db = await getDb()
 
@@ -60,8 +88,9 @@ export async function GET(request: Request): Promise<Response> {
   })
 }
 
-function json(body: unknown): Response {
+function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
+    status,
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",

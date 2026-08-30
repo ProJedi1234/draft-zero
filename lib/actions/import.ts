@@ -410,11 +410,11 @@ export async function importStoryCardsIntoStory(input: {
     )
   }
 
-  // Same one-line commit every mutating action uses: it revalidates for the
-  // device that acted — the lorebook route is under the root layout, so it
-  // re-renders with the rest — and announces the write to every device that
-  // did not, which is what keeps a lorebook open elsewhere from going stale.
-  commitChange(input.storyId)
+  // Same one-line commit every mutating action uses. Uncovered on purpose: a
+  // bulk import is the one lore write whose rows do not ride the bus, so every
+  // device — this one included — answers it with a partition read rather than
+  // N entity events. See lib/store/lore-revalidate.ts.
+  commitChange(input.storyId, ["lorebook-entry"])
   return {
     ok: true,
     data: {
