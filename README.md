@@ -272,3 +272,7 @@ sampler has no OpenRouter equivalent — temperature and top-p carry over), user
 scripts, ephemeral context, phrase-bias and banned-sequence groups. Regex
 lorebook keys are flattened to plain text, since trigger matching here is
 substring-only. The dialog lists whatever it dropped before you commit.
+
+## License
+
+[MIT](LICENSE)
