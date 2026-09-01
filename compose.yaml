@@ -1,7 +1,7 @@
 # compose.yaml — a self-contained dev stack. Credentials here are deliberately
 # hardcoded and deliberately weak: this file describes a throwaway local
 # database, never anything reachable off this box. `ports` binds to 127.0.0.1
-# so nothing on olympus.lan can reach it either.
+# so nothing else on the network can reach it either.
 #
 #   docker compose up -d                 # Postgres only (the usual case)
 #   bun run db:migrate && bun run dev    # ...with the app on the host
@@ -9,8 +9,8 @@
 #   docker compose --profile app up      # everything: migrate, then the app
 #   docker compose run --rm migrate      # just apply pending migrations
 #
-# Port 5433, not 5432: the shared `devpg` container already owns 5432 on argos,
-# and this stack is meant to coexist with it rather than replace it.
+# Port 5433, not 5432: a non-default port, so this stack coexists with any
+# Postgres you already run on 5432 rather than fighting it for the port.
 
 # Pinned so the project name comes from the app, not from the directory — git
 # worktrees live in directories named after the branch, and without this each
@@ -19,8 +19,9 @@ name: draft-zero
 
 services:
   postgres:
-    # 17, matching clio in prod — see the README's database table. devpg is 18;
-    # generating migrations against the older target keeps both usable.
+    # 17, matching the production target — see the README's database table.
+    # Generating migrations against the oldest server in play keeps them all
+    # usable, so this is deliberately not the newest release.
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
@@ -62,8 +63,8 @@ services:
     # here but is stated so it survives a future top-level default.
     restart: "no"
     environment:
-      # Same in-network URL as `app` — see the note there. This also shadows the
-      # bind-mounted .env.local, which points at the host's devpg on 5432:
+      # Same in-network URL as `app` — see the note there. This also shadows a
+      # bind-mounted .env.local pointing somewhere else on the host:
       # drizzle.config.ts prefers process.env.DATABASE_URL over the file, so the
       # container's own Postgres wins. Migrating the wrong database is the
       # failure mode if that precedence ever flips.

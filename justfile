@@ -136,8 +136,8 @@ logs:
 # ── guards ──────────────────────────────────────────────────────────────────
 #
 # Destructive recipes name their target before asking. The compose Postgres on
-# 5433 is throwaway; the shared devpg on 5432 holds real work from every project
-# on this box and has no backup, so the two must never be confused.
+# 5433 is throwaway; a server on the default 5432 is more likely one you share
+# with other projects and do not back up, so the two must never be confused.
 
 [private]
 _resolve-db:
@@ -150,7 +150,7 @@ _resolve-db:
     safe="${url/:\/\/*@/://…@}"
     case "$url" in
         *@127.0.0.1:5433/*|*@localhost:5433/*) where="the throwaway compose Postgres — safe to destroy" ;;
-        *@127.0.0.1:5432/*|*@localhost:5432/*) where="the SHARED devpg — real work from every project on argos, no backups" ;;
+        *@127.0.0.1:5432/*|*@localhost:5432/*) where="a Postgres on the DEFAULT port — likely shared with other projects, likely unbacked" ;;
         *) where="an unrecognised target — check it by hand" ;;
     esac
     echo "$safe"
