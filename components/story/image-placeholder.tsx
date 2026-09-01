@@ -4,8 +4,7 @@
  * A survey being plotted: fine rules drifting upward at two speeds, under a
  * band travelling down with a bright leading edge. Chosen over a shimmer, a
  * pixel grid and four others because it is the only one that reads as *work
- * happening* without competing with the prose it sits under — see the options
- * page, http://stele.olympus.lan/image-loading-states.
+ * happening* without competing with the prose it sits under.
  *
  * The design constraint, which every value here is set by: this is on screen
  * for 20-40 seconds (a Seedream render took 31), directly below a paragraph

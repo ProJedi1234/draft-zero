@@ -34,8 +34,9 @@ requires it.
 
 `db:seed` and `docker compose down -v` are wrapped as `just seed` and `just
 nuke`, which name the target database and wait for a `y` first. That guard
-exists because `.env.local` is easy to point at the shared `devpg` on 5432,
-where a reseed destroys real work — see the database table below.
+exists because `.env.local` is easy to point at a Postgres you share with
+other projects on 5432, where a reseed destroys real work — see the database
+table below.
 
 To run the app in Docker too — same stack, plus `next dev` on port 3000:
 
@@ -71,22 +72,23 @@ even though they are present in `node_modules`.
 | Environment | Where | Notes |
 |---|---|---|
 | Dev (compose) | `compose.yaml` — `127.0.0.1:5433` | Postgres 17, credentials hardcoded (`draft_zero`/`draft_zero`); throwaway, bound to loopback only |
-| Dev (shared) | the shared `devpg` container on `127.0.0.1:5432` | the older convention, still usable — see below |
-| Prod (hestia) | `clio` — `192.168.0.199:5432` | Postgres 17 |
+| Dev (existing server) | whatever you already run on `127.0.0.1:5432` | usable instead of compose — see below |
+| Prod | wherever you deploy it | Postgres 17 |
 
-Compose uses **5433** so it coexists with `devpg`, which already owns 5432 on
-argos. To use `devpg` instead, create the role and database there once and
-point `DATABASE_URL` at `:5432`:
+Compose uses **5433** so it coexists with any Postgres already on the default
+port rather than fighting it for one. To use that one instead, create the role
+and database there once and point `DATABASE_URL` at `:5432`:
 
 ```bash
-docker exec devpg psql -U postgres \
+psql -U postgres \
   -c "CREATE ROLE draft_zero LOGIN PASSWORD '<password>';" \
   -c "CREATE DATABASE draft_zero OWNER draft_zero;"
 ```
 
-`devpg` is Postgres 18 while compose and clio are 17 — nothing in the schema
-uses 18-only features, but generate migrations against the older target if that
-ever changes.
+Generate migrations against the oldest Postgres you target. Nothing in the
+schema needs anything newer than 17, so running a later release day-to-day is
+fine — but the generated SQL is what has to apply everywhere, so the version it
+was written against is the one that matters.
 
 `docker compose down -v` drops the data volume, which is the fastest way back
 to a clean database (`db:migrate` and `db:seed` to refill it).

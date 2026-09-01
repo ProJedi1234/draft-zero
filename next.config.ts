@@ -13,14 +13,23 @@ const nextConfig: NextConfig = {
     serverActions: { bodySizeLimit: "20mb" },
   },
   // Dev-only: Next blocks requests to /_next/* dev resources unless the
-  // browser's origin is localhost. Allow this box's LAN addresses so the
-  // dev server is usable from phones/other machines on olympus.lan.
+  // browser's origin is localhost, which breaks HMR as soon as the dev server
+  // is reached from another device. DRAFT_ZERO_DEV_ORIGINS holds the extra
+  // origins to trust, comma-separated, because they name whichever network the
+  // machine happens to be on — the same reasoning, and the same shape, as
+  // MCP_ALLOWED_HOSTS.
   //
-  // "127.0.0.1" is listed even though localhost is allowed by default: they are
-  // the same host but not the same origin string, and the compose stack
-  // publishes the app on 0.0.0.0, so whichever of the two you type is the one
-  // Next compares against. Without it, HMR silently stops reconnecting.
-  allowedDevOrigins: ["127.0.0.1", "192.168.0.*", "*.olympus.lan"],
+  // "127.0.0.1" is always present even though localhost is allowed by default:
+  // they are the same host but not the same origin string, and the compose
+  // stack publishes the app on 0.0.0.0, so whichever of the two you type is the
+  // one Next compares against. Without it, HMR silently stops reconnecting.
+  allowedDevOrigins: [
+    "127.0.0.1",
+    ...(process.env.DRAFT_ZERO_DEV_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  ],
   devIndicators: {
     // Away from bottom-left, which is where the composer keeps the two
     // controls a writer touches most. The badge is draggable, and its drag

@@ -317,5 +317,6 @@ and the easiest one to hand-write. A modern (2026-07-28) request additionally ne
 call, `Mcp-Name` — the entry rejects a header/body mismatch with `-32020` before your handler
 runs. Both eras come off the same factory, so testing either exercises your tool.
 
-⚠️ Database: never point a test at devpg (port 5432), and never run seed or reset against it.
-Use this worktree's own compose Postgres on its own port.
+⚠️ Database: never point a test at a Postgres on the default port 5432 — that is the one most
+likely shared with other projects — and never run seed or reset against it. Use this worktree's
+own compose Postgres on its own port.
