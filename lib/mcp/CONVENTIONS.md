@@ -1,9 +1,9 @@
 # MCP conventions
 
-Written 2026-08-28 against **`@modelcontextprotocol/server@2.0.0`** (published 2026-07-27), by
-reading the installed `.d.mts` and by running every flow below against the real handler. Where
-this file and `MCP_PLAN.md`'s "SDK v2 notes" disagree, **this file is right** — the plan was
-written from docs. Corrections are called out as ⚠️.
+The contract the tool modules follow, verified against
+**`@modelcontextprotocol/server@2.0.0`** by running every flow below through the real handler.
+Where the SDK's own docs disagree with what the handler does, the correction is called out
+as ⚠️.
 
 Read this before writing a tool. It is the contract between the eleven `lib/mcp/tools/*.ts`
 modules; `server.ts`, `helpers.ts` and `app/api/mcp/route.ts` are shared and already written.
@@ -19,7 +19,7 @@ modules; `server.ts`, `helpers.ts` and `app/api/mcp/route.ts` are shared and alr
 | `lib/mcp/helpers.ts` | shared | `structured`, `failed`, `runTool`, pagination, position ranges, compact formatters. |
 | `lib/mcp/tools/*.ts` | one bundle each | Tool declarations and handlers. **Your file.** |
 
-To add a tool that is not in the plan's 14, you must edit `server.ts` — coordinate first. To
+To add a tool beyond the fourteen, you must edit `server.ts` — coordinate first. To
 implement one that is, you only edit your own file.
 
 Packages installed for this: `@modelcontextprotocol/server@2.0.0` (pulls
@@ -29,7 +29,7 @@ Packages installed for this: `@modelcontextprotocol/server@2.0.0` (pulls
 
 ## 2. Registering a tool
 
-`server.tool(...)` does not exist. ⚠️ The plan's `server.tool(name, {...}, handler)` is v1. The
+`server.tool(...)` does not exist. ⚠️ The `server.tool(name, {...}, handler)` form in older docs is v1. The
 real method is **`registerTool`**, and its schemas are Standard Schema values — a `z.object(...)`,
 not a raw `{ field: z.string() }` shape (the raw-shape overload still compiles but is deprecated).
 
@@ -208,7 +208,7 @@ journal and the sync bus behave identically.
 
 ---
 
-## 7. House rules from the plan
+## 7. House rules
 
 These are the reason the server is worth building; a tool that breaks them costs the writer
 tokens on every call.
@@ -236,7 +236,7 @@ model does not send a range it did not need.
 
 Only list-shaped results are cacheable on this revision: `tools/list`, `prompts/list`,
 `resources/list`, `resources/templates/list`, `resources/read`, `server/discover`. **A
-`tools/call` result is never cacheable**, so the plan's "`ttlMs` cache hints on list results"
+`tools/call` result is never cacheable**, so "`ttlMs` cache hints on list results"
 cannot mean `list_stories`. `server.ts` sets the one hint that exists —
 `cacheHints: { "tools/list": { ttlMs: 300000, cacheScope: "private" } }` — and a read tool that
 wants to be re-asked cheaply has to be cheap.
