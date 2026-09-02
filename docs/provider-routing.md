@@ -25,5 +25,8 @@ switched on for the whole app, for a model profile, or for one story, and the
 strictest setting in force wins. Under it, the model and provider pickers grey
 out every endpoint that retains prompts, requests are pinned to the endpoints
 that do not, and a request that could only be served by a retaining host fails
-rather than falling through. Retention is tracked per model group, not per
-account, because that is how OpenRouter reports it.
+rather than falling through. Two different questions are asked of OpenRouter
+here. Whether an endpoint retains prompts comes from its per-endpoint ZDR
+list. Whether your account already forces ZDR is checked per model group —
+Anthropic, OpenAI, Google, xAI, and everything else — because that is how
+OpenRouter's privacy settings are split, not one switch for the account.

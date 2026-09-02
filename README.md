@@ -7,7 +7,8 @@
 
 An AI-assisted interactive fiction app you run yourself. Bring an
 [OpenRouter](https://openrouter.ai) key and write with any model; the
-manuscript, the lorebook and the pictures stay in your own Postgres.
+manuscript and the lorebook stay in your own Postgres, and the pictures on
+your own disk.
 
 It grew out of wanting what NovelAI and AI Dungeon do well — a lorebook that
 fires on its own, Do and Say turns, a manuscript that reads like a book rather

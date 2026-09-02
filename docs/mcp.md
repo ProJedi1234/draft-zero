@@ -13,9 +13,11 @@ request standing on its own. Clients on the earlier streamable HTTP revisions
 still connect — the SDK answers both — so any client that can reach the URL
 can use it.
 
-There is no auth: the endpoint answers only to `localhost` and to the hostnames
-in `MCP_ALLOWED_HOSTS`, which is the DNS-rebinding guard that keeps a web page
-you visit from driving `delete_story` through your browser.
+There is no auth, so run it on a machine or network you trust. What the route
+does check is the request's `Host` header and its `Origin`, both against
+`localhost` plus the names in `MCP_ALLOWED_HOSTS`: the first is the
+DNS-rebinding guard, the second is what keeps a web page you happen to visit
+from driving `delete_story` through your browser. Neither is authentication.
 
 The dev server is on `http://localhost:3000`, so the URL below is
 `http://localhost:3000/api/mcp`. Reaching it by any other name — a LAN
