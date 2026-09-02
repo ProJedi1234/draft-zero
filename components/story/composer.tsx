@@ -16,6 +16,7 @@ import {
   Square,
   Swords,
   Undo2,
+  X,
   WandSparkles,
 } from "lucide-react"
 
@@ -87,6 +88,24 @@ const VERBATIM_PLACEHOLDER = "Describe the image…"
  */
 function loreMuteKey(ids: Iterable<string>): string {
   return [...new Set(ids)].sort().join("\n")
+}
+
+/**
+ * One tappable word on the caption line. h-7 is the same target the lore chips
+ * use — the smallest that stays comfortable under a thumb without turning a
+ * line of words into a row of buttons — and the muted default lets the two
+ * settings that are ON (a chosen style, assistance) come forward on their own.
+ */
+const CAPTION_ITEM =
+  "inline-flex h-7 items-center gap-1.5 px-2 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+
+/** The dot between two caption words. Punctuation, so it is hidden from AT. */
+function CaptionSeparator() {
+  return (
+    <span aria-hidden className="px-0.5 text-muted-foreground/40">
+      ·
+    </span>
+  )
 }
 
 /** The icon rotation that shows a frame's shape rather than naming it. */
@@ -276,6 +295,21 @@ export function Composer({
     // with Cmd/Ctrl+/.
     onModeChange(mode === "say" ? "do" : "say")
   }, [mode, onModeChange])
+
+  // The move image mode was entered from, so leaving it is one tap rather than
+  // a second decision. Image mode hides the segmented row (Do and Say do
+  // nothing while a picture is being composed, and the two slots are exactly
+  // what pushed the send button off a phone-width panel), so this is the only
+  // record of where "back" goes. Session-local: a reload lands on Do, which is
+  // the same default a fresh story gets.
+  // State rather than a ref because the exit chip's label reads it while
+  // rendering — the chip says where "back" goes. Adjusted during render rather
+  // than in an effect for the same reason: an effect would paint one frame of
+  // a chip pointing at the wrong move.
+  const [lastWritingMode, setLastWritingMode] = React.useState<"do" | "say">(
+    mode === "say" ? "say" : "do"
+  )
+  if (mode !== "image" && mode !== lastWritingMode) setLastWritingMode(mode)
 
   /** Cmd/Ctrl+/ reaches everything, Image included. */
   const cycleMode = React.useCallback(() => {
@@ -730,6 +764,98 @@ export function Composer({
             </div>
           )}
 
+          {/* What the next picture will be drawn WITH, as words rather than
+              three unlabelled glyphs in the toolbar.
+
+              Frame, style and assistance are all remembered per story and
+              pressed rarely — they are state, not moves — while everything
+              left in the row below is a move. Reading them as "16:9 ·
+              Watercolour · Assisted" means the writer knows what the ↵ under
+              their thumb is about to cost without hovering anything, which is
+              what a row of three icons could never do; it also gives the
+              toolbar back the width that was pushing Send off the panel on a
+              phone. Same small caps as the lore chips above, so the panel
+              gains no new kind of thing. */}
+          {isImage && (
+            <div className="flex flex-wrap items-center px-2 pb-1 text-[0.6875rem] tracking-wide uppercase">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={`Frame: ${aspectRatio}`}
+                      onClick={() =>
+                        onAspectRatioChange(
+                          IMAGE_ASPECT_RATIOS[
+                            (IMAGE_ASPECT_RATIOS.indexOf(aspectRatio) + 1) %
+                              IMAGE_ASPECT_RATIOS.length
+                          ]
+                        )
+                      }
+                      className={CAPTION_ITEM}
+                    />
+                  }
+                >
+                  <RectangleHorizontal
+                    aria-hidden
+                    className={cn("size-3", ASPECT_ICON_ROTATION[aspectRatio])}
+                  />
+                  {aspectRatio}
+                </TooltipTrigger>
+                <TooltipContent>
+                  Frame {aspectRatio} — tap to cycle
+                </TooltipContent>
+              </Tooltip>
+
+              <CaptionSeparator />
+
+              <StyleButton
+                style={imageStyle}
+                onStyleChange={onImageStyleChange}
+              />
+
+              <CaptionSeparator />
+
+              {/* Assistance, as a switch rather than a setting: it changes what
+                  the very next ↵ costs. It reads as a word here for the same
+                  reason — "Verbatim" says what will happen, where a pen nib
+                  needed a tooltip to say it. */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={
+                        imageAssisted
+                          ? "Assisted — the model expands your brief"
+                          : "Verbatim — your words go as written"
+                      }
+                      aria-pressed={imageAssisted}
+                      disabled={deriving || imageBusy}
+                      onClick={() => onImageAssistedChange(!imageAssisted)}
+                      className={cn(
+                        CAPTION_ITEM,
+                        imageAssisted && "text-foreground"
+                      )}
+                    />
+                  }
+                >
+                  {imageAssisted ? (
+                    <WandSparkles aria-hidden className="size-3" />
+                  ) : (
+                    <PenLine aria-hidden className="size-3" />
+                  )}
+                  {imageAssisted ? "Assisted" : "Verbatim"}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {imageAssisted
+                    ? "Assisted — ↵ develops, then draws"
+                    : "Verbatim — ↵ draws your words as written"}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+
           <span role="status" aria-live="polite" className="sr-only">
             {announceKind ? `${active.label} — ${active.placeholder}` : ""}
           </span>
@@ -744,47 +870,86 @@ export function Composer({
                 ? "Image prompt ready. Press Enter to draw."
                 : ""}
           </span>
-          <div className="flex items-center gap-1 px-2 pb-2">
-            <div className="flex items-center gap-0.5">
-              {MODES.map((kind) => {
-                const selected = kind.value === active.value
-                return (
-                  <Tooltip key={kind.value}>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          variant={selected ? "secondary" : "ghost"}
-                          size="icon-sm"
-                          // --secondary and --muted are the same value, so a
-                          // secondary fill alone is exactly what ghost:hover
-                          // looks like: hovering the unarmed move would make
-                          // both buttons identical at the moment of choosing.
-                          // The border and the full-contrast icon are the cues
-                          // hover cannot imitate.
-                          className={cn(
-                            selected
-                              ? "border-border text-foreground"
-                              : "text-muted-foreground"
-                          )}
-                          aria-label={kind.label}
-                          aria-pressed={selected}
-                          onClick={() => onModeChange(kind.value)}
-                        />
-                      }
-                    >
-                      <kind.icon />
-                    </TooltipTrigger>
-                    {/* Tab takes you to the other WRITING move, so only an
+          {/* Scrolls rather than clips. The row is sized to fit its widest
+              state on the narrowest phone, but it is a fixed-width row of
+              fixed-width buttons, so the failure mode of adding one more
+              control is Send silently leaving the panel — which is exactly
+              what happened. A scroll container makes that degrade visibly
+              instead. */}
+          <div className="flex items-center gap-1 overflow-x-auto px-2 pb-2">
+            {/* Do and Say are unreachable moves while a picture is being
+                composed — Tab never reached Image and Image never reached
+                back, so the two buttons were a pair of dead slots holding the
+                width that pushed Send off the panel. In image mode they
+                collapse into the mode itself, which now says its own name and
+                offers the way out. Do/Say mode keeps the segmented row: there,
+                which move is armed changes what every keystroke means, and
+                that has to be readable without opening anything. */}
+            {isImage ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="gap-1.5 border-border px-2.5 text-foreground"
+                      aria-label={`Image — leave for ${
+                        lastWritingMode === "say" ? "Say" : "Do"
+                      }`}
+                      onClick={() => onModeChange(lastWritingMode)}
+                    />
+                  }
+                >
+                  <ImagePlus />
+                  Image
+                  <X aria-hidden className="size-3 opacity-60" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  Back to {lastWritingMode === "say" ? "Say" : "Do"}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <div className="flex items-center gap-0.5">
+                {MODES.map((kind) => {
+                  const selected = kind.value === active.value
+                  return (
+                    <Tooltip key={kind.value}>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant={selected ? "secondary" : "ghost"}
+                            size="icon-sm"
+                            // --secondary and --muted are the same value, so a
+                            // secondary fill alone is exactly what ghost:hover
+                            // looks like: hovering the unarmed move would make
+                            // both buttons identical at the moment of choosing.
+                            // The border and the full-contrast icon are the cues
+                            // hover cannot imitate.
+                            className={cn(
+                              selected
+                                ? "border-border text-foreground"
+                                : "text-muted-foreground"
+                            )}
+                            aria-label={kind.label}
+                            aria-pressed={selected}
+                            onClick={() => onModeChange(kind.value)}
+                          />
+                        }
+                      >
+                        <kind.icon />
+                      </TooltipTrigger>
+                      {/* Tab takes you to the other WRITING move, so only an
                         unarmed Do/Say advertises it — Image is not on Tab. */}
-                    <TooltipContent>
-                      {selected || kind.value === "image"
-                        ? kind.label
-                        : `${kind.label} (Tab)`}
-                    </TooltipContent>
-                  </Tooltip>
-                )
-              })}
-            </div>
+                      <TooltipContent>
+                        {selected || kind.value === "image"
+                          ? kind.label
+                          : `${kind.label} (Tab)`}
+                      </TooltipContent>
+                    </Tooltip>
+                  )
+                })}
+              </div>
+            )}
 
             <div className="flex-1" />
 
@@ -828,111 +993,43 @@ export function Composer({
 
             {/* Retry and Continue are moves on PROSE — there is no "continue"
                 for a picture, and retrying one is done on the picture itself.
-                In image mode those slots become the picture's own controls:
-                the frame, the style, the assistance switch and the wand. The
-                row is two buttons wider here than in Do/Say, which is the
-                honest shape — an image send has more to say about it — and
-                nothing inside image mode moves as the send slot cycles. */}
+                In image mode the pair collapses to one slot: the re-develop.
+                Both rows are now the same width, and nothing inside image mode
+                moves as the send slot cycles.
+
+                The re-develop. With a brief it buys another expansion of it; with
+                the brief empty it is the older gesture — describe whatever the
+                story has just reached — which is the one place an empty
+                composer may still spend money, because here the writer asked
+                for it by name. */}
             {isImage ? (
-              <>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Frame: ${aspectRatio}`}
-                        onClick={() =>
-                          onAspectRatioChange(
-                            IMAGE_ASPECT_RATIOS[
-                              (IMAGE_ASPECT_RATIOS.indexOf(aspectRatio) + 1) %
-                                IMAGE_ASPECT_RATIOS.length
-                            ]
-                          )
-                        }
-                      />
-                    }
-                  >
-                    <RectangleHorizontal
-                      className={ASPECT_ICON_ROTATION[aspectRatio]}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={
+                        brief === ""
+                          ? "Write a prompt from the story"
+                          : "Develop this brief again"
+                      }
+                      disabled={!imageAssisted || deriving || imageBusy}
+                      onClick={onDevelop}
                     />
-                  </TooltipTrigger>
-                  <TooltipContent>Frame {aspectRatio}</TooltipContent>
-                </Tooltip>
-
-                <StyleButton
-                  style={imageStyle}
-                  onStyleChange={onImageStyleChange}
-                />
-
-                {/* Assistance, as a switch rather than a setting: it changes
-                    what the very next ↵ costs, so it belongs under the thumb
-                    that is about to press it. Pressed means "the model helps",
-                    which is the state the icon shows. */}
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant={imageAssisted ? "secondary" : "ghost"}
-                        size="icon-sm"
-                        className={cn(
-                          imageAssisted
-                            ? "border-border text-foreground"
-                            : "text-muted-foreground"
-                        )}
-                        aria-label={
-                          imageAssisted
-                            ? "Assisted — the model expands your brief"
-                            : "Verbatim — your words go as written"
-                        }
-                        aria-pressed={imageAssisted}
-                        disabled={deriving || imageBusy}
-                        onClick={() => onImageAssistedChange(!imageAssisted)}
-                      />
-                    }
-                  >
-                    {imageAssisted ? <WandSparkles /> : <PenLine />}
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {imageAssisted
-                      ? "Assisted — ↵ develops, then draws"
-                      : "Verbatim — ↵ draws your words as written"}
-                  </TooltipContent>
-                </Tooltip>
-
-                {/* The re-develop. With a brief it buys another expansion of
-                    it; with the brief empty it is the older gesture — describe
-                    whatever the story has just reached — which is the one place
-                    an empty composer may still spend money, because here the
-                    writer asked for it by name. */}
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={
-                          brief === ""
-                            ? "Write a prompt from the story"
-                            : "Develop this brief again"
-                        }
-                        disabled={!imageAssisted || deriving || imageBusy}
-                        onClick={onDevelop}
-                      />
-                    }
-                  >
-                    <RotateCcw className={cn(deriving && "animate-pulse")} />
-                  </TooltipTrigger>
-                  {/* Says outright that this spends money. Nothing here
+                  }
+                >
+                  <RotateCcw className={cn(deriving && "animate-pulse")} />
+                </TooltipTrigger>
+                {/* Says outright that this spends money. Nothing here
                       develops on its own precisely so the writer is the one who
                       decides to pay for it. */}
-                  <TooltipContent>
-                    {brief === ""
-                      ? "Write a prompt from the story · costs a call"
-                      : "Develop again · costs a call"}
-                  </TooltipContent>
-                </Tooltip>
-              </>
+                <TooltipContent>
+                  {brief === ""
+                    ? "Write a prompt from the story · costs a call"
+                    : "Develop again · costs a call"}
+                </TooltipContent>
+              </Tooltip>
             ) : (
               <>
                 <RetryButton
@@ -1075,8 +1172,10 @@ export function Composer({
  * A popover rather than a row of choices, because style is chosen rarely and
  * then left alone for a whole story — it is remembered per story on the draft
  * row — while the composer's other controls are pressed several times a
- * paragraph. The trigger carries the state at a glance: filled when a style is
- * set, ghost when none is.
+ * paragraph. The trigger sits on the caption line and carries the state as a
+ * word: the preset's name, "Custom" for a hand-written one, "No style" for
+ * none — which is the whole reason the settings moved off the toolbar. A
+ * filled palette icon could only ever say that something was set.
  *
  * Custom is a field rather than a thirteenth preset because the presets are a
  * starting point, not a taxonomy. Typing in it clears the preset selection by
@@ -1091,7 +1190,7 @@ function StyleButton({
   onStyleChange: (style: string | null) => void
 }) {
   const active = IMAGE_STYLE_PRESETS.find((preset) => preset.text === style)
-  const label = active?.label ?? (style === null ? "None" : "Custom")
+  const label = active?.label ?? (style === null ? "No style" : "Custom")
 
   // Controlled so a preset can CLOSE it: picking from a short list is a
   // one-tap decision, and a popover that lingers afterwards demands a second
@@ -1110,21 +1209,20 @@ function StyleButton({
           render={
             <PopoverTrigger
               render={
-                <Button
-                  variant={style === null ? "ghost" : "secondary"}
-                  size="icon-sm"
-                  className={cn(
-                    style === null
-                      ? "text-muted-foreground"
-                      : "border-border text-foreground"
-                  )}
+                <button
+                  type="button"
                   aria-label={`Style: ${label}`}
+                  className={cn(
+                    CAPTION_ITEM,
+                    style !== null && "text-foreground"
+                  )}
                 />
               }
             />
           }
         >
-          <Palette />
+          <Palette aria-hidden className="size-3" />
+          {label}
         </TooltipTrigger>
         <TooltipContent>Style — {label}</TooltipContent>
       </Tooltip>
@@ -1139,7 +1237,7 @@ function StyleButton({
               style === null ? "text-foreground" : "text-muted-foreground"
             )}
           >
-            None
+            No style
           </button>
           {IMAGE_STYLE_PRESETS.map((preset) => (
             <button
