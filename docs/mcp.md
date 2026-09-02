@@ -7,9 +7,12 @@ a passage. Every write goes through the same journal and sync bus as the UI,
 so a passage written by an agent is undoable in the app and appears in every
 open browser as it lands.
 
-The endpoint speaks the stateless revision of the MCP spec (2026-07-28) over
-streamable HTTP. Each request stands on its own — no session to open, nothing
-to keep alive between calls — so any client that can reach the URL can use it.
+The endpoint speaks MCP revision 2026-07-28 over streamable HTTP, the
+revision that made the protocol stateless: no session id, no handshake, each
+request standing on its own. Clients on the earlier streamable HTTP revisions
+still connect — the SDK answers both — so any client that can reach the URL
+can use it.
+
 There is no auth: the endpoint answers only to `localhost` and to the hostnames
 in `MCP_ALLOWED_HOSTS`, which is the DNS-rebinding guard that keeps a web page
 you visit from driving `delete_story` through your browser.
@@ -27,6 +30,9 @@ hostname, a Tailscale name — needs that name in `MCP_ALLOWED_HOSTS` in
 claude mcp add --transport http draft-zero http://localhost:3000/api/mcp
 ```
 
+That registers the server for the directory you run it in. Add `--scope user`
+before the URL to have it in every project.
+
 **Codex CLI**
 
 ```bash
@@ -42,24 +48,34 @@ url = "http://localhost:3000/api/mcp"
 
 **Claude Desktop**
 
-The desktop app configures local servers as commands, so bridge the URL with
-`mcp-remote`. In `claude_desktop_config.json` (Settings → Developer → Edit
-Config):
+The desktop app's *Add custom connector* connects from Anthropic's cloud, not
+from your machine, so it cannot reach a localhost URL and will not accept a
+plain `http://` one. Attach the server as a local command instead, bridged by
+[`mcp-remote`](https://github.com/geelen/mcp-remote) (community tooling, not
+Anthropic's). Open the Claude menu → Settings… → Developer → Edit Config and
+add to `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "draft-zero": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:3000/api/mcp"]
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://localhost:3000/api/mcp",
+        "--allow-http",
+        "--transport",
+        "http-only"
+      ]
     }
   }
 }
 ```
 
-If the app runs on a hostname the desktop can reach directly, Settings →
-Connectors → Add custom connector takes the URL as is; put that hostname in
-`MCP_ALLOWED_HOSTS` first.
+`--allow-http` is required for a non-HTTPS URL; `--transport http-only` skips
+the fall-back probe for the deprecated SSE transport. Restart the app after
+saving.
 
 ## Tools
 
