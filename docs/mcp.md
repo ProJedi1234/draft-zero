@@ -31,7 +31,8 @@ claude mcp add --transport http draft-zero http://localhost:3000/api/mcp
 ```
 
 That registers the server for the directory you run it in. Add `--scope user`
-before the URL to have it in every project.
+before the URL to have it in every project. The Code tab in the Claude
+Desktop app reads the same configuration, so this one command covers both.
 
 **Codex CLI**
 
@@ -48,9 +49,10 @@ url = "http://localhost:3000/api/mcp"
 
 **Claude Desktop**
 
-The desktop app's *Add custom connector* connects from Anthropic's cloud, not
-from your machine, so it cannot reach a localhost URL and will not accept a
-plain `http://` one. Attach the server as a local command instead, bridged by
+The desktop app runs local MCP servers, but only as spawned commands:
+`claude_desktop_config.json` has no URL form, and *Add custom connector*
+connects from Anthropic's cloud rather than your machine, so a localhost URL
+cannot work there. For the chat surface, bridge the URL with
 [`mcp-remote`](https://github.com/geelen/mcp-remote) (community tooling, not
 Anthropic's). Open the Claude menu → Settings… → Developer → Edit Config and
 add to `claude_desktop_config.json`:
