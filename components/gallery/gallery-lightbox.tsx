@@ -141,8 +141,13 @@ export function GalleryLightbox({
   )
 
   React.useEffect(() => {
-    const onResize = () =>
+    const onResize = () => {
+      // Not while pinch-zoomed: on iOS innerWidth/innerHeight track the VISUAL
+      // viewport, so a zoom would shrink the resting rect and walk the picture
+      // off into a corner, chased by the rect transition.
+      if ((window.visualViewport?.scale ?? 1) > 1) return
       setViewport({ vw: window.innerWidth, vh: window.innerHeight })
+    }
     window.addEventListener("resize", onResize)
     return () => window.removeEventListener("resize", onResize)
   }, [])
