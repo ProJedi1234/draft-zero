@@ -55,9 +55,14 @@ export function ViewportHeightSync() {
         root.style.setProperty("--app-h", `${viewport.height}px`)
         window.scrollTo(0, 0)
       } else if (isStandalone()) {
-        root.style.setProperty("--app-h", `${layout}px`)
-        // Undo any displacement already applied.
-        if (window.scrollY !== 0) window.scrollTo(0, 0)
+        // Nothing while pinch-zoomed: iOS reports innerHeight against the
+        // VISUAL viewport, so republishing would divide the shell by the
+        // reader's own scale, and the un-pan would fight their pan. Zoom is
+        // transient — hold the last good measurement until they come back.
+        if (viewport.scale <= 1) {
+          root.style.setProperty("--app-h", `${layout}px`)
+          if (window.scrollY !== 0) window.scrollTo(0, 0)
+        }
       } else {
         root.style.removeProperty("--app-h")
       }
