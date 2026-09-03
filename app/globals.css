@@ -95,6 +95,51 @@
 }
 
 /*
+ * The manuscript skeleton: ruled lines with a highlight travelling along them
+ * while a story's payload is still in flight.
+ *
+ * Written in --skeleton-sheen, so the wait already wears the story's colour —
+ * the store learns the tint at the same moment it learns the title, well before
+ * the manuscript arrives. At strength 0 the sheen is neutral, so an untinted
+ * story gets the same sweep in grey rather than no sweep at all.
+ *
+ * The gradient is twice the width of the line it travels across, which is what
+ * keeps the highlight soft at both ends; sized to the element it would arrive
+ * and leave on a hard edge. Staggered per line at the call site, so the column
+ * reads as one wave rather than eleven pulses that happen to share a clock.
+ *
+ * Deliberately brisk. This is on screen for a few hundred milliseconds on the
+ * loads that show it at all, so a sweep tuned to look calm over four seconds
+ * would never finish a pass and would read as a static bar with a smudge.
+ */
+@keyframes line-sweep {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
+.skeleton-line {
+  background-color: color-mix(in oklch, var(--foreground), transparent 90%);
+  background-image: linear-gradient(90deg, transparent 25%, var(--skeleton-sheen) 50%, transparent 75%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: line-sweep 1.5s ease-in-out infinite;
+}
+
+/* The rule alone still says "not yet", and says it without moving. The image
+   goes too: parked at its resting position it is a highlight frozen mid-line,
+   which reads as a rendering fault rather than a pause. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line {
+    background-image: none;
+    animation: none;
+  }
+}
+
+/*
  * The atmosphere picker reading the scene: a square outline that breathes on
  * the sparkle swatch's own border.
  *
@@ -497,6 +542,12 @@
        replaces; at full strength it is the tint's most saturated appearance
        anywhere in the app, which is why the writer's own words carry it. */
     --story-accent: oklch(calc(0.205 + 0.295 * var(--story-c)) calc(0.105 * var(--story-c)) var(--story-h) / calc(40% + 35% * var(--story-c)));
+    /* The skeleton's travelling highlight. Its own token rather than
+       --story-accent, which is built to contrast with the PAGE and so lands
+       DARKER than a skeleton line here — a shadow dragged across the column
+       rather than a shine. This one only ever brightens: it carries the line
+       back up to paper, so the highlight is the rule briefly vanishing. */
+    --skeleton-sheen: oklch(calc(1 - 0.02 * var(--story-c)) calc(0.09 * var(--story-c)) var(--story-h) / 90%);
 }
 
 /*
@@ -552,6 +603,10 @@
     --ambient-glow: oklch(calc(0.145 + 0.105 * var(--story-c)) calc(0.11 * var(--story-c)) var(--story-h));
     --ambient-edge: oklch(calc(0.145 - 0.05 * var(--story-c)) calc(0.05 * var(--story-c)) var(--story-h));
     --story-accent: oklch(calc(0.922 - 0.182 * var(--story-c)) calc(0.16 * var(--story-c)) var(--story-h) / calc(40% + 30% * var(--story-c)));
+    /* Same job, far less of it: the line is already a light rule on a dark page,
+       so the sheen only has to lift it, and the alpha that reads as a shine
+       there would read as a solid white bar in light mode. */
+    --skeleton-sheen: oklch(calc(0.92 - 0.06 * var(--story-c)) calc(0.13 * var(--story-c)) var(--story-h) / 22%);
 }
 
 /*
