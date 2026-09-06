@@ -101,7 +101,10 @@ function SheetContent({
             render={
               <Button
                 variant="ghost"
-                className="absolute top-4 right-4 bg-secondary"
+                // Positioned against the popup's padding box, so no padding
+                // ever moved this below the status bar; the inset has to be
+                // its own, as DialogContent's sheet close already has it.
+                className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 bg-secondary"
                 size="icon-sm"
               />
             }
