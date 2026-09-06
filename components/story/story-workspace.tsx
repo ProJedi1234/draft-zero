@@ -230,7 +230,7 @@ export function StoryWorkspace({
             three-quarter-width slot with the manuscript still showing. */}
         <SheetContent
           side="right"
-          className="gap-0 pt-[env(safe-area-inset-top)] lg:hidden"
+          className="gap-0 lg:hidden"
           style={{ "--sheet-width": "20rem" } as React.CSSProperties}
         >
           <SheetHeader className="border-b p-4">

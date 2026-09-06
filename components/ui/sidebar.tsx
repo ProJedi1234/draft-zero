@@ -235,14 +235,10 @@ function Sidebar({
             <SheetTitle>Sidebar</SheetTitle>
             <SheetDescription>Displays the mobile sidebar.</SheetDescription>
           </SheetHeader>
-          {/*
-            Safe-area padding on the inner column, not on SheetContent: the
-            sheet paints bg-sidebar, so padding it would leave the strip under
-            the status bar unpainted and reintroduce the hard line this is
-            meant to remove. Padding inside means the background bleeds to the
-            top edge while the contents start below the clock.
-          */}
-          <div className="flex h-full w-full flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+          {/* The top inset is SheetContent's: its column starts below the
+              clock while the popup paints to the edge. The bottom one is
+              ours, since the column leaves that edge to its contents. */}
+          <div className="flex h-full w-full flex-col pb-[env(safe-area-inset-bottom)]">
             {children}
           </div>
         </SheetContent>
