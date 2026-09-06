@@ -8,6 +8,7 @@ import { Meter } from "@/components/ui/meter"
 import { describeContext } from "@/lib/generation/breakdown"
 import { composeContext } from "@/lib/generation/context"
 import { settingsSummaryParts } from "@/lib/settings-summary"
+import { cn } from "@/lib/utils"
 import {
   contextWindowLabel,
   type GenerationSummaryIdentity,
@@ -25,7 +26,9 @@ import {
  * same way. Pinning them also fixes an ordering bug: the meter used to sit
  * ABOVE memory and the author's note, scrolling out of view exactly as the
  * writer began changing the numbers it was counting. Here it stays on screen
- * while they type.
+ * while they type — except on a phone with the keyboard up, where the sheet
+ * hides it (see InspectorSections): a fifth of the space above the keyboard
+ * is too much to spend on a readout while typing.
  */
 export function StatusStrip({
   story,
@@ -35,6 +38,7 @@ export function StatusStrip({
   identity,
   zdr,
   onModelClick,
+  className,
 }: {
   story: Story
   lorebookEntries: LorebookEntry[]
@@ -56,13 +60,19 @@ export function StatusStrip({
   zdr: boolean
   /** Jump to the segment that owns these settings. */
   onModelClick: () => void
+  className?: string
 }) {
   const parts = settingsSummaryParts(identity, models)
 
   return (
     // The safe-area pad moved here from the scroll body: this is the app's
     // bottom edge now, and the scroll no longer reaches it.
-    <div className="shrink-0 space-y-1.5 border-t bg-muted/40 px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+    <div
+      className={cn(
+        "shrink-0 space-y-1.5 border-t bg-muted/40 px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]",
+        className
+      )}
+    >
       <button
         type="button"
         onClick={onModelClick}

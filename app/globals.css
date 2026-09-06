@@ -5,6 +5,14 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * A sheet being typed into with the software keyboard up. ViewportHeightSync
+ * sets data-keyboard; :focus-within keeps it to the sheet that holds the
+ * field, so an iPad typing into the composer beside the desktop inspector
+ * leaves that panel alone.
+ */
+@custom-variant sheet-typing ([data-keyboard="up"] [data-slot="sheet-content"]:focus-within &);
+
+/*
  * The story tint. A story contributes exactly two numbers — a hue, and a
  * strength from 0 to 1 — and every token below is written as
  * oklch(L, budget * strength, hue). At strength 0 every product is zero and the
