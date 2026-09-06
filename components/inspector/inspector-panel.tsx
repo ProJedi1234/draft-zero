@@ -198,7 +198,10 @@ function InspectorSections({
         onValueChange={(next) => onTabChange(next as InspectorTab)}
         className="flex min-h-0 flex-1 flex-col gap-0"
       >
-        <div className="shrink-0 px-3 pt-3">
+        {/* Gone while a phone keyboard is up, with the strip below: chrome was
+            half the space above the keyboard, and nobody switches segments
+            mid-sentence. */}
+        <div className="shrink-0 px-3 pt-3 sheet-typing:hidden">
           <TabsList className="h-9 w-full">
             <TabsTrigger value="prompt" className="px-2 text-[0.6875rem]">
               Prompt
@@ -295,6 +298,7 @@ function InspectorSections({
         }}
         zdr={settings.zdr || accountEnforced}
         onModelClick={() => onTabChange("model")}
+        className="sheet-typing:hidden"
       />
     </>
   )

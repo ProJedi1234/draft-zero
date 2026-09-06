@@ -106,7 +106,10 @@ function NarratorForm({
           <Textarea
             id={`${uid}-system-prompt`}
             value={value}
-            className="min-h-64 font-mono text-xs max-sm:min-h-full"
+            // text-base below md, like Input, Textarea and CommandInput: iOS
+            // zooms the whole page when a focused field is under 16px, and the
+            // prompt box was the last field in the app still under it.
+            className="min-h-64 font-mono text-base max-sm:min-h-full md:text-xs"
             // The built-in prompt as placeholder: it is what actually runs when
             // the field is empty, so it belongs in the box, greyed out.
             placeholder={DEFAULT_SYSTEM_PROMPT}

@@ -58,6 +58,17 @@ function SheetContent({
    * The panel width is a variable rather than a class because these classes are
    * data-attribute-scoped: a plain `sm:w-*` from a caller loses on specificity
    * no matter where it lands in the class list. Callers set --sheet-width.
+   *
+   * A side sheet is two boxes: the popup paints the full layout viewport, and
+   * the column inside it holds the content to --app-h — the visible height,
+   * which ViewportHeightSync shortens while the software keyboard is up because
+   * iOS pans the layout viewport for the keyboard rather than shrinking it.
+   * Sized to the layout viewport, the sheet kept its lower half behind the
+   * keyboard, and the scroller inside was sized to that same box, so its
+   * content still fit and there was nothing to scroll down to. Sized to
+   * --app-h outright, it ended at the visible edge and the scrim showed
+   * through Safari's glass toolbar as a grey hole. The popup keeps painting
+   * under the toolbar; the column is what fits above it.
    */
   return (
     <SheetPortal>
@@ -71,14 +82,29 @@ function SheetContent({
         )}
         {...props}
       >
-        {children}
+        {/* Safe-area padding lives on the column, not the popup: the popup is
+            the paint, and padding it would leave the strip under the status
+            bar unpainted. */}
+        <div
+          data-slot="sheet-column"
+          className={cn(
+            side === "left" || side === "right"
+              ? "flex h-[var(--app-h,100dvh)] min-h-0 flex-col pt-[env(safe-area-inset-top)]"
+              : "contents"
+          )}
+        >
+          {children}
+        </div>
         {showCloseButton && (
           <SheetPrimitive.Close
             data-slot="sheet-close"
             render={
               <Button
                 variant="ghost"
-                className="absolute top-4 right-4 bg-secondary"
+                // Positioned against the popup's padding box, so no padding
+                // ever moved this below the status bar; the inset has to be
+                // its own, as DialogContent's sheet close already has it.
+                className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 bg-secondary"
                 size="icon-sm"
               />
             }
