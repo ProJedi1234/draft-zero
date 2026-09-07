@@ -214,16 +214,11 @@ describe("the muted chips as draft state", () => {
   })
 })
 
-// The read path. A composer does not only hear about the row — it also reads
-// it: on reconnect, and in every workspace payload. That second caller is why
-// this rule exists as its own function. The workspace paints from a disk cache
-// first, and the cache's copy of the row is a snapshot taken whenever that
-// story was last fetched: 600 ms behind the keystrokes at best, and a whole
-// sent move behind when the writer sent and navigated away before the next
-// fetch. The editor seeds from that copy and ignores later payload props by
-// design, so a stale seed used to be the last word for the life of the mount —
-// the reader came back to a story to find a truncated ghost of a move they had
-// already sent.
+// The read path: a composer does not only hear about the row, it also reads it
+// — on reconnect, and in every workspace payload. The payload's copy comes off
+// a disk cache that lags the row, so a stale seed used to be the last word for
+// the life of the mount: the writer returned to a story to find a truncated
+// ghost of a move they had already sent.
 describe("draftReadVerdict", () => {
   const V1 = "2026-08-28T12:00:10.000Z"
   const V2 = "2026-08-28T12:00:11.000Z"
@@ -255,10 +250,7 @@ describe("draftReadVerdict", () => {
   })
 
   test("a local write in flight outranks a read, however new the row", () => {
-    // The whole point of the guard: the writer typed during the round-trip, so
-    // this row is one the server has not been told about yet. Taking it would
-    // roll the composer backwards under their hands — the failure the disk
-    // cache fix must not introduce while removing its own.
+    // The writer typed during the round-trip, so this row predates them.
     expect(
       draftReadVerdict(
         { updatedAt: V2 },
@@ -267,10 +259,18 @@ describe("draftReadVerdict", () => {
     ).toBe("ignore")
   })
 
-  test("no row clears the composer", () => {
+  test("no row clears a composer that has never seen one", () => {
     // A cleared draft leaves a row behind for its mode, so absence means never
     // touched: whatever is on screen is a save that never landed.
     expect(draftReadVerdict(null, read)).toBe("clear")
+  })
+
+  test("no row does not clear a draft we have already seen", () => {
+    // A read can resolve after an event: the probe fires, another device types,
+    // its draft lands, and only then does a 204 from before the row existed
+    // arrive. Rows are upserted and never deleted, so absence at a known
+    // version is stale news — clearing here would wipe what just arrived.
+    expect(draftReadVerdict(null, { ...read, version: V1 })).toBe("ignore")
   })
 
   test("no row does not outrank a write in flight either", () => {

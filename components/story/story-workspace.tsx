@@ -277,11 +277,7 @@ function StoryEditor({
   story: Story
   /** The unsent draft the DB holds — seeded once at mount, live after that. */
   composerDraft: ComposerDraft | null
-  /**
-   * The same row as the server last stated it, which is NOT always the seed
-   * above: the workspace paints from a disk cache first, and that copy of the
-   * row is as old as this story's last fetch. Reconciled below.
-   */
+  /** The same row as the server last stated it — not always the seed above. */
   serverDraft: ServerDraft | null
   /** For the brief's lore chips, matched here rather than on the server. */
   lorebookEntries: LorebookEntry[]
@@ -305,9 +301,8 @@ function StoryEditor({
   // live channel, and re-seeding from a refetch would be a second, slower
   // opinion arriving out of order.
   //
-  // The seed itself is the one thing that can be wrong, because it may have
-  // come off the disk cache — see the serverDraft effect below, which is how a
-  // read of the row corrects it without reopening the door to that re-seed.
+  // The seed itself can still be wrong, because it may have come off the disk
+  // cache; the serverDraft effect below corrects that without re-seeding.
   //
   // Mode is owned here now, per story, where it used to be the workspace's:
   // once the armed move syncs and is remembered per story, it IS story state,
@@ -389,14 +384,9 @@ function StoryEditor({
   })
   const publishDraft = draftSync.publish
   const flushDraft = draftSync.flush
-  // What the seed above cannot do for itself: the payload it came from may be
-  // the disk cache's, whose copy of the row is as old as this story's last
-  // fetch — a debounce behind the keystrokes at best, and a whole sent move
-  // behind after a send the writer navigated away from. The fetch that
-  // corrects the manuscript carries the row too; hand it to the same
-  // arbitration every other read goes through, where a save of ours in flight
-  // and a version we have already seen both turn it away. A no-op whenever the
-  // cache was right, which is nearly always.
+  // The seed may be the disk cache's, which lags the row by a debounce at best
+  // and by a whole sent move at worst. The fetch that corrects the manuscript
+  // carries the row too — a no-op whenever the cache was right.
   const reconcileDraft = draftSync.reconcile
   React.useEffect(() => {
     if (serverDraft === null) return

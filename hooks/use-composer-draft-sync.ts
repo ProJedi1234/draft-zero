@@ -20,8 +20,8 @@
 //   is on display, or racing a save of ours that has not resolved —
 //   shouldAdoptDraft in lib/sync/draft.ts is that decision, and its test file
 //   is the specification. A row READ rather than announced — the reconnect
-//   probe's, or the one the workspace payload carries — goes through
-//   reconcile() below under the same rule.
+//   probe's, or the workspace payload's — goes through reconcile() under
+//   draftReadVerdict, the same rule with the origin test dropped.
 //
 // Two devices typing in the same composer at once resolve last-writer-wins by
 // server arrival order. That is the honest contract for a textarea: there is
@@ -75,11 +75,8 @@ export function useComposerDraftSync({
    */
   flush: () => void
   /**
-   * Square the composer with a row read straight from the server. The caller
-   * hands it whatever the workspace payload carried; null is "no row at all".
-   * Cheap and idempotent — a row this device has already seen is a no-op — so
-   * a caller with a fresh read and no idea whether it says anything new should
-   * just call it.
+   * Square the composer with a row read from the server; null is "no row".
+   * Idempotent — a row already seen is a no-op — so call it on any fresh read.
    */
   reconcile: (row: ComposerDraft | null) => void
 } {
@@ -161,19 +158,9 @@ export function useComposerDraftSync({
     [storyId, adopt]
   )
 
-  /**
-   * Adopt a row READ from the server, as opposed to one announced over the
-   * wire. Same arbitration as an incoming event (shouldAdoptDraft) minus the
-   * origin check — a read cannot be our own echo — so a save of ours still
-   * travelling wins, and a row no newer than what is on display is turned away.
-   *
-   * Two callers, for the same reason: the composer's copy of the row can be
-   * older than the row. The resync probe covers events missed while the socket
-   * was down; the workspace payload covers a composer seeded from the disk
-   * cache, which is a snapshot of the row taken whenever that story was last
-   * fetched and is therefore routinely a debounce behind what the writer
-   * actually typed.
-   */
+  // Two callers, one reason: this device's copy of the row can be older than
+  // the row. The probe covers events missed while the socket was down; the
+  // workspace payload covers a composer seeded from the disk cache.
   const reconcile = React.useCallback(
     (row: ComposerDraft | null) => {
       const verdict = draftReadVerdict(row, {
@@ -181,7 +168,7 @@ export function useComposerDraftSync({
         version: versionRef.current,
       })
       if (verdict === "ignore") return
-      // A null row IS the clear verdict; the second test is for the compiler.
+      // A null row IS "clear"; the second test is for the compiler.
       if (verdict === "clear" || row === null) {
         adopt({ text: "" })
         return

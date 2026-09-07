@@ -24,16 +24,10 @@ export type WorkspaceState = "ready" | "loading" | "missing" | "error"
 
 /**
  * The composer draft as the SERVER last stated it, reported apart from the
- * payload because the payload is usually the cache's.
- *
- * Every other field here is server-owned and a stale copy of it is harmless
- * until the correction lands — the trade the whole cache is built on. The
- * draft is not: it is written by the composer on a 600 ms debounce, so a
- * cached payload holds the row as of whenever this story was last fetched,
- * which is routinely a few keystrokes behind (and, after a send, a whole move
- * behind). The editor seeds its state once at mount and ignores later payload
- * props by design, so without this the cache's snapshot would be the last word
- * for the life of the mount. See useComposerDraftSync's reconcile().
+ * payload because the payload is usually the cache's — and the cache's copy of
+ * this one field is written by the composer on a debounce, so it lags the row
+ * rather than the other way round. The editor seeds once and ignores later
+ * payload props, so it needs the correction here. See reconcile().
  */
 export interface ServerDraft {
   storyId: string
@@ -58,9 +52,9 @@ export function useWorkspacePayload(
   const isPendingCreate = view.storyById.get(storyId)?.pending === true
 
   const [current, setCurrent] = React.useState(() => seed(storyId))
-  // Null until a fetch for THIS story answers. The identity is stable while
-  // the row is: the workspace is memoised, and a new object per fetch would
-  // re-render the whole manuscript every time a refresh confirmed nothing.
+  // Null until a fetch for THIS story answers. Identity is stable while the
+  // row is: the workspace is memoised, and a new object per fetch would
+  // re-render the manuscript every time a refresh confirmed nothing.
   const [serverDraft, setServerDraft] = React.useState<ServerDraft | null>(null)
 
   // Adjusting state during render rather than keying the component: a key on
@@ -100,8 +94,7 @@ export function useWorkspacePayload(
 
       if (outcome.kind === "ok") {
         // Reported even when the payload below is judged identical: that
-        // comparison is against what is ON SCREEN, which may be the cache's,
-        // and this is the only signal that the server has now spoken.
+        // comparison is against what is on screen, which may be the cache's.
         setServerDraft((prev) =>
           prev !== null &&
           prev.storyId === storyId &&
