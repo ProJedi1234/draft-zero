@@ -103,3 +103,23 @@ export function shouldAdoptDraft(
   if (ctx.version !== null && event.version <= ctx.version) return false
   return true
 }
+
+/**
+ * What to do with a draft row READ from the server rather than announced over
+ * it — the reconnect probe's read, and the one every workspace payload carries.
+ * Same arbitration as an event minus the origin test (a read has no author),
+ * plus the one answer an event cannot give: "clear", the absence of a row.
+ */
+export function draftReadVerdict(
+  row: { updatedAt: string } | null,
+  ctx: Pick<DraftAdoptContext, "pending" | "version">
+): "ignore" | "clear" | "take" {
+  // Our own write outranks a read as it does an event: this row predates it.
+  if (ctx.pending !== null) return "ignore"
+  // Absence only means "never touched" while we have never seen a version. A
+  // row is upserted and never deleted, so once one is known, a read that says
+  // there is none is a read older than what we are showing.
+  if (row === null) return ctx.version === null ? "clear" : "ignore"
+  if (ctx.version !== null && row.updatedAt <= ctx.version) return "ignore"
+  return "take"
+}

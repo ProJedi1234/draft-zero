@@ -22,6 +22,7 @@ import {
   useComposerDraftSync,
   type AdoptedDraft,
 } from "@/hooks/use-composer-draft-sync"
+import type { ServerDraft } from "@/hooks/use-workspace-payload"
 import {
   useGeneration,
   type GenerationController,
@@ -68,6 +69,7 @@ const useIsomorphicLayoutEffect =
 export function StoryWorkspace({
   story,
   composerDraft,
+  serverDraft,
   lorebookEntries,
   models,
   imageModels,
@@ -81,6 +83,8 @@ export function StoryWorkspace({
   story: Story
   /** The unsent composer text as the DB last saw it — the editor's seed. */
   composerDraft: ComposerDraft | null
+  /** The same row as the SERVER last stated it; null until a fetch answers. */
+  serverDraft: ServerDraft | null
   lorebookEntries: LorebookEntry[]
   models: OpenRouterModel[]
   /** The image catalog — a separate endpoint and a separate shape; see lib/images/models.ts. */
@@ -197,6 +201,7 @@ export function StoryWorkspace({
             key={story.id}
             story={story}
             composerDraft={composerDraft}
+            serverDraft={serverDraft}
             lorebookEntries={lorebookEntries}
             models={models}
             profiles={profiles}
@@ -259,6 +264,7 @@ export function StoryWorkspace({
 function StoryEditor({
   story,
   composerDraft,
+  serverDraft,
   lorebookEntries,
   models,
   profiles,
@@ -271,6 +277,8 @@ function StoryEditor({
   story: Story
   /** The unsent draft the DB holds — seeded once at mount, live after that. */
   composerDraft: ComposerDraft | null
+  /** The same row as the server last stated it — not always the seed above. */
+  serverDraft: ServerDraft | null
   /** For the brief's lore chips, matched here rather than on the server. */
   lorebookEntries: LorebookEntry[]
   /** For the retry menu's one-line summary of each profile. */
@@ -292,6 +300,9 @@ function StoryEditor({
   // composerDraft props, and they are deliberately ignored: the wire is the
   // live channel, and re-seeding from a refetch would be a second, slower
   // opinion arriving out of order.
+  //
+  // The seed itself can still be wrong, because it may have come off the disk
+  // cache; the serverDraft effect below corrects that without re-seeding.
   //
   // Mode is owned here now, per story, where it used to be the workspace's:
   // once the armed move syncs and is remembered per story, it IS story state,
@@ -373,6 +384,15 @@ function StoryEditor({
   })
   const publishDraft = draftSync.publish
   const flushDraft = draftSync.flush
+  // The seed may be the disk cache's, which lags the row by a debounce at best
+  // and by a whole sent move at worst. The fetch that corrects the manuscript
+  // carries the row too — a no-op whenever the cache was right.
+  const reconcileDraft = draftSync.reconcile
+  React.useEffect(() => {
+    if (serverDraft === null) return
+    if (serverDraft.storyId !== story.id) return
+    reconcileDraft(serverDraft.draft)
+  }, [reconcileDraft, serverDraft, story.id])
   /** The whole unsent state as the other devices should see it right now. */
   const draftPayload = React.useCallback(
     (): DraftPayload => ({

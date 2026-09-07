@@ -31,7 +31,7 @@ export function StoryWorkspaceLoader({
   /** Changes on every server render of the route — see use-workspace-payload. */
   revision: string
 }) {
-  const { payload, state } = useWorkspacePayload(storyId, revision)
+  const { payload, state, serverDraft } = useWorkspacePayload(storyId, revision)
   const view = useStoreView()
   const known = view.storyById.get(storyId)
 
@@ -54,6 +54,7 @@ export function StoryWorkspaceLoader({
     <MemoWorkspace
       story={payload.story}
       composerDraft={payload.composerDraft}
+      serverDraft={serverDraft}
       lorebookEntries={payload.lorebookEntries}
       models={payload.models}
       imageModels={payload.imageModels}
