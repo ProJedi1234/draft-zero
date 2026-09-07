@@ -1,10 +1,12 @@
 // tests/composer-draft.test.ts — the specification for shouldAdoptDraft: which
-// incoming `draft` events a mounted composer writes into its textarea, and for
-// the bounds /api/draft holds an untrusted exclusion list to.
+// incoming `draft` events a mounted composer writes into its textarea; for
+// draftReadVerdict, the same question asked of a row READ from the server; and
+// for the bounds /api/draft holds an untrusted exclusion list to.
 
 import { describe, expect, test } from "bun:test"
 
 import {
+  draftReadVerdict,
   isExcludedLoreIds,
   MAX_EXCLUDED_LORE_IDS,
   MAX_LORE_ID_CHARS,
@@ -209,5 +211,71 @@ describe("the muted chips as draft state", () => {
         pending: payload({ imageExcludedLoreIds: ["lore-1"] }),
       })
     ).toBe(false)
+  })
+})
+
+// The read path. A composer does not only hear about the row — it also reads
+// it: on reconnect, and in every workspace payload. That second caller is why
+// this rule exists as its own function. The workspace paints from a disk cache
+// first, and the cache's copy of the row is a snapshot taken whenever that
+// story was last fetched: 600 ms behind the keystrokes at best, and a whole
+// sent move behind when the writer sent and navigated away before the next
+// fetch. The editor seeds from that copy and ignores later payload props by
+// design, so a stale seed used to be the last word for the life of the mount —
+// the reader came back to a story to find a truncated ghost of a move they had
+// already sent.
+describe("draftReadVerdict", () => {
+  const V1 = "2026-08-28T12:00:10.000Z"
+  const V2 = "2026-08-28T12:00:11.000Z"
+  const read = {
+    pending: null as DraftPayload | null,
+    version: null as string | null,
+  }
+
+  test("takes a row newer than what is on display", () => {
+    // The cache-seeded composer, corrected by the fetch behind it.
+    expect(draftReadVerdict({ updatedAt: V2 }, { ...read, version: V1 })).toBe(
+      "take"
+    )
+  })
+
+  test("takes any row when nothing is on display", () => {
+    expect(draftReadVerdict({ updatedAt: V1 }, read)).toBe("take")
+  })
+
+  test("ignores a row no newer than what is on display", () => {
+    // The common case by far: the cache was right, and re-seating an identical
+    // draft would blink the textarea for nothing.
+    expect(draftReadVerdict({ updatedAt: V1 }, { ...read, version: V1 })).toBe(
+      "ignore"
+    )
+    expect(draftReadVerdict({ updatedAt: V1 }, { ...read, version: V2 })).toBe(
+      "ignore"
+    )
+  })
+
+  test("a local write in flight outranks a read, however new the row", () => {
+    // The whole point of the guard: the writer typed during the round-trip, so
+    // this row is one the server has not been told about yet. Taking it would
+    // roll the composer backwards under their hands — the failure the disk
+    // cache fix must not introduce while removing its own.
+    expect(
+      draftReadVerdict(
+        { updatedAt: V2 },
+        { pending: payload({ text: "half a sentence" }), version: V1 }
+      )
+    ).toBe("ignore")
+  })
+
+  test("no row clears the composer", () => {
+    // A cleared draft leaves a row behind for its mode, so absence means never
+    // touched: whatever is on screen is a save that never landed.
+    expect(draftReadVerdict(null, read)).toBe("clear")
+  })
+
+  test("no row does not outrank a write in flight either", () => {
+    expect(draftReadVerdict(null, { pending: payload(), version: null })).toBe(
+      "ignore"
+    )
   })
 })

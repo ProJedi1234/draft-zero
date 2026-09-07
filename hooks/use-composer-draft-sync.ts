@@ -19,7 +19,9 @@
 //   are written into the state, unless they are our own echo, older than what
 //   is on display, or racing a save of ours that has not resolved —
 //   shouldAdoptDraft in lib/sync/draft.ts is that decision, and its test file
-//   is the specification.
+//   is the specification. A row READ rather than announced — the reconnect
+//   probe's, or the one the workspace payload carries — goes through
+//   reconcile() below under the same rule.
 //
 // Two devices typing in the same composer at once resolve last-writer-wins by
 // server arrival order. That is the honest contract for a textarea: there is
@@ -29,8 +31,12 @@ import * as React from "react"
 
 import { useAutosave } from "@/hooks/use-autosave"
 import { draftRelay, syncClientId } from "@/lib/sync/client"
-import { shouldAdoptDraft, type DraftPayload } from "@/lib/sync/draft"
-import type { ActionResult, ComposerMode } from "@/lib/types"
+import {
+  draftReadVerdict,
+  shouldAdoptDraft,
+  type DraftPayload,
+} from "@/lib/sync/draft"
+import type { ActionResult, ComposerDraft } from "@/lib/types"
 
 /** What the composer is handed to adopt. See the `adopt` prop below. */
 export type AdoptedDraft = Partial<DraftPayload> & { text: string }
@@ -68,6 +74,14 @@ export function useComposerDraftSync({
    * still in flight then would land after it and undo the lane.
    */
   flush: () => void
+  /**
+   * Square the composer with a row read straight from the server. The caller
+   * hands it whatever the workspace payload carried; null is "no row at all".
+   * Cheap and idempotent — a row this device has already seen is a no-op — so
+   * a caller with a fresh read and no idea whether it says anything new should
+   * just call it.
+   */
+  reconcile: (row: ComposerDraft | null) => void
 } {
   const versionRef = React.useRef(initialVersion)
   // The last user payload the server has not acknowledged. Non-null suspends
@@ -147,6 +161,44 @@ export function useComposerDraftSync({
     [storyId, adopt]
   )
 
+  /**
+   * Adopt a row READ from the server, as opposed to one announced over the
+   * wire. Same arbitration as an incoming event (shouldAdoptDraft) minus the
+   * origin check — a read cannot be our own echo — so a save of ours still
+   * travelling wins, and a row no newer than what is on display is turned away.
+   *
+   * Two callers, for the same reason: the composer's copy of the row can be
+   * older than the row. The resync probe covers events missed while the socket
+   * was down; the workspace payload covers a composer seeded from the disk
+   * cache, which is a snapshot of the row taken whenever that story was last
+   * fetched and is therefore routinely a debounce behind what the writer
+   * actually typed.
+   */
+  const reconcile = React.useCallback(
+    (row: ComposerDraft | null) => {
+      const verdict = draftReadVerdict(row, {
+        pending: pendingRef.current,
+        version: versionRef.current,
+      })
+      if (verdict === "ignore") return
+      // A null row IS the clear verdict; the second test is for the compiler.
+      if (verdict === "clear" || row === null) {
+        adopt({ text: "" })
+        return
+      }
+      versionRef.current = row.updatedAt
+      adopt({
+        text: row.text,
+        mode: row.mode,
+        imagePrompt: row.imagePrompt,
+        imageAssisted: row.imageAssisted,
+        imageStyle: row.imageStyle,
+        imageExcludedLoreIds: row.imageExcludedLoreIds,
+      })
+    },
+    [adopt]
+  )
+
   // Events missed while the socket was down are gone for good; one read of the
   // row is their sum. The workspace calls through this ref on every reconnect,
   // the same way it re-probes the run channels.
@@ -157,43 +209,21 @@ export function useComposerDraftSync({
         const res = await fetch(`/api/draft?${params.toString()}`, {
           cache: "no-store",
         })
-        // A save of ours is travelling — its landing will set the row anyway.
-        if (pendingRef.current !== null) return
         if (res.status === 204) {
-          // No row: this composer has never been touched (a cleared draft
-          // still leaves a row for its mode), so anything we hold is a save
-          // that never landed. The version deliberately stays — a stale event
-          // that limps in later must still lose to what we knew.
-          adopt({ text: "" })
+          reconcile(null)
           return
         }
         if (!res.ok) return
-        const data = (await res.json()) as {
-          text: string
-          mode: ComposerMode
-          imagePrompt: string | null
-          imageAssisted: boolean
-          imageStyle: string | null
-          imageExcludedLoreIds: string[]
+        const data = (await res.json()) as Omit<ComposerDraft, "updatedAt"> & {
           version: string
         }
-        if (versionRef.current !== null && data.version <= versionRef.current)
-          return
-        versionRef.current = data.version
-        adopt({
-          text: data.text,
-          mode: data.mode,
-          imagePrompt: data.imagePrompt,
-          imageAssisted: data.imageAssisted,
-          imageStyle: data.imageStyle,
-          imageExcludedLoreIds: data.imageExcludedLoreIds,
-        })
+        reconcile({ ...data, updatedAt: data.version })
       } catch {
         // A probe that failed is a socket about to reconnect again; the next
         // one covers it.
       }
     })()
-  }, [storyId, adopt])
+  }, [reconcile, storyId])
 
   React.useEffect(() => {
     resyncRef.current = resync
@@ -212,5 +242,5 @@ export function useComposerDraftSync({
     return () => document.removeEventListener("visibilitychange", onHide)
   }, [flush])
 
-  return { publish, flush }
+  return { publish, flush, reconcile }
 }

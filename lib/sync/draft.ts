@@ -103,3 +103,33 @@ export function shouldAdoptDraft(
   if (ctx.version !== null && event.version <= ctx.version) return false
   return true
 }
+
+/**
+ * What to do with a draft row READ from the server rather than announced over
+ * it — the reconnect probe's read, and the one every workspace payload carries.
+ *
+ *   "ignore" — leave the composer alone.
+ *   "clear"  — no row exists, so empty the text and keep the version (see below).
+ *   "take"   — write the row into the composer.
+ *
+ * The same arbitration as an event, minus the origin test: a read cannot be
+ * our own echo, because a read has no author. What it has instead is a third
+ * answer an event cannot give — the absence of a row — which is why this
+ * returns a verdict rather than a boolean.
+ *
+ * "clear" deliberately leaves the version where it is. Absence means the
+ * composer was never touched, so anything on screen is a save that never
+ * landed; but it is not NEWS, and letting it move the version would let a
+ * stale event that limps in afterwards win.
+ */
+export function draftReadVerdict(
+  row: { updatedAt: string } | null,
+  ctx: Pick<DraftAdoptContext, "pending" | "version">
+): "ignore" | "clear" | "take" {
+  // Our own write outranks the wire until it resolves, reads included: the row
+  // this read describes is one the server has not been told about yet.
+  if (ctx.pending !== null) return "ignore"
+  if (row === null) return "clear"
+  if (ctx.version !== null && row.updatedAt <= ctx.version) return "ignore"
+  return "take"
+}
