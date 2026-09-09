@@ -72,7 +72,8 @@ function matchesQuery(entry: LorebookEntry, needle: string): boolean {
   if (needle === "") return true
   return (
     entry.name.toLowerCase().includes(needle) ||
-    entry.keys.some((k) => k.toLowerCase().includes(needle))
+    entry.keys.some((k) => k.toLowerCase().includes(needle)) ||
+    entry.content.toLowerCase().includes(needle)
   )
 }
 
@@ -92,12 +93,8 @@ export function LorebookEntryList(props: LorebookEntryListProps) {
   const ordered = useStableOrder(entries)
   const visible = ordered.filter(
     (entry) =>
-      // The open entry always stays in the list: renaming it re-runs the filter
-      // against a half-typed name, which would otherwise make the row the writer
-      // is editing vanish out from under them.
-      entry.id === selectedId ||
-      ((category === "all" || entry.category === category) &&
-        matchesQuery(entry, needle))
+      (category === "all" || entry.category === category) &&
+      matchesQuery(entry, needle)
   )
 
   return (
@@ -113,7 +110,7 @@ export function LorebookEntryList(props: LorebookEntryListProps) {
         <Input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search by name or key..."
+          placeholder="Search by name, key, or content..."
           aria-label="Search lorebook"
         />
         <div className="flex flex-wrap gap-1">
