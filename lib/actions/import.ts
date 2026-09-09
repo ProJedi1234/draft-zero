@@ -144,13 +144,10 @@ export async function importScenario(input: {
       memory: scenario.memory,
       authorsNote: scenario.authorsNote,
       ...DEFAULT_GENERATION_SETTINGS,
-      // The scenario overrides only the sampler values it can speak for; the
-      // model stays the app default, since NovelAI names its own (readSettings).
+      // Keep NovelAI's sampler values as the Custom backing settings while the
+      // selected profile governs effective generation.
       ...scenario.settings,
-      modelId: appSettings.defaultModelId,
-      // Same app default createStory applies. Without it an imported story
-      // silently diverges from every story made the normal way.
-      thinking: appSettings.defaultThinking,
+      profileId: appSettings.defaultProfileId,
       createdAt: now,
       updatedAt: now,
     })
@@ -256,12 +253,10 @@ export async function importStoryCards(input: {
       genre: cards.tags.join(", "),
       memory,
       authorsNote: cards.authorsNote,
-      // A card export names no sampler settings at all — unlike a NovelAI
-      // scenario, there is nothing to override the app defaults with.
+      // A card export names no sampler settings, so keep the Custom backing
+      // settings at their defaults and follow the selected profile.
       ...DEFAULT_GENERATION_SETTINGS,
-      modelId: appSettings.defaultModelId,
-      // Same app default createStory applies; see importScenario.
-      thinking: appSettings.defaultThinking,
+      profileId: appSettings.defaultProfileId,
       createdAt: now,
       updatedAt: now,
     })
@@ -424,10 +419,10 @@ export async function importAiDungeonBackup(input: {
       // "no override" and "an override that happens to be empty" the same row.
       systemPrompt: backup.instructions === "" ? null : backup.instructions,
       // A backup names no sampler settings — AI Dungeon's are per-model and
-      // per-account, not per-adventure — so the app defaults stand.
+      // per-account, not per-adventure — so keep the Custom backing settings
+      // at their defaults and follow the selected profile.
       ...DEFAULT_GENERATION_SETTINGS,
-      modelId: appSettings.defaultModelId,
-      thinking: appSettings.defaultThinking,
+      profileId: appSettings.defaultProfileId,
       createdAt: now,
       updatedAt: now,
     })
