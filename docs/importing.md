@@ -7,6 +7,11 @@ recognised by its magic bytes, and the two `.json` formats are offered to each
 reader in turn — each reports whether it *recognises* a file separately from
 whether it could *read* it, and the first to claim it wins.
 
+A newly imported story follows the default model profile selected in Settings,
+the same as a story created from the Library. NovelAI's temperature and top-p
+still carry over in the story's Custom settings, ready if the story is switched
+from that profile to Custom later.
+
 **NovelAI `.scenario`** becomes a story: prompt → the opening passage,
 `context[0]`/`context[1]` → memory and author's note, tags → genre, and the
 scenario's lorebook → that story's lorebook. `${…}` placeholders are collected
