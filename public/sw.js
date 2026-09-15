@@ -16,8 +16,9 @@
  *                 built-in page. Documents are dynamic (the root layout is
  *                 force-dynamic), so there is no static shell to precache —
  *                 the cache fills with what you actually visit.
- *   /_next/static cache first. The paths carry a build hash, so a hit is
- *                 always correct and a miss is always a new build.
+ *   /_next/static network first, falling back to the cache. NOT cache
+ *                 first — see handleStatic; this file asserted the opposite
+ *                 and was wrong, in a way that only shows up after a deploy.
  *   Everything    network only. API routes, server actions and RSC payloads
  *   else          are never served stale; a wrong answer there is worse than
  *                 no answer, and the client store already holds the data.
@@ -142,18 +143,40 @@ async function handleNavigation(event, request) {
   return offlineFallback()
 }
 
+/**
+ * Build assets: network first, cache only as the offline fallback.
+ *
+ * This was cache-first, on the assumption that a hashed path can only ever
+ * hold one build's bytes. That assumption is false here — Turbopack reuses
+ * chunk paths between builds, so the same URL served different JavaScript
+ * after a deploy and a cache-first worker pinned the browser to the old copy
+ * indefinitely. The symptom is the worst kind: a fresh document hydrating
+ * against stale code, on returning visitors only, long after the deploy.
+ *
+ * Network-first costs almost nothing here. Next serves these immutable with a
+ * year-long max-age, and a fetch from inside a worker goes through the HTTP
+ * cache, so the "network" request for an unchanged asset is answered locally
+ * without touching the wire.
+ */
 async function handleStatic(event, request) {
   const cache = await caches.open(STATIC_CACHE)
+
+  if (!forcedOffline) {
+    try {
+      const fresh = await fetch(request)
+      if (fresh.ok) {
+        // Held for the same reason the document write is: a chunk that never
+        // made it into the cache is a cached document that cannot boot.
+        event.waitUntil(cache.put(request, fresh.clone()))
+        return fresh
+      }
+    } catch {
+      // fall through to the cache
+    }
+  }
+
   const hit = await cache.match(request)
-  if (hit !== undefined) return hit
-
-  if (forcedOffline) return Response.error()
-
-  const fresh = await fetch(request)
-  // Held for the same reason the document write is. A chunk that never made
-  // it into the cache is a cached document that cannot boot.
-  if (fresh.ok) event.waitUntil(cache.put(request, fresh.clone()))
-  return fresh
+  return hit ?? Response.error()
 }
 
 /**
