@@ -17,6 +17,7 @@ import {
   type StorePersistence,
 } from "@/lib/store/persistence"
 import { clientStore } from "@/lib/store/store"
+import type { ComposerDraft } from "@/lib/types"
 import type { StoryWorkspacePayload } from "@/lib/story/workspace-payload"
 
 /**
@@ -74,6 +75,50 @@ export function putCachedPayload(
   announce()
   void writeThrough(storyId, payload)
 }
+
+/**
+ * Overwrite just the composer draft on a cached payload, leaving the rest of
+ * it alone.
+ *
+ * This is what makes writing offline survive a reload. The draft's durable
+ * home is a server row written on a debounce, and offline that write throws —
+ * so without this the text lives only in React state and a relaunch loses it,
+ * which would make "you can still write" a promise the app breaks the first
+ * time it is tested.
+ *
+ * A no-op when the story has no cached payload: there is nothing to seed a
+ * mount from, so there is nothing for a local draft to ride along on.
+ *
+ * `updatedAt` is deliberately NOT bumped. It is a server-minted row version
+ * that the adoption rules in lib/sync/draft.ts arbitrate against, and a client
+ * clock has no business producing a value those comparisons will trust — the
+ * store makes the same refusal about merge patches. So this writes the TEXT
+ * forward and leaves the VERSION where the server left it: a reload seeds from
+ * the local words, while a genuinely newer draft from another device still
+ * wins by the rule that already governs two devices in one composer.
+ */
+export function cacheComposerDraft(
+  storyId: string,
+  draft: Omit<ComposerDraft, "updatedAt">
+): void {
+  const payload = cache.get(storyId)
+  if (payload === undefined) return
+  putCachedPayload(storyId, {
+    ...payload,
+    composerDraft: {
+      ...draft,
+      updatedAt: payload.composerDraft?.updatedAt ?? EPOCH_VERSION,
+    },
+  })
+}
+
+/**
+ * The version for a draft the server has never seen. Older than any real
+ * `updated_at`, so an arriving server row always wins the comparison — which
+ * is right: if the server has a draft for a story we have never synced one
+ * for, it came from somewhere that did sync.
+ */
+const EPOCH_VERSION = "1970-01-01T00:00:00.000Z"
 
 // ── disk ────────────────────────────────────────────────────────────────────
 
@@ -148,8 +193,14 @@ export function clearWorkspaceCacheForTests(): void {
   store = null
 }
 
-/** The ids currently held, newest-written last. */
-export function cachedStoryIdsForTests(): string[] {
+/**
+ * The ids currently held in full, newest-written last.
+ *
+ * Was a test-only helper. The offline manifest needs the same list to tell a
+ * story you can open from one you can only see the title of, and two functions
+ * answering that would be two chances to disagree.
+ */
+export function cachedStoryIds(): string[] {
   return [...cache.keys()]
 }
 

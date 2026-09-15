@@ -13,6 +13,7 @@ import {
   useStories,
 } from "@/hooks/use-store"
 import { useRunStatus } from "@/hooks/use-run-status"
+import { OfflineChip } from "@/components/offline/offline-chip"
 import { Button } from "@/components/ui/button"
 import {
   Empty,
@@ -122,6 +123,7 @@ export function LibraryView({
         <SidebarTrigger />
         <h1 className="text-sm font-medium">Library</h1>
         <div className="flex-1" />
+        <OfflineChip />
         {/* Unlabelled, which is also what stops a phone header from wrapping
             the way two labelled buttons did. */}
         <ImportScenarioButton variant="icon" />

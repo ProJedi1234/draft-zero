@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 
+import { OfflineChip } from "@/components/offline/offline-chip"
 import { SpendBars } from "@/components/usage/spend-bars"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Meter } from "@/components/ui/meter"
@@ -86,6 +87,7 @@ function UsageView({
         <SidebarTrigger />
         <h1 className="text-sm font-medium">Usage</h1>
         <div className="flex-1" />
+        <OfflineChip />
         {/* The one place in the app a cost figure is visible unsummoned. It is
             allowed here because reading it is the reason the page exists. */}
         <span className="font-mono text-xs text-muted-foreground tabular-nums">

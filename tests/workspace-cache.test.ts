@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, test } from "bun:test"
 import { InMemoryPersistence } from "@/lib/store/persistence"
 import {
   attachWorkspacePersistence,
-  cachedStoryIdsForTests,
+  cachedStoryIds,
   clearWorkspaceCacheForTests,
   getCachedPayload,
   putCachedPayload,
@@ -51,7 +51,7 @@ describe("workspace cache", () => {
     }
     await settle()
 
-    const held = cachedStoryIdsForTests()
+    const held = cachedStoryIds()
     expect(held.length).toBe(WORKSPACE_CACHE_LIMIT)
     expect(held).not.toContain("story-0")
     expect(held).toContain(`story-${WORKSPACE_CACHE_LIMIT + 4}`)
@@ -72,7 +72,7 @@ describe("workspace cache", () => {
     putCachedPayload("newcomer", payload("newcomer"))
     await settle()
 
-    const held = cachedStoryIdsForTests()
+    const held = cachedStoryIds()
     expect(held).toContain("story-0")
     expect(held).not.toContain("story-1")
   })

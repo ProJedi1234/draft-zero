@@ -3,6 +3,9 @@ import { Geist_Mono, Inter, Source_Serif_4 } from "next/font/google"
 
 import "./globals.css"
 import { LiveRunsBeacon } from "@/components/live-runs-beacon"
+import { OfflineBanner } from "@/components/offline/offline-banner"
+import { OfflinePanel } from "@/components/offline/offline-panel"
+import { OfflineProvider } from "@/components/offline/offline-provider"
 import { ServiceWorkerBoot } from "@/components/offline/service-worker-boot"
 import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { StoreBoot } from "@/components/store-boot"
@@ -120,8 +123,17 @@ export default async function RootLayout({
             {/* Inside the provider: it tints the status bar from the sheet's
                 open state, which only exists in this context. */}
             <StatusBarTint />
-            <AppSidebar activeRuns={activeRuns} />
-            <SidebarInset>{children}</SidebarInset>
+            <OfflineProvider>
+              <AppSidebar activeRuns={activeRuns} />
+              <SidebarInset>
+                {/* Above the view, not over it: an overlay would cover the
+                    story header on the one screen where that header is the
+                    thing you need. */}
+                <OfflineBanner />
+                {children}
+              </SidebarInset>
+              <OfflinePanel />
+            </OfflineProvider>
           </SidebarProvider>
           <Toaster />
           <ViewportHeightSync />
