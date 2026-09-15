@@ -150,6 +150,20 @@ self.addEventListener("fetch", (event) => {
 })
 
 async function handleNavigation(event, request) {
+  // The escape hatch, honoured HERE and not only in the app.
+  //
+  // Simulated offline persists in localStorage, so it survives a reload. If
+  // the worker then refuses every navigation and this device has no cached
+  // document, the page that loads is the fallback below — which carries no app
+  // code, so nothing can read ?offline=0 and clear the flag. That is a brick,
+  // and the app-side handling of this parameter cannot reach it.
+  //
+  // So the worker answers the parameter itself, before deciding anything else.
+  // lib/net/debug.ts clears the stored flag once the app is running again.
+  if (new URL(request.url).searchParams.get("offline") === "0") {
+    forcedOffline = false
+  }
+
   if (!forcedOffline) {
     try {
       const fresh = await fetch(request)
@@ -183,7 +197,7 @@ async function handleNavigation(event, request) {
   const root = await cache.match("/", { ignoreSearch: true })
   if (root !== undefined) return root
 
-  return offlineFallback()
+  return offlineFallback(forcedOffline)
 }
 
 /**
@@ -250,7 +264,17 @@ async function rememberDocument(request, response) {
  * nothing in IndexedDB either, so there is no story to show and nothing to do
  * but say so honestly and offer the retry.
  */
-function offlineFallback() {
+function offlineFallback(simulated) {
+  // Two genuinely different situations, and telling them apart is the whole
+  // value of saying anything: a real network failure is something to wait out,
+  // while a simulated one is a switch somebody left on.
+  const explanation = simulated
+    ? "Offline is being simulated from the Developer settings, and this device has no saved copy of this page to show."
+    : "draft zero has nothing saved on this device yet, so there is nothing to show until you are back on a network."
+  const action = simulated
+    ? '<a href="?offline=0">Turn off simulated offline</a>'
+    : '<button onclick="location.reload()">Try again</button>'
+
   const body = `<!doctype html>
 <html lang="en">
 <head>
@@ -269,17 +293,17 @@ function offlineFallback() {
   @media (prefers-color-scheme: dark) { body { background: #0a0a0a; color: #fafafa; } }
   h1 { font-size: 1.125rem; font-weight: 600; margin: 0; }
   p { margin: 0; max-width: 28rem; opacity: .7; font-size: .9375rem; }
-  button {
+  button, a {
     font: inherit; font-size: .875rem; padding: .5rem 1rem; margin-top: .5rem;
     border-radius: 999px; border: 1px solid currentColor; background: none;
-    color: inherit; cursor: pointer;
+    color: inherit; cursor: pointer; text-decoration: none; display: inline-block;
   }
 </style>
 </head>
 <body>
   <h1>You are offline</h1>
-  <p>draft zero has nothing saved on this device yet, so there is nothing to show until you are back on a network.</p>
-  <button onclick="location.reload()">Try again</button>
+  <p>${explanation}</p>
+  ${action}
 </body>
 </html>`
 
