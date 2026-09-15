@@ -14,8 +14,9 @@
  *   Navigations   network first, falling back to the last good copy of that
  *                 same URL, then to the last good copy of "/", then to a
  *                 built-in page. Documents are dynamic (the root layout is
- *                 force-dynamic), so there is no static shell to precache —
- *                 the cache fills with what you actually visit.
+ *                 force-dynamic), so there is no static shell to precache;
+ *                 the cache is filled deliberately by warm(), because fetch
+ *                 events alone never see most of the pages you visit.
  *   /_next/static network first, falling back to the cache. NOT cache
  *                 first — see handleStatic; this file asserted the opposite
  *                 and was wrong, in a way that only shows up after a deploy.
@@ -55,11 +56,53 @@ self.addEventListener("message", (event) => {
   if (data.type === "dz-skip-waiting") {
     self.skipWaiting()
   }
+  // The app telling us which document it is currently showing. See warm().
+  if (data.type === "dz-warm" && typeof data.url === "string") {
+    event.waitUntil(warm(data.url))
+  }
 })
 
-self.addEventListener("install", () => {
-  // Nothing to precache — see the header. Taking over immediately is safe
-  // because a stale worker serving a new build is exactly what VERSION guards.
+/**
+ * Fetch a document and put it in the cache, because nothing else will.
+ *
+ * Two holes make this necessary, and between them they meant a user could
+ * browse the whole app and end up with an empty document cache:
+ *
+ *   The FIRST load of a page is not controlled by this worker — the worker is
+ *   still installing — so its fetch event never reaches here. A one-visit
+ *   device therefore cached nothing, which is exactly the device most likely
+ *   to be offline next.
+ *   Client-side route changes issue no navigation request at all. Opening a
+ *   story from the library is an RSC fetch, so the story's document was never
+ *   seen here even on a controlled page.
+ *
+ * So the app asks, on every settled route, while online.
+ */
+async function warm(url) {
+  try {
+    const request = new Request(url, { credentials: "same-origin" })
+    const response = await fetch(request)
+    if (response.ok) await rememberDocument(request, response)
+  } catch {
+    // Offline, or the route is gone. Either way there is nothing to store.
+  }
+}
+
+self.addEventListener("install", (event) => {
+  // "/" is the one document worth having unconditionally: it renders the whole
+  // library out of IndexedDB, so it is a useful landing place for any story
+  // this device has never opened. Everything else arrives through warm().
+  event.waitUntil(
+    caches
+      .open(DOC_CACHE)
+      .then((cache) => cache.add("/"))
+      .catch(() => {
+        // Installing offline is allowed to produce a worker with an empty
+        // cache. It is still better than no worker.
+      })
+  )
+  // Taking over immediately is safe because a stale worker serving a new build
+  // is exactly what VERSION guards.
   self.skipWaiting()
 })
 

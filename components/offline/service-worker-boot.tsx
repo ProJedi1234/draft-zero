@@ -9,11 +9,16 @@
 // must not cost the store its cold start.
 
 import * as React from "react"
+import { usePathname } from "next/navigation"
 
+import { useIsOffline } from "@/hooks/use-connection"
 import { startConnectionWatch } from "@/lib/net/connection"
 import { hydrateForcedOffline, isForcedOffline } from "@/lib/net/debug"
 
 export function ServiceWorkerBoot(): null {
+  const pathname = usePathname()
+  const offline = useIsOffline()
+
   React.useEffect(() => {
     // Order matters: the debug flag has to be read before the connection
     // machine starts, or the machine's first reading would be "online" and it
@@ -67,6 +72,44 @@ export function ServiceWorkerBoot(): null {
         // before this feature existed. Nothing to say to the user about it.
       })
   }, [])
+
+  // Ask the worker to cache the document for the route we are on.
+  //
+  // Nothing else will. The first load of a page happens before the worker is
+  // controlling, so its fetch never reaches the worker, and a client-side
+  // route change issues an RSC request rather than a navigation — so without
+  // this a reader could visit every story they own and still have an empty
+  // document cache the first time they actually go offline.
+  //
+  // Deferred to an idle callback because it is a second fetch of a page that
+  // is already on screen, and it must not compete with the one the reader is
+  // waiting for.
+  React.useEffect(() => {
+    if (offline) return
+    if (!("serviceWorker" in navigator)) return
+    if (process.env.NODE_ENV !== "production") return
+
+    let cancelled = false
+    const warm = () => {
+      if (cancelled) return
+      navigator.serviceWorker.controller?.postMessage({
+        type: "dz-warm",
+        url: window.location.href,
+      })
+    }
+
+    // `ready` rather than `controller`, because on the very first load the
+    // worker is still installing and controller is null — which is precisely
+    // the visit whose document would otherwise never be cached.
+    const timer = setTimeout(() => {
+      void navigator.serviceWorker.ready.then(warm).catch(() => {})
+    }, 1_500)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [pathname, offline])
 
   return null
 }
