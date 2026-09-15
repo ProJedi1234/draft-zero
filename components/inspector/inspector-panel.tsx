@@ -6,6 +6,7 @@ import { LoreSection } from "@/components/inspector/sections/lore-section"
 import { ModelSection } from "@/components/inspector/sections/model-section"
 import { PromptSection } from "@/components/inspector/sections/prompt-section"
 import { StatusStrip } from "@/components/inspector/status-strip"
+import { OfflineInert } from "@/components/offline/offline-inert"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAccountZdrForModel } from "@/hooks/use-account-zdr"
@@ -252,15 +253,15 @@ function InspectorSections({
             section keeps its own scroll offset this way. */}
         <TabsContent value="prompt" keepMounted className="min-h-0 flex-1">
           <ScrollArea className="h-full">
-            <div className="px-4 py-4">
+            <OfflineInert className="px-4 py-4">
               <PromptSection story={story} />
-            </div>
+            </OfflineInert>
           </ScrollArea>
         </TabsContent>
 
         <TabsContent value="model" keepMounted className="min-h-0 flex-1">
           <ScrollArea className="h-full">
-            <div className="px-4 py-4">
+            <OfflineInert className="px-4 py-4">
               <ModelSection
                 story={story}
                 models={models}
@@ -273,7 +274,7 @@ function InspectorSections({
                 accountEnforced={accountEnforced}
                 settings={settings}
               />
-            </div>
+            </OfflineInert>
           </ScrollArea>
         </TabsContent>
 

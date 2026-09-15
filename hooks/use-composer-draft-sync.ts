@@ -30,6 +30,7 @@
 import * as React from "react"
 
 import { useAutosave } from "@/hooks/use-autosave"
+import { cacheComposerDraft } from "@/lib/story/workspace-cache"
 import { draftRelay, syncClientId } from "@/lib/sync/client"
 import {
   draftReadVerdict,
@@ -90,6 +91,20 @@ export function useComposerDraftSync({
   const save = useAutosave(
     React.useCallback(
       async (payload: DraftPayload): Promise<ActionResult> => {
+        // Local first, and unconditionally. The cached workspace payload is
+        // what the next mount seeds from, so writing the draft there before
+        // the network is attempted is what lets a paragraph typed in a tunnel
+        // survive a relaunch. Same debounce as the server write, because this
+        // rides in the same callback rather than adding a second cadence.
+        cacheComposerDraft(storyId, {
+          text: payload.text,
+          mode: payload.mode,
+          imagePrompt: payload.imagePrompt,
+          imageAssisted: payload.imageAssisted,
+          imageStyle: payload.imageStyle,
+          imageExcludedLoreIds: payload.imageExcludedLoreIds,
+        })
+
         const res = await fetch("/api/draft", {
           method: "POST",
           headers: { "content-type": "application/json" },

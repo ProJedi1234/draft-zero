@@ -30,6 +30,8 @@ import { IMAGE_STYLE_PRESETS } from "@/lib/images/styles"
 import type { GenerationStatus } from "@/hooks/use-generation"
 import { cn } from "@/lib/utils"
 import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
+import { useIsOffline } from "@/hooks/use-connection"
+import { OfflineComposerAction } from "@/components/offline/offline-composer-action"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -255,6 +257,8 @@ export function Composer({
   onRedo: () => void
   onStop: () => void
 }) {
+  const isOffline = useIsOffline()
+
   const active = MODES.find((m) => m.value === mode) ?? MODES[0]
   const isImage = mode === "image"
   const markdownShortcuts = useMarkdownShortcuts()
@@ -960,7 +964,7 @@ export function Composer({
                     variant="ghost"
                     size="icon-sm"
                     aria-label={undoLabel}
-                    disabled={!canUndo}
+                    disabled={!canUndo || isOffline}
                     onClick={onUndo}
                   />
                 }
@@ -981,7 +985,7 @@ export function Composer({
                     variant="ghost"
                     size="icon-sm"
                     aria-label={redoLabel}
-                    disabled={!canRedo}
+                    disabled={!canRedo || isOffline}
                     onClick={onRedo}
                   />
                 }
@@ -991,7 +995,16 @@ export function Composer({
               <TooltipContent>{redoLabel}</TooltipContent>
             </Tooltip>
 
-            {/* Retry and Continue are moves on PROSE — there is no "continue"
+            {/* Offline the generation controls are not disabled, they are
+                REPLACED. A hatched Send is a button you still reach for; the
+                check button is the thing that actually helps, and it is in the
+                place your thumb already goes. The text area above is
+                untouched — writing needs no network. */}
+            {isOffline ? (
+              <OfflineComposerAction />
+            ) : (
+              <>
+                {/* Retry and Continue are moves on PROSE — there is no "continue"
                 for a picture, and retrying one is done on the picture itself.
                 In image mode the pair collapses to one slot: the re-develop.
                 Both rows are now the same width, and nothing inside image mode
@@ -1002,162 +1015,164 @@ export function Composer({
                 story has just reached — which is the one place an empty
                 composer may still spend money, because here the writer asked
                 for it by name. */}
-            {isImage ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={
-                        brief === ""
-                          ? "Write a prompt from the story"
-                          : "Develop this brief again"
+                {isImage ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={
+                            brief === ""
+                              ? "Write a prompt from the story"
+                              : "Develop this brief again"
+                          }
+                          disabled={!imageAssisted || deriving || imageBusy}
+                          onClick={onDevelop}
+                        />
                       }
-                      disabled={!imageAssisted || deriving || imageBusy}
-                      onClick={onDevelop}
-                    />
-                  }
-                >
-                  <RotateCcw className={cn(deriving && "animate-pulse")} />
-                </TooltipTrigger>
-                {/* Says outright that this spends money. Nothing here
+                    >
+                      <RotateCcw className={cn(deriving && "animate-pulse")} />
+                    </TooltipTrigger>
+                    {/* Says outright that this spends money. Nothing here
                       develops on its own precisely so the writer is the one who
                       decides to pay for it. */}
-                <TooltipContent>
-                  {brief === ""
-                    ? "Write a prompt from the story · costs a call"
-                    : "Develop again · costs a call"}
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <>
-                <RetryButton
-                  icon={RotateCcw}
-                  label="Retry last generation"
-                  size="sm"
-                  disabled={!canRetry}
-                  onRetry={onRetry}
-                  revealCaret
-                />
+                    <TooltipContent>
+                      {brief === ""
+                        ? "Write a prompt from the story · costs a call"
+                        : "Develop again · costs a call"}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <>
+                    <RetryButton
+                      icon={RotateCcw}
+                      label="Retry last generation"
+                      size="sm"
+                      disabled={!canRetry}
+                      onRetry={onRetry}
+                      revealCaret
+                    />
 
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="secondary"
-                        size="icon-sm"
-                        aria-label="Continue"
-                        disabled={busy}
-                        onClick={onContinue}
-                      />
-                    }
-                  >
-                    <FastForward />
-                  </TooltipTrigger>
-                  <TooltipContent>Continue (⌘↵)</TooltipContent>
-                </Tooltip>
-              </>
-            )}
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="secondary"
+                            size="icon-sm"
+                            aria-label="Continue"
+                            disabled={busy}
+                            onClick={onContinue}
+                          />
+                        }
+                      >
+                        <FastForward />
+                      </TooltipTrigger>
+                      <TooltipContent>Continue (⌘↵)</TooltipContent>
+                    </Tooltip>
+                  </>
+                )}
 
-            {/* One slot, three states — Send, then a spinner, then Stop — all
+                {/* One slot, three states — Send, then a spinner, then Stop — all
                 the same size and variant, so the sequence never shifts the row.
                 No tooltip on the spinner: it is disabled, so it would never
                 open one, and the canvas already announces the generation.
                 Both waiting states are about a PROSE run; a picture reports
                 its own progress in the placeholder it draws into. */}
-            {isImage && deriving ? (
-              <Button
-                variant="default"
-                size="icon-sm"
-                aria-label="Developing"
-                // Same reasoning as the prose spinner below: inert but at full
-                // contrast, because this state is "it's working", not "you
-                // can't". A develop is seconds, and Escape is not offered for
-                // it — the writer's cheapest out is to let it land and edit.
-                disabled
-                className="disabled:opacity-100"
-              >
-                <Loader2 aria-hidden className="animate-spin" />
-              </Button>
-            ) : isImage ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="default"
-                      size="icon-sm"
-                      aria-label={
-                        imageSendAction === "draw"
-                          ? "Draw this image"
-                          : "Develop the prompt"
+                {isImage && deriving ? (
+                  <Button
+                    variant="default"
+                    size="icon-sm"
+                    aria-label="Developing"
+                    // Same reasoning as the prose spinner below: inert but at full
+                    // contrast, because this state is "it's working", not "you
+                    // can't". A develop is seconds, and Escape is not offered for
+                    // it — the writer's cheapest out is to let it land and edit.
+                    disabled
+                    className="disabled:opacity-100"
+                  >
+                    <Loader2 aria-hidden className="animate-spin" />
+                  </Button>
+                ) : isImage ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="default"
+                          size="icon-sm"
+                          aria-label={
+                            imageSendAction === "draw"
+                              ? "Draw this image"
+                              : "Develop the prompt"
+                          }
+                          disabled={
+                            imageBusy ||
+                            (imageSendAction === "draw"
+                              ? imageAssisted
+                                ? lane === ""
+                                : brief === ""
+                              : brief === "")
+                          }
+                          onClick={handleSend}
+                        />
                       }
-                      disabled={
-                        imageBusy ||
-                        (imageSendAction === "draw"
-                          ? imageAssisted
-                            ? lane === ""
-                            : brief === ""
-                          : brief === "")
+                    >
+                      {imageSendAction === "draw" ? <ArrowUp /> : <Sparkles />}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {imageSendAction === "draw"
+                        ? "Draw (Enter)"
+                        : "Develop the prompt (Enter) · costs a call"}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : waiting ? (
+                  <Button
+                    variant="default"
+                    size="icon-sm"
+                    aria-label="Sending"
+                    // Inert, but not dimmed like the other disabled states: this
+                    // one is not "you can't", it is "it's working", and the whole
+                    // job of the state is to be seen from across the room.
+                    disabled
+                    className="disabled:opacity-100"
+                  >
+                    <Loader2 aria-hidden className="animate-spin" />
+                  </Button>
+                ) : stoppable ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="default"
+                          size="icon-sm"
+                          aria-label="Stop generating"
+                          onClick={onStop}
+                        />
                       }
-                      onClick={handleSend}
-                    />
-                  }
-                >
-                  {imageSendAction === "draw" ? <ArrowUp /> : <Sparkles />}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {imageSendAction === "draw"
-                    ? "Draw (Enter)"
-                    : "Develop the prompt (Enter) · costs a call"}
-                </TooltipContent>
-              </Tooltip>
-            ) : waiting ? (
-              <Button
-                variant="default"
-                size="icon-sm"
-                aria-label="Sending"
-                // Inert, but not dimmed like the other disabled states: this
-                // one is not "you can't", it is "it's working", and the whole
-                // job of the state is to be seen from across the room.
-                disabled
-                className="disabled:opacity-100"
-              >
-                <Loader2 aria-hidden className="animate-spin" />
-              </Button>
-            ) : stoppable ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="default"
-                      size="icon-sm"
-                      aria-label="Stop generating"
-                      onClick={onStop}
-                    />
-                  }
-                >
-                  <Square className="fill-current" />
-                </TooltipTrigger>
-                <TooltipContent>Stop generating</TooltipContent>
-              </Tooltip>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="default"
-                      size="icon-sm"
-                      aria-label="Send"
-                      disabled={busy || !hasText}
-                      onClick={handleSend}
-                    />
-                  }
-                >
-                  <ArrowUp />
-                </TooltipTrigger>
-                <TooltipContent>Send (Enter)</TooltipContent>
-              </Tooltip>
+                    >
+                      <Square className="fill-current" />
+                    </TooltipTrigger>
+                    <TooltipContent>Stop generating</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="default"
+                          size="icon-sm"
+                          aria-label="Send"
+                          disabled={busy || !hasText}
+                          onClick={handleSend}
+                        />
+                      }
+                    >
+                      <ArrowUp />
+                    </TooltipTrigger>
+                    <TooltipContent>Send (Enter)</TooltipContent>
+                  </Tooltip>
+                )}
+              </>
             )}
           </div>
         </div>
