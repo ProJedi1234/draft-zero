@@ -6,6 +6,7 @@ import { GalleryVerticalEnd, Images, LayoutGrid, Layers } from "lucide-react"
 
 import type { GalleryImage } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { OfflineChip } from "@/components/offline/offline-chip"
 import { Button } from "@/components/ui/button"
 import {
   Empty,
@@ -167,6 +168,7 @@ export function PhotoWall({ images }: { images: GalleryImage[] }) {
         <SidebarTrigger />
         <h1 className="text-sm font-medium">Gallery</h1>
         <div className="flex-1" />
+        <OfflineChip />
         {images.length > 0 && (
           <span className="text-xs text-muted-foreground tabular-nums">
             {images.length} {images.length === 1 ? "image" : "images"}

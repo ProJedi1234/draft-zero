@@ -405,6 +405,8 @@
     --color-input: var(--input);
     --color-border: var(--border);
     --color-destructive: var(--destructive);
+    --color-warning: var(--warning);
+    --color-warning-foreground: var(--warning-foreground);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
@@ -479,6 +481,17 @@
     --accent: oklch(calc(0.97 - 0.078 * var(--story-c)) calc(0.088 * var(--story-c)) var(--story-h));
     --accent-foreground: oklch(0.205 0 0);
     --destructive: oklch(0.577 0.245 27.325);
+    /* Amber, for a condition that is neither fine nor a failure — being
+       offline is the only one so far. Untinted by --story-h on purpose:
+       a status colour that shifts with the open story's hue would read as
+       decoration, and this one has to mean the same thing everywhere.
+       L 0.52 rather than the more obvious 0.58: at 0.58 this text read at
+       4.4:1 on a plain background and 3.89:1 on its own bg-warning/10 tint
+       — under the 4.5:1 AA floor for normal text in both cases, and worse
+       on the /15 tint the chip uses. 0.52 clears 4.5:1 against white,
+       bg-warning/10 and bg-warning/15 alike. */
+    --warning: oklch(0.52 0.13 70);
+    --warning-foreground: oklch(0.99 0 0);
     --border: oklch(calc(0.922 - 0.075 * var(--story-c)) calc(0.105 * var(--story-c)) var(--story-h));
     --input: oklch(calc(0.922 - 0.075 * var(--story-c)) calc(0.105 * var(--story-c)) var(--story-h));
     --ring: oklch(0.708 calc(0.15 * var(--story-c)) var(--story-h));
@@ -538,6 +551,8 @@
     --accent: oklch(calc(0.269 + 0.02 * var(--story-c)) calc(0.075 * var(--story-c)) var(--story-h));
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
+    --warning: oklch(0.79 0.14 78);
+    --warning-foreground: oklch(0.21 0.03 70);
     /* Steps down off pure white as it tints, for the same reason the light
        surfaces do: at L 1 there is nowhere for chroma to go. */
     --border: oklch(calc(1 - 0.16 * var(--story-c)) calc(0.13 * var(--story-c)) var(--story-h) / 10%);

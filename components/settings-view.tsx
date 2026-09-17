@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { OfflineChip } from "@/components/offline/offline-chip"
 import { AtmosphereCard } from "@/components/settings/atmosphere-card"
 import { GenerationDefaultsCard } from "@/components/settings/generation-defaults-card"
 import { ImageGenerationCard } from "@/components/settings/image-generation-card"
@@ -128,6 +129,7 @@ function SettingsView({
         <SidebarTrigger />
         <h1 className="text-sm font-medium">Settings</h1>
         <div className="flex-1" />
+        <OfflineChip />
         <span className="font-mono text-xs text-muted-foreground">
           local-first
         </span>

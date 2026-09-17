@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, NotebookText } from "lucide-react"
 
+import { OfflineChip } from "@/components/offline/offline-chip"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Empty,
@@ -143,6 +144,7 @@ export function LorebookView({
               }`}
         </span>
         <div className="flex-1" />
+        <OfflineChip />
         <ImportCardsDialog
           storyId={storyId}
           entryNames={entries.map((e) => e.name)}

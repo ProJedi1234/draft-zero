@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils"
 import { useAtmosphereStatus } from "@/hooks/use-atmosphere-status"
 import { useSaveStatus } from "@/hooks/use-autosave"
 import { CostChip } from "@/components/cost/cost-chip"
+import { OfflineChip } from "@/components/offline/offline-chip"
 import { StoryDetailsDialog } from "@/components/story/story-details-dialog"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
@@ -281,6 +282,7 @@ export function StoryHeader({
         {formatWordCount(story.wordCount)}
       </span>
       <div className="flex-1" />
+      <OfflineChip />
       {/* Only while the inspector is shut. Open, the sparkle in the atmosphere
           row is saying the same thing in the place the writer would look for
           it, and two indicators for one job is one too many. */}
