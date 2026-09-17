@@ -3,6 +3,7 @@ import { Geist_Mono, Inter, Source_Serif_4 } from "next/font/google"
 
 import "./globals.css"
 import { LiveRunsBeacon } from "@/components/live-runs-beacon"
+import { ServiceWorkerBoot } from "@/components/offline/service-worker-boot"
 import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { StoreBoot } from "@/components/store-boot"
 import { SyncListener } from "@/components/sync-listener"
@@ -127,6 +128,7 @@ export default async function RootLayout({
           <SyncListener />
           <LiveRunsBeacon runs={textRuns} />
           <StoreBoot />
+          <ServiceWorkerBoot />
         </ThemeProvider>
       </body>
     </html>

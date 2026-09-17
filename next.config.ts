@@ -30,6 +30,28 @@ const nextConfig: NextConfig = {
       .map((origin) => origin.trim())
       .filter(Boolean),
   ],
+  async headers() {
+    return [
+      {
+        // Next's own PWA guide's recommendation, and the reason is the update
+        // path: a worker served from the HTTP cache can pin a deployment to a
+        // stale copy of itself for as long as that entry lives. `updateViaCache:
+        // "none"` at the registration covers the same ground from the other
+        // side; this covers the first fetch, which that option cannot.
+        source: "/sw.js",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/javascript; charset=utf-8",
+          },
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+        ],
+      },
+    ]
+  },
   devIndicators: {
     // Away from bottom-left, which is where the composer keeps the two
     // controls a writer touches most. The badge is draggable, and its drag
