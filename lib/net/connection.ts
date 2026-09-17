@@ -124,14 +124,29 @@ export function probeConnection(): Promise<ProbeResult> {
 async function runProbe(): Promise<ProbeResult> {
   const result = await rawProbe()
 
-  if (result.ok) {
-    consecutiveFailures = 0
-    clearRecoveryTimer()
-    setState("online")
-  } else {
+  if (!result.ok) {
     consecutiveFailures += 1
     setState("offline")
     scheduleRecovery()
+    return result
+  }
+
+  // isForcedOffline() is re-checked here rather than trusted from the start
+  // of rawProbe(): the fetch it just awaited can take up to
+  // PROBE_TIMEOUT_MS, and the debug flag can flip to true while it was in
+  // flight. Without this, a probe that started before the flag changed can
+  // land after it and call setState("online") — silently undoing the
+  // offline state the flag's own subscriber in startConnectionWatch() just
+  // set. reportRequestSuccess() already carries this guard; this is the
+  // other path to the same setState("online") call, and both need it.
+  //
+  // The result itself still reports ok: true — the network genuinely
+  // answered, and that fact is not what the flag overrides. What it
+  // overrides is whether the STATE MACHINE acts on it.
+  if (!isForcedOffline()) {
+    consecutiveFailures = 0
+    clearRecoveryTimer()
+    setState("online")
   }
 
   return result

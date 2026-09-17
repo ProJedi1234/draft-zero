@@ -104,6 +104,36 @@ describe("forced offline", () => {
     await probeConnection()
     expect(getConnectionState()).toBe("offline")
   })
+
+  test("a probe already in flight cannot undo a flag flipped mid-flight", async () => {
+    // Get to a known offline state via the ordinary failure path first, so a
+    // wrongly-applied success is observable: the bug this guards against
+    // would flip this back to "online" underneath the flag.
+    stubFetch(() => Promise.reject(new TypeError("Failed to fetch")))
+    await probeConnection()
+    expect(getConnectionState()).toBe("offline")
+
+    // The race: rawProbe() only checks the flag at its own start, and a
+    // fetch can take up to PROBE_TIMEOUT_MS. If the flag is set AFTER that
+    // check but the fetch still resolves ok, letting the success declare
+    // online would silently reverse the offline state the flag represents.
+    const gate = Promise.withResolvers<void>()
+    stubFetch(async () => {
+      await gate.promise
+      return new Response("{}")
+    })
+
+    const pending = probeConnection()
+    setForcedOffline(true)
+
+    gate.resolve()
+    const result = await pending
+
+    // The network genuinely answered — that fact is not what the flag
+    // overrides — but the state machine must not act on it.
+    expect(result.ok).toBe(true)
+    expect(getConnectionState()).toBe("offline")
+  })
 })
 
 describe("reportRequestSuccess", () => {
