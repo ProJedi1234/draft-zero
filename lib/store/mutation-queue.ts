@@ -8,6 +8,12 @@
 // returned rows into confirmed — idempotent with the bus echo of the same
 // write, because both go through the store's event rule.
 
+import {
+  getConnectionState,
+  reportRequestFailure,
+  reportRequestSuccess,
+  subscribeConnection,
+} from "@/lib/net/connection"
 import { clientStore } from "@/lib/store/store"
 import type { EntityKind, EntityRecordMap } from "@/lib/store/records"
 import { localRefresh } from "@/lib/sync/client"
@@ -50,49 +56,40 @@ export interface CanonicalRow {
   row?: unknown
 }
 
-/** Total attempts per mutation, retries included. */
+/**
+ * Attempts spent against a server that is ANSWERING. An offline park costs
+ * nothing from this budget — see attempt().
+ */
 const MAX_ATTEMPTS = 3
 
 const DEFAULT_BACKOFF_MS = [1000, 2000, 5000]
-
-/** The cap on an offline park. See waitBetweenAttempts. */
-const DEFAULT_OFFLINE_WAIT_MS = 15_000
 
 const DEPENDENCY_FAILED = "A change this depended on failed."
 
 interface QueueConfig {
   backoffMs: number[]
-  offlineWaitMs: number
   isOffline(): boolean
-  waitForOnline(timeoutMs: number): Promise<void>
+  /** Resolves when the connection machine says we are back. Never times out. */
+  waitForOnline(): Promise<void>
 }
 
 function defaultIsOffline(): boolean {
-  return typeof navigator !== "undefined" && navigator.onLine === false
+  return getConnectionState() === "offline"
 }
 
-function defaultWaitForOnline(timeoutMs: number): Promise<void> {
+function defaultWaitForOnline(): Promise<void> {
+  if (getConnectionState() === "online") return Promise.resolve()
   return new Promise((resolve) => {
-    let settled = false
-    const finish = () => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      if (typeof window !== "undefined") {
-        window.removeEventListener("online", finish)
-      }
+    const unsubscribe = subscribeConnection((state) => {
+      if (state !== "online") return
+      unsubscribe()
       resolve()
-    }
-    const timer = setTimeout(finish, timeoutMs)
-    if (typeof window !== "undefined") {
-      window.addEventListener("online", finish, { once: true })
-    }
+    })
   })
 }
 
 const config: QueueConfig = {
   backoffMs: [...DEFAULT_BACKOFF_MS],
-  offlineWaitMs: DEFAULT_OFFLINE_WAIT_MS,
   isOffline: defaultIsOffline,
   waitForOnline: defaultWaitForOnline,
 }
@@ -104,7 +101,6 @@ export function configureMutationQueue(patch: Partial<QueueConfig>): void {
 
 export function resetMutationQueueConfig(): void {
   config.backoffMs = [...DEFAULT_BACKOFF_MS]
-  config.offlineWaitMs = DEFAULT_OFFLINE_WAIT_MS
   config.isOffline = defaultIsOffline
   config.waitForOnline = defaultWaitForOnline
 }
@@ -116,6 +112,38 @@ interface QueueEntry {
 
 const queue: QueueEntry[] = []
 let draining = false
+
+/**
+ * A held write that was rolled back, announced so the offline banner can
+ * re-expand and say so.
+ *
+ * The overlay disappearing is the user's work disappearing, and while offline
+ * the only rule for re-expanding the banner is that the facts changed — this
+ * is that fact. A listener set rather than a toast because the banner is the
+ * surface that owns the offline story; a toast on top of it would say the same
+ * thing twice.
+ */
+export type MutationFailure = { id: string; label: string; error: string }
+
+const failureListeners = new Set<(failure: MutationFailure) => void>()
+
+export function onMutationFailed(
+  listener: (failure: MutationFailure) => void
+): () => void {
+  failureListeners.add(listener)
+  return () => {
+    failureListeners.delete(listener)
+  }
+}
+
+function announceFailure(mutation: QueuedMutation, error: string): void {
+  const failure: MutationFailure = {
+    id: mutation.id,
+    label: mutation.label,
+    error,
+  }
+  for (const listener of failureListeners) listener(failure)
+}
 
 export const mutationQueue = {
   enqueue(mutation: QueuedMutation): Promise<MutationOutcome> {
@@ -132,6 +160,7 @@ export const mutationQueue = {
   reset(): void {
     queue.length = 0
     draining = false
+    failureListeners.clear()
   },
 }
 
@@ -147,6 +176,7 @@ async function drain(): Promise<void> {
         clientStore.confirmPending(entry.mutation.id, outcome.canonical)
       } else {
         clientStore.dropPending(entry.mutation.id)
+        announceFailure(entry.mutation, outcome.error)
         dropDependents(entry.mutation)
       }
       entry.resolve(outcome)
@@ -156,10 +186,37 @@ async function drain(): Promise<void> {
   }
 }
 
+/**
+ * Run one mutation, retrying a failing SERVER but never giving up on a missing
+ * NETWORK.
+ *
+ * This used to cap an offline park at 15s and spend an attempt slot on it, so
+ * a write made in a tunnel rolled back about 45 seconds later and the user's
+ * paragraph vanished. The reasoning behind the cap was sound and is worth
+ * restating, because it is the thing that changed: the queue is serial, so an
+ * indefinite park on the head strands every mutation behind it.
+ *
+ * What makes parking correct now is that being stranded is VISIBLE. A held
+ * write keeps its overlay, the count appears in the offline chip, and the
+ * manifest panel lists it by name — so waiting is a state the user can see and
+ * reason about, where before it was silent and the only honest thing to do was
+ * time out. Losing work to a timer is worse than waiting for a network, once
+ * the waiting is legible.
+ */
 async function attempt(mutation: QueuedMutation): Promise<MutationOutcome> {
   let lastError = "Something went wrong."
+  let attempts = 0
 
-  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+  for (;;) {
+    // Offline is not a failed attempt. Park, then re-check — the network
+    // returning is the only thing that can make this mutation succeed.
+    if (config.isOffline()) {
+      await config.waitForOnline()
+      continue
+    }
+
+    attempts++
+
     // Bracket ONLY the awaited call, exactly as hooks/use-generation.ts does:
     // scheduleRefresh's fire loop defers while pending > 0, so a counter that
     // spanned a backoff wait or an offline park would stall the RSC lane for
@@ -168,30 +225,31 @@ async function attempt(mutation: QueuedMutation): Promise<MutationOutcome> {
     try {
       // A resolved { ok: false } is a SERVER rejection — the write was seen and
       // refused, so retrying it can only fail identically.
-      return await mutation.run()
+      const outcome = await mutation.run()
+      reportRequestSuccess()
+      return outcome
     } catch (error) {
       lastError = errorMessage(error)
+      // A thrown run() is a transport failure. Let the connection machine
+      // decide whether that means offline; it probes rather than taking one
+      // caller's word for it.
+      reportRequestFailure()
     } finally {
       localRefresh.pending--
     }
 
-    if (i === MAX_ATTEMPTS - 1) break
-    await waitBetweenAttempts(i)
+    // The network died under that attempt. Loop back to the park rather than
+    // spending the budget on a server that is not reachable.
+    if (config.isOffline()) continue
+    if (attempts >= MAX_ATTEMPTS) break
+    await waitBackoff(attempts - 1)
   }
 
   return { ok: false, error: lastError }
 }
 
-/**
- * A thrown run() is a network failure, so wait and try again. Offline, the wait
- * is the online event OR 15s, whichever lands first — capped, and consuming an
- * attempt slot either way, because this is a SERIAL queue: an indefinite park
- * on the head strands every mutation behind it, and every one of them is a
- * write the user made seconds ago. Worst case a mutation settles in under a
- * minute whether the network came back or not.
- */
-function waitBetweenAttempts(index: number): Promise<void> {
-  if (config.isOffline()) return config.waitForOnline(config.offlineWaitMs)
+/** The online retry ladder. Offline never reaches here — see attempt(). */
+function waitBackoff(index: number): Promise<void> {
   const ms = config.backoffMs[index] ?? config.backoffMs.at(-1) ?? 0
   return new Promise((resolve) => setTimeout(resolve, ms))
 }

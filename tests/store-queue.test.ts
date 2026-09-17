@@ -71,9 +71,8 @@ beforeEach(() => {
   // A ladder short enough to run in a test, and an offline signal a test owns.
   configureMutationQueue({
     backoffMs: [1, 1, 1],
-    offlineWaitMs: 5,
     isOffline: () => false,
-    waitForOnline: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    waitForOnline: () => Promise.resolve(),
   })
 })
 
@@ -292,16 +291,97 @@ describe("failure taxonomy", () => {
     expect(clientStore.getView().stories[0].title).toBe("Saved")
   })
 
-  test("an offline park is capped and consumes attempt slots", async () => {
+  test("offline parks instead of running, and spends no attempt doing it", async () => {
+    let offline = true
     let waits = 0
     configureMutationQueue({
-      isOffline: () => true,
-      waitForOnline: (ms) => {
+      isOffline: () => offline,
+      waitForOnline: () => {
         waits++
-        expect(ms).toBe(5)
-        return new Promise((resolve) => setTimeout(resolve, ms))
+        offline = false
+        return Promise.resolve()
       },
     })
+
+    let attempts = 0
+    const outcome = await mutationQueue.enqueue(
+      mutation("m1", [{ entity: "story", op: "delete", id: "a" }], async () => {
+        attempts++
+        return { ok: true, canonical: [] }
+      })
+    )
+
+    // Parked once, then ran once. The park is not a retry.
+    expect(waits).toBe(1)
+    expect(attempts).toBe(1)
+    expect(outcome.ok).toBe(true)
+  })
+
+  test("a write made offline is held, not rolled back", async () => {
+    let offline = true
+    configureMutationQueue({
+      isOffline: () => offline,
+      waitForOnline: () =>
+        new Promise((resolve) => setTimeout(resolve, 5)).then(() => {
+          offline = false
+        }),
+    })
+
+    let attempts = 0
+    const pending = mutationQueue.enqueue(
+      mutation(
+        "m1",
+        [{ entity: "story", op: "merge", id: "a", fields: { title: "Held" } }],
+        async () => {
+          attempts++
+          return { ok: true, canonical: [] }
+        }
+      )
+    )
+
+    // The overlay is on screen immediately and stays there for the whole park,
+    // which is what makes an indefinite wait honest rather than a silent stall.
+    expect(clientStore.getView().pendingCount).toBe(1)
+    expect(attempts).toBe(0)
+
+    const outcome = await pending
+    expect(outcome.ok).toBe(true)
+    expect(attempts).toBe(1)
+    expect(clientStore.getView().pendingCount).toBe(0)
+  })
+
+  test("the network dying mid-attempt parks rather than burning the budget", async () => {
+    let offline = false
+    let waits = 0
+    configureMutationQueue({
+      isOffline: () => offline,
+      waitForOnline: () => {
+        waits++
+        offline = false
+        return Promise.resolve()
+      },
+    })
+
+    let attempts = 0
+    const outcome = await mutationQueue.enqueue(
+      mutation("m1", [{ entity: "story", op: "delete", id: "a" }], async () => {
+        attempts++
+        if (attempts === 1) {
+          // The radio went during the request.
+          offline = true
+          throw new TypeError("Failed to fetch")
+        }
+        return { ok: true, canonical: [] }
+      })
+    )
+
+    expect(waits).toBe(1)
+    expect(attempts).toBe(2)
+    expect(outcome.ok).toBe(true)
+  })
+
+  test("a server that keeps failing still gives up after MAX_ATTEMPTS", async () => {
+    configureMutationQueue({ isOffline: () => false })
 
     let attempts = 0
     const outcome = await mutationQueue.enqueue(
@@ -310,9 +390,8 @@ describe("failure taxonomy", () => {
         throw new TypeError("Failed to fetch")
       })
     )
-    // Three attempts, two waits — bounded, whether or not the network returned.
+
     expect(attempts).toBe(3)
-    expect(waits).toBe(2)
     expect(outcome.ok).toBe(false)
   })
 })
@@ -379,9 +458,12 @@ describe("localRefresh bracketing", () => {
       })
     )
 
-    // Raised for the awaited call only, never across the backoff.
+    // Raised for the awaited call only, never across the backoff. The number
+    // of isOffline consultations is the loop's business, so assert the
+    // invariant that matters — every one of them saw a released counter.
     expect(seen).toEqual([1, 1, 1])
-    expect(duringWaits).toEqual([0, 0])
+    expect(duringWaits.length).toBeGreaterThan(0)
+    expect(duringWaits.every((depth) => depth === 0)).toBe(true)
     expect(localRefresh.pending).toBe(0)
 
     await mutationQueue.enqueue(
