@@ -6,7 +6,9 @@ import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { OfflineChip } from "@/components/offline/offline-chip"
+import { OfflineInert } from "@/components/offline/offline-inert"
 import { AtmosphereCard } from "@/components/settings/atmosphere-card"
+import { DeveloperCard } from "@/components/settings/developer-card"
 import { GenerationDefaultsCard } from "@/components/settings/generation-defaults-card"
 import { ImageGenerationCard } from "@/components/settings/image-generation-card"
 import { ModelProfilesCard } from "@/components/settings/model-profiles-card"
@@ -147,97 +149,101 @@ function SettingsView({
       <ScrollArea className="min-h-0 flex-1">
         {/* Bottom pad clears the home indicator; see app/page.tsx. */}
         <div className="mx-auto w-full max-w-2xl space-y-6 px-6 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))]">
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>OpenRouter</CardTitle>
-              <CardDescription>
-                Generation runs on the OPENROUTER_API_KEY configured for this
-                deploy.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={verifying}
-                onClick={handleVerify}
-              >
-                {verifying ? (
-                  <>
-                    <Loader2 className="animate-spin" />
-                    Verifying
-                  </>
-                ) : (
-                  "Verify key"
-                )}
-              </Button>
-              <ZdrSwitch
-                id="require-zdr"
-                checked={requireZdr}
-                onCheckedChange={handleZdrChange}
-                lock={accountEnforcesAll ? "account" : null}
-                hint="Every story and profile, whatever they say for themselves. Costs you the providers that retain prompts, and the models only they serve."
-                accountNote={
-                  enforcedGroups
-                    ? `Your OpenRouter account already enforces this for ${enforcedGroups}.`
-                    : undefined
-                }
-              />
-            </CardContent>
-          </Card>
+          <OfflineInert className="space-y-6">
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>OpenRouter</CardTitle>
+                <CardDescription>
+                  Generation runs on the OPENROUTER_API_KEY configured for this
+                  deploy.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={verifying}
+                  onClick={handleVerify}
+                >
+                  {verifying ? (
+                    <>
+                      <Loader2 className="animate-spin" />
+                      Verifying
+                    </>
+                  ) : (
+                    "Verify key"
+                  )}
+                </Button>
+                <ZdrSwitch
+                  id="require-zdr"
+                  checked={requireZdr}
+                  onCheckedChange={handleZdrChange}
+                  lock={accountEnforcesAll ? "account" : null}
+                  hint="Every story and profile, whatever they say for themselves. Costs you the providers that retain prompts, and the models only they serve."
+                  accountNote={
+                    enforcedGroups
+                      ? `Your OpenRouter account already enforces this for ${enforcedGroups}.`
+                      : undefined
+                  }
+                />
+              </CardContent>
+            </Card>
 
-          <GenerationDefaultsCard defaults={settings.defaultGeneration} />
+            <GenerationDefaultsCard defaults={settings.defaultGeneration} />
 
-          <ImageGenerationCard
-            imageModels={imageModels}
-            defaultImageModelId={settings.defaultImageModelId}
-            imageContextTokens={settings.imageContextTokens}
-            defaultPrice={defaultImagePrice}
-            requireZdr={requireZdr}
-          />
+            <ImageGenerationCard
+              imageModels={imageModels}
+              defaultImageModelId={settings.defaultImageModelId}
+              imageContextTokens={settings.imageContextTokens}
+              defaultPrice={defaultImagePrice}
+              requireZdr={requireZdr}
+            />
 
-          <ModelProfilesCard
-            profiles={profiles}
-            models={models}
-            defaults={settings.defaultGeneration}
-            requireZdr={requireZdr}
-            accountPolicies={accountPolicies}
-            defaultProfileId={settings.defaultProfileId}
-            followerCounts={followerCounts}
-          />
+            <ModelProfilesCard
+              profiles={profiles}
+              models={models}
+              defaults={settings.defaultGeneration}
+              requireZdr={requireZdr}
+              accountPolicies={accountPolicies}
+              defaultProfileId={settings.defaultProfileId}
+              followerCounts={followerCounts}
+            />
 
-          <SummarizerCard
-            models={models}
-            summarizer={settings.summarizer}
-            requireZdr={requireZdr}
-            defaultContextWindow={settings.defaultGeneration.contextWindow}
-          />
+            <SummarizerCard
+              models={models}
+              summarizer={settings.summarizer}
+              requireZdr={requireZdr}
+              defaultContextWindow={settings.defaultGeneration.contextWindow}
+            />
 
-          <AtmosphereCard
-            models={models}
-            atmosphere={settings.atmosphere}
-            requireZdr={requireZdr}
-          />
+            <AtmosphereCard
+              models={models}
+              atmosphere={settings.atmosphere}
+              requireZdr={requireZdr}
+            />
 
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>Appearance</CardTitle>
-              <CardDescription>
-                How draft zero looks while you write.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Theme</p>
-                  <p className="text-xs text-muted-foreground">
-                    Switch between light and dark.
-                  </p>
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>Appearance</CardTitle>
+                <CardDescription>
+                  How draft zero looks while you write.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Theme</p>
+                    <p className="text-xs text-muted-foreground">
+                      Switch between light and dark.
+                    </p>
+                  </div>
+                  <ThemeToggle />
                 </div>
-                <ThemeToggle />
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </OfflineInert>
+
+          <DeveloperCard />
         </div>
       </ScrollArea>
     </div>
