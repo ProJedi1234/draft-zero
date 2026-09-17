@@ -127,7 +127,18 @@ function Detail({
     )
   }
   if (phase === "restored") {
-    return <p className="text-xs opacity-80">Everything held has been sent.</p>
+    // pendingCount can still be positive here: this phase is set the instant
+    // the connection flips to online, but the queue drains asynchronously —
+    // each held write is its own round trip. Claiming they are all sent
+    // while some are still in flight is exactly the kind of thing "nothing
+    // fake stays fake" forbids.
+    return (
+      <p className="text-xs opacity-80">
+        {pendingCount > 0
+          ? `Sending ${pendingCount} held ${pendingCount === 1 ? "change" : "changes"}…`
+          : "Everything held has been sent."}
+      </p>
+    )
   }
   return (
     <p className="text-xs opacity-80">

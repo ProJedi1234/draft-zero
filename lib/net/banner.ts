@@ -39,11 +39,19 @@ export function nextBannerPhase(
   offline: boolean
 ): BannerPhase {
   switch (event.type) {
+    // Yields to an unacknowledged failure rather than overwriting it. A
+    // connectivity flap arriving while `failed` is on screen is common —
+    // the write that failed may be the reason the connection is being
+    // watched at all — and letting it silently replace the failure banner
+    // is the same broken promise as a timer clearing it: the work that
+    // disappeared is not something to let scroll past. `write-failed`
+    // itself stays phase-independent below, because a fresh failure is
+    // always news, but news does not flow the other way.
     case "went-offline":
-      return "dropped"
+      return phase === "failed" ? phase : "dropped"
 
     case "came-online":
-      return "restored"
+      return phase === "failed" ? phase : "restored"
 
     // Phase-independent on purpose. A write can be rolled back while online
     // too — a 500, a validation failure — and that is worth the same row.

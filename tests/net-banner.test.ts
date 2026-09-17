@@ -32,8 +32,11 @@ const ALL_EVENTS: BannerEvent[] = [
 ]
 
 describe("transitions", () => {
-  test("losing the network always announces, from any phase", () => {
+  test("losing the network always announces, from any phase but failed", () => {
+    // failed is the one phase a connectivity event must not overwrite — see
+    // "a connectivity flap cannot overwrite an unacknowledged failure" below.
     for (const phase of ALL_PHASES) {
+      if (phase === "failed") continue
       expect(nextBannerPhase(phase, { type: "went-offline" }, true)).toBe(
         "dropped"
       )
@@ -68,6 +71,31 @@ describe("transitions", () => {
   test("a rolled-back write has no timer, because it must not scroll past", () => {
     expect(bannerTimeoutMs("failed")).toBeNull()
     expect(nextBannerPhase("failed", { type: "timer-elapsed" }, true)).toBe(
+      "failed"
+    )
+  })
+
+  test("a connectivity flap cannot overwrite an unacknowledged failure", () => {
+    // The bug this guards: went-offline/came-online used to return their
+    // target phase unconditionally, so a network flap arriving while
+    // `failed` was on screen silently replaced it — the same broken promise
+    // as a timer clearing it, just via a different event.
+    expect(nextBannerPhase("failed", { type: "went-offline" }, true)).toBe(
+      "failed"
+    )
+    expect(nextBannerPhase("failed", { type: "came-online" }, false)).toBe(
+      "failed"
+    )
+  })
+
+  test("a fresh failure is still news, even mid-flap", () => {
+    // write-failed stays phase-independent regardless of the fix above: a
+    // NEW failure is always worth the row, it is only a stale one that must
+    // not be silently swapped out from under the reader.
+    expect(nextBannerPhase("dropped", { type: "write-failed" }, true)).toBe(
+      "failed"
+    )
+    expect(nextBannerPhase("restored", { type: "write-failed" }, false)).toBe(
       "failed"
     )
   })
