@@ -37,6 +37,12 @@ const SYSTEM_ONE_URL = "https://openrouter.ai/api/v1/systemone"
 /** How long one decision may take. Far under a completion's — p95 is ~230ms. */
 const DECISION_TIMEOUT_MS = 15_000
 
+/** Said for a dead connection and for any status without its own sentence. */
+const UNAVAILABLE = "The decision model is unavailable. Try again."
+
+/** Said for a body that is not JSON and for JSON that is not answers. */
+const UNREADABLE = "The decision model sent an answer we can't read."
+
 /**
  * A decision call that did not produce answers.
  *
@@ -110,10 +116,14 @@ const DecisionResponseSchema = z.object({
  * and nothing else — the provider's guidance is that instructions belong in the
  * questions, and state that argues for an answer is state that skews it.
  *
- * Throws DecisionError on anything that is not a parseable set of answers.
- * There is no partial success: a reply missing the question that was asked is
- * a failed call, because a caller that wanted half an answer would not have
- * asked for the other half.
+ * Throws DecisionError on anything that is not a parseable set of answers — a
+ * refused call, a dead connection, a body that is not JSON, an answer shaped
+ * like none of the three. A caller's own abort is rethrown as itself.
+ *
+ * What it does not check is that the answers correspond to the questions.
+ * Whether every key came back, and whether a `choice` is one of the options
+ * that were sent, belong to the caller, which is the only side that knows what
+ * a missing answer costs it. interpretAtmosphereDecision is the worked example.
  */
 export async function decideOnce(opts: {
   state: Record<string, unknown>
@@ -149,19 +159,24 @@ export async function decideOnce(opts: {
       signal,
     })
   } catch (err) {
-    if (timeout.aborted) {
-      throw new DecisionError("The decision model didn't answer in time.")
-    }
-    // A caller-side abort is not a failure to report — it is the caller
-    // deciding it no longer wants the answer — so it is rethrown as itself.
-    throw err
+    throw asDecisionError(err, opts.signal, timeout, UNAVAILABLE)
   }
 
   if (!res.ok) throw new DecisionError(describeFailure(res), res.status)
 
-  const parsed = DecisionResponseSchema.safeParse(await res.json())
+  // Reading the body can fail on its own, and on this route it is the likely
+  // way to get HTML instead of an answer — see SYSTEM_ONE_URL, where a missing
+  // path segment is served as 200.
+  let body: unknown
+  try {
+    body = await res.json()
+  } catch (err) {
+    throw asDecisionError(err, opts.signal, timeout, UNREADABLE)
+  }
+
+  const parsed = DecisionResponseSchema.safeParse(body)
   if (!parsed.success) {
-    throw new DecisionError("The decision model sent an answer we can't read.")
+    throw new DecisionError(UNREADABLE)
   }
 
   return {
@@ -169,6 +184,27 @@ export async function decideOnce(opts: {
     generationId: parsed.data.id ?? null,
     usage: toUsage(parsed.data.usage),
   }
+}
+
+/**
+ * Whatever went wrong on the wire, as the error this module promises.
+ *
+ * Both failure points need the same three-way decision, and only the first of
+ * the three is not a DecisionError: a caller-side abort is not a failure to
+ * report, it is the caller deciding it no longer wants the answer, so it is
+ * rethrown as itself.
+ */
+function asDecisionError(
+  err: unknown,
+  caller: AbortSignal | undefined,
+  timeout: AbortSignal,
+  fallback: string
+): unknown {
+  if (caller?.aborted) return err
+  if (timeout.aborted) {
+    return new DecisionError("The decision model didn't answer in time.")
+  }
+  return new DecisionError(fallback)
 }
 
 /**
@@ -193,7 +229,7 @@ function describeFailure(res: Response): string {
     case 429:
       return "OpenRouter rate limit hit. Wait a moment and retry."
     default:
-      return "The decision model is unavailable. Try again."
+      return UNAVAILABLE
   }
 }
 
