@@ -207,12 +207,18 @@ describe("a story already wearing a colour", () => {
 })
 
 describe("confidence the provider did not send", () => {
-  test("falls back to the winner's own probability", () => {
+  test("a decisive distribution is not read as confidence", () => {
+    // The winner's share is a different quantity from the peakedness
+    // `confidence` reports. Spread over eight tints it sits below every
+    // threshold the writer can set, so reading it here would never repaint.
     const decided = interpretAtmosphereDecision(
-      reply({ fits: 0.1, probabilities: { ember: 0.45, abyss: 0.55 } }),
-      { current: "abyss", ...THRESHOLD }
+      reply({
+        fits: 0.05,
+        probabilities: { ember: 0.55, abyss: 0.09, rose: 0.09 },
+      }),
+      { current: "abyss", minConfidence: 0.95 }
     )
-    expect(decided).toEqual({ kind: "keep" })
+    expect(decided).toMatchObject({ kind: "paint", id: "ember" })
   })
 
   test("falls OPEN when neither number arrives", () => {

@@ -178,22 +178,21 @@ export function interpretAtmosphereDecision(
 /**
  * How sure the engine is about its pick, 0–1.
  *
- * `confidence` is the right number and describes the shape of the whole
- * distribution rather than just the winner's share, so a story poised between
- * two moods scores low even when one of them edges ahead. Both it and
- * `probabilities` are optional in the provider's schema, hence the ladder.
+ * `confidence` is the only field that answers this. It reports how peaked the
+ * distribution is, so a story poised between two moods scores low even when
+ * one of them edges ahead. The winner's own share in `probabilities` measures
+ * something else and is deliberately not consulted — spread over eight tints
+ * it lands under every threshold the writer can set, so reading it as
+ * confidence would turn a high setting into "never repaint".
  *
- * The final fallback is 1 rather than 0, and that choice is deliberate. A
- * provider that stopped sending confidence would, under a 0 default, silently
- * convert the threshold into "never repaint" — and a tint picker that has
- * quietly stopped working is this feature's worst and least visible failure,
- * because a check that declined and a check that never ran look identical from
- * the outside. Falling open costs a wrong colour somebody can see and fix.
+ * `confidence` is optional in the provider's schema, so a missing one falls
+ * through to 1 rather than 0, and that direction is deliberate. A provider
+ * that stopped sending it would, under a 0 default, silently convert the
+ * threshold into "never repaint" — and a tint picker that has quietly stopped
+ * working is this feature's worst and least visible failure, because a check
+ * that declined and a check that never ran look identical from the outside.
+ * Falling open costs a wrong colour somebody can see and fix.
  */
-function choiceConfidence(pick: {
-  choice: string
-  confidence?: number
-  probabilities?: Record<string, number>
-}): number {
-  return pick.confidence ?? pick.probabilities?.[pick.choice] ?? 1
+function choiceConfidence(pick: { confidence?: number }): number {
+  return pick.confidence ?? 1
 }
