@@ -186,3 +186,86 @@ export interface GenerationProvider {
    */
   generate(request: GenerationRequest): AsyncIterable<GenerationEvent>
 }
+
+// ---------------------------------------------------------------------------
+// Decision models
+//
+// A second kind of provider call, and deliberately not a variant of the first.
+// A decision model is handed the thing to judge and a set of typed questions,
+// and answers with probabilities rather than prose — there is no completion to
+// stream, no temperature, and no prompt in the sense the rest of this file
+// means it. Modelling it as "a completion whose output happens to be one word"
+// is what the LLM tint picker already does, and the strictness that costs
+// (see parseChoice in atmosphere.ts) is the thing these types remove.
+
+/**
+ * What a question is allowed to say for itself.
+ *
+ * The provider accepts a string, an object or an array anywhere guidance is
+ * taken; this app only ever sends strings, and the type says so rather than
+ * widening to `unknown` for a flexibility nothing here wants.
+ */
+export type DecisionQuestion =
+  | {
+      type: "noul"
+      instructions: string
+      /** What true and false each mean. Both or neither — one alone is rejected. */
+      criteria?: { true: string; false: string }
+    }
+  | {
+      type: "choice"
+      instructions: string
+      /** Option key → what that option means. The keys ARE the legal answers. */
+      criteria: Record<string, string>
+    }
+  | {
+      type: "score"
+      instructions: string
+      /** Ordered levels, 2–10 of them, answered as an index into this list. */
+      criteria: readonly string[]
+    }
+
+/** P(true) for a `noul`. No confidence field — one number describes a coin. */
+export interface NoulAnswer {
+  type: "noul"
+  noul: number
+}
+
+export interface ChoiceAnswer {
+  type: "choice"
+  /** The argmax, always one of the `criteria` keys that were sent. */
+  choice: string
+  /**
+   * How peaked the distribution is, 0–1, and NOT simply the winner's
+   * probability — a flat spread scores low even when one option edges ahead.
+   * Optional because the provider's schema marks it so.
+   */
+  confidence?: number
+  /** The full distribution over every option sent. Sums to 1. */
+  probabilities?: Record<string, number>
+}
+
+export interface ScoreAnswer {
+  type: "score"
+  /** The expected value Σ level × P(level), so it is fractional, not an index. */
+  score: number
+  confidence?: number
+  legend?: Record<string, unknown>
+  probabilities?: Record<string, number>
+}
+
+export type DecisionAnswer = NoulAnswer | ChoiceAnswer | ScoreAnswer
+
+/**
+ * One decision call's reply.
+ *
+ * `usage` and `generationId` are the same two handles a completion returns and
+ * are shaped identically on purpose: the ledger, the usage page and the cost
+ * queries do not care which kind of call produced a row, and this is what lets
+ * them go on not caring.
+ */
+export interface DecisionResult {
+  answers: Record<string, DecisionAnswer>
+  generationId: string | null
+  usage: GenerationUsage | null
+}
