@@ -53,12 +53,25 @@ const UNREADABLE = "The decision model sent an answer we can't read."
 export class DecisionError extends Error {
   constructor(
     message: string,
-    readonly status: number | null = null
+    readonly status: number | null = null,
+    /**
+     * The handles of a call that ran anyway, or null when none came back.
+     * A reply whose answers this app cannot act on was still generated and
+     * still billed, and a caller that settles its ledger row from the error
+     * would otherwise record that call as free and unreconcilable.
+     */
+    readonly billed: Omit<DecisionResult, "answers"> | null = null
   ) {
     super(message)
     this.name = "DecisionError"
   }
 }
+
+const UsageSchema = z.object({
+  input_tokens: z.number(),
+  output_tokens: z.number(),
+  cost: z.number().optional(),
+})
 
 const NoulAnswerSchema = z.object({
   type: z.literal("noul"),
@@ -97,13 +110,18 @@ const DecisionResponseSchema = z.object({
       ScoreAnswerSchema,
     ])
   ),
-  usage: z
-    .object({
-      input_tokens: z.number(),
-      output_tokens: z.number(),
-      cost: z.number().optional(),
-    })
-    .optional(),
+  usage: UsageSchema.optional(),
+})
+
+/**
+ * The same reply with its answers left unread.
+ *
+ * Only parsed when the strict schema above rejects the body, so that an answer
+ * this app cannot act on still settles at the cost it actually incurred.
+ */
+const BilledSchema = z.object({
+  id: z.string().optional(),
+  usage: UsageSchema.optional(),
 })
 
 /**
@@ -162,7 +180,9 @@ export async function decideOnce(opts: {
     throw asDecisionError(err, opts.signal, timeout, UNAVAILABLE)
   }
 
-  if (!res.ok) throw new DecisionError(describeFailure(res), res.status)
+  if (!res.ok) {
+    throw new DecisionError(describeFailure(res, opts.zdr), res.status)
+  }
 
   // Reading the body can fail on its own, and on this route it is the likely
   // way to get HTML instead of an answer — see SYSTEM_ONE_URL, where a missing
@@ -176,7 +196,17 @@ export async function decideOnce(opts: {
 
   const parsed = DecisionResponseSchema.safeParse(body)
   if (!parsed.success) {
-    throw new DecisionError(UNREADABLE)
+    const billed = BilledSchema.safeParse(body)
+    throw new DecisionError(
+      UNREADABLE,
+      null,
+      billed.success
+        ? {
+            generationId: billed.data.id ?? null,
+            usage: toUsage(billed.data.usage),
+          }
+        : null
+    )
   }
 
   return {
@@ -210,27 +240,30 @@ function asDecisionError(
 /**
  * The provider's error, as a sentence a writer can act on.
  *
- * The status alone, deliberately — the response body is provider JSON written
- * for a log, and on every failure a writer can actually do something about it
- * says less than the code already does. Same map and same wording as
+ * The status and what this request asked for — never the response body, which
+ * is provider JSON written for a log and says less than the code already does
+ * on every failure a writer can act on. Same map and same wording as
  * mapOpenRouterError, because the two routes fail for the same reasons and a
  * writer should not be able to tell which one was in play.
  */
-function describeFailure(res: Response): string {
+function describeFailure(res: Response, zdr: boolean): string {
   switch (res.status) {
     case 401:
       return "OpenRouter rejected the API key. Check Settings."
     case 402:
       return "OpenRouter credits exhausted. Top up your account."
     case 404:
-      // The decision model has exactly one provider, so the only way to ask for
-      // an endpoint that does not exist is to require one it cannot satisfy.
-      return "No provider for the decision model keeps nothing. Turn off zero data retention, or use a language model for this."
+      // Only a request that demanded retention-free routing can be refused for
+      // it. Any other 404 is the pinned model id gone, and naming ZDR there
+      // sends the writer to a switch that is already off.
+      if (zdr) {
+        return "No provider for the decision model keeps nothing. Turn off zero data retention, or use a language model for this."
+      }
+      break
     case 429:
       return "OpenRouter rate limit hit. Wait a moment and retry."
-    default:
-      return UNAVAILABLE
   }
+  return UNAVAILABLE
 }
 
 /**

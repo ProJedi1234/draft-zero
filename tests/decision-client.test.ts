@@ -129,6 +129,42 @@ describe("decideOnce failures", () => {
     )
   })
 
+  test("a 404 only blames retention when retention was demanded", async () => {
+    // The pinned model id going away is the 404 a writer will actually meet,
+    // and sending them to a ZDR switch that is already off strands them.
+    stubFetch(() => json({ error: { message: "No endpoints found" } }, 404))
+
+    const plain = (await call().catch((e: unknown) => e)) as Refusal
+    expect(plain.status).toBe(404)
+    expect(plain.message).toBe("The decision model is unavailable. Try again.")
+
+    const strict = (await call({ zdr: true }).catch(
+      (e: unknown) => e
+    )) as Refusal
+    expect(strict.message).toBe(
+      "No provider for the decision model keeps nothing. Turn off zero data retention, or use a language model for this."
+    )
+  })
+
+  test("an unreadable answer still carries what the call was billed", async () => {
+    // The reply was generated and charged for; settling the ledger row from
+    // this error must not record it as free, or reconcile has no handle left.
+    stubFetch(() =>
+      json({
+        id: "gen-91",
+        answers: { fits: { type: "vibes", noul: 0.5 } },
+        usage: { input_tokens: 388, output_tokens: 0, cost: 0.0000029 },
+      })
+    )
+
+    const err = (await call().catch((e: unknown) => e)) as Refusal
+
+    expect(err.message).toBe("The decision model sent an answer we can't read.")
+    expect(err.billed?.generationId).toBe("gen-91")
+    expect(err.billed?.usage?.promptTokens).toBe(388)
+    expect(err.billed?.usage?.costUsd).toBe(0.0000029)
+  })
+
   test("a caller's own abort is rethrown as itself", async () => {
     // Not a failure to report — the caller stopped wanting the answer, and
     // dressing that up as a DecisionError puts a toast on a navigation.
