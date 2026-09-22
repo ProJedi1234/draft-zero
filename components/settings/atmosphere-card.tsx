@@ -65,11 +65,10 @@ export function AtmosphereCard({
   requireZdr: boolean
 }) {
   // Follows the server while mounted but never over the top of an in-flight
-  // write — the picker is several controls whose writes overlap. Versioned on
-  // the bundle itself because this row has no updatedAt of its own.
-  const synced = useServerSyncedValue(atmosphere, {
-    version: JSON.stringify(atmosphere),
-  })
+  // write. No version, because this row has no updatedAt and the bundle's own
+  // JSON sorts "decision" before "llm" — one engine tab switch would latch the
+  // card off the server for the life of the mount.
+  const synced = useServerSyncedValue(atmosphere)
   const draft = synced.value
   const [, startTransition] = React.useTransition()
 
