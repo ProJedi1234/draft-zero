@@ -24,7 +24,11 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 
-import type { GenerationUsage } from "@/lib/generation/types"
+import type {
+  DecisionAnswer,
+  DecisionResult,
+  GenerationUsage,
+} from "@/lib/generation/types"
 import type { AtmospherePhase } from "@/lib/sync/types"
 import type { AtmosphereSettings, Story, StoryEntry } from "@/lib/types"
 
@@ -34,6 +38,9 @@ import type { AtmosphereIo } from "@/lib/generation/atmosphere"
 
 const { runAtmosphereForStory, resetAtmosphereState, clearAtmosphereBreaker } =
   await import("@/lib/generation/atmosphere")
+// Imported after the mock above, like its sibling: a static import is hoisted
+// past it and the real server-only module throws on sight.
+const { DecisionError } = await import("@/lib/generation/decide")
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -150,6 +157,21 @@ let completeImpl: () => Promise<CompleteResult> = async () => ({
   usage: null,
 })
 
+/** The decision engine's default reply: abyss fits, and abyss is the pick. */
+function answers(over: Record<string, DecisionAnswer> = {}) {
+  return {
+    still_fits: { type: "noul" as const, noul: 0.9 },
+    tint: { type: "choice" as const, choice: "abyss", confidence: 0.9 },
+    ...over,
+  }
+}
+
+let decideImpl: () => Promise<DecisionResult> = async () => ({
+  answers: answers(),
+  generationId: "gen-dec-1",
+  usage: null,
+})
+
 // What the predicated UPDATE reports: true = the row was still auto and the
 // tint landed; false = a swatch press pinned the story while the check flew.
 let writeResult: () => boolean = () => true
@@ -164,6 +186,7 @@ const phases: {
 const settled: { id: string; status: string }[] = []
 const started: Record<string, unknown>[] = []
 const completeCalls: Record<string, unknown>[] = []
+const decideCalls: Record<string, unknown>[] = []
 
 const io: AtmosphereIo = {
   getStory: async () => currentStory,
@@ -172,6 +195,10 @@ const io: AtmosphereIo = {
   async complete(opts) {
     completeCalls.push(opts as unknown as Record<string, unknown>)
     return completeImpl()
+  },
+  async decide(opts) {
+    decideCalls.push(opts as unknown as Record<string, unknown>)
+    return decideImpl()
   },
   async openCall(call) {
     started.push(call as unknown as Record<string, unknown>)
@@ -200,12 +227,18 @@ beforeEach(() => {
   settled.length = 0
   started.length = 0
   completeCalls.length = 0
+  decideCalls.length = 0
   currentStory = makeStory()
   apiKey = "test-key"
   atmosphere = BASE_ATMOSPHERE
   completeImpl = async () => ({
     text: "abyss",
     generationId: "gen-1",
+    usage: null,
+  })
+  decideImpl = async () => ({
+    answers: answers(),
+    generationId: "gen-dec-1",
     usage: null,
   })
   writeResult = () => true
@@ -778,6 +811,169 @@ describe("one at a time", () => {
     expect(completeCalls).toHaveLength(1)
     release()
     await first
+    expect(written).toHaveLength(1)
+  })
+})
+
+describe("which engine answers", () => {
+  const DECISION: AtmosphereSettings = {
+    ...BASE_ATMOSPHERE,
+    engine: "decision",
+  }
+
+  test("the writer's choice picks the route, and only one is taken", async () => {
+    atmosphere = DECISION
+    currentStory = tinted(passages(10))
+    await run()
+    expect(decideCalls).toHaveLength(1)
+    expect(completeCalls).toHaveLength(0)
+  })
+
+  test("the language model stays the default, so an upgrade moves nobody", async () => {
+    currentStory = tinted(passages(10))
+    await run()
+    expect(completeCalls).toHaveLength(1)
+    expect(decideCalls).toHaveLength(0)
+  })
+
+  test("the ledger row names the pinned decision model, not the writer's LLM", async () => {
+    atmosphere = { ...DECISION, modelId: "some/language-model" }
+    currentStory = tinted(passages(10))
+    await run()
+    expect(started[0]).toMatchObject({
+      requestKind: "atmosphere",
+      modelId: "typesafe/jev-1.13",
+      // Neither is true of a decision call, and recording the unused half of
+      // the bundle would make the usage page describe a call that never was.
+      thinking: "off",
+      providerName: null,
+    })
+  })
+
+  test("both engines bill against the same request kind", async () => {
+    currentStory = tinted(passages(10))
+    await run()
+    atmosphere = DECISION
+    currentStory = tinted(passages(20))
+    await run()
+    expect(started.map((call) => call.requestKind)).toEqual([
+      "atmosphere",
+      "atmosphere",
+    ])
+  })
+
+  test("a confident answer repaints and settles ok", async () => {
+    atmosphere = DECISION
+    currentStory = tinted(passages(10))
+    decideImpl = async () => ({
+      answers: answers({
+        still_fits: { type: "noul", noul: 0.05 },
+        tint: { type: "choice", choice: "ember", confidence: 0.9 },
+      }),
+      generationId: "gen-dec-1",
+      usage: null,
+    })
+    await run()
+    expect(written).toEqual([{ storyId: "story-1", hue: 25, strength: 1 }])
+    expect(settled).toEqual([{ id: settled[0]!.id, status: "ok" }])
+  })
+
+  test("doubt is a KEEP — settled ok, nothing written, the watermark advances", async () => {
+    atmosphere = DECISION
+    currentStory = tinted(passages(10))
+    decideImpl = async () => ({
+      answers: answers({
+        still_fits: { type: "noul", noul: 0.05 },
+        tint: { type: "choice", choice: "ember", confidence: 0.3 },
+      }),
+      generationId: "gen-dec-1",
+      usage: null,
+    })
+    await run()
+    expect(written).toHaveLength(0)
+    expect(settled[0]!.status).toBe("ok")
+    // Not a failure and not a retry: re-asking every turn until it grows
+    // confident is exactly the runaway the gate exists to prevent.
+    currentStory = tinted(passages(11))
+    await run()
+    expect(decideCalls).toHaveLength(1)
+  })
+
+  test("an answer outside the palette is a failed check, not a lost colour", async () => {
+    atmosphere = DECISION
+    currentStory = tinted(passages(10))
+    decideImpl = async () => ({
+      answers: answers({
+        still_fits: { type: "noul", noul: 0.05 },
+        tint: { type: "choice", choice: "octarine", confidence: 0.99 },
+      }),
+      generationId: "gen-dec-1",
+      usage: null,
+    })
+    await run()
+    expect(written).toHaveLength(0)
+    expect(settled[0]!.status).toBe("error")
+    expect(phases.at(-1)?.phase).toBe("failed")
+  })
+
+  test("three unusable answers trip the same breaker the other engine has", async () => {
+    atmosphere = { ...DECISION, passagesBetweenChecks: 1 }
+    decideImpl = async () => ({
+      answers: { tint: { type: "choice", choice: "octarine" } },
+      generationId: null,
+      usage: null,
+    })
+    for (const count of [10, 11, 12]) {
+      currentStory = tinted(passages(count))
+      await run()
+    }
+    expect(phases.at(-1)?.phase).toBe("stopped")
+    // Tripped means tripped: a fourth turn costs nothing.
+    currentStory = tinted(passages(13))
+    await run()
+    expect(decideCalls).toHaveLength(3)
+  })
+
+  test("a provider failure is reported in the writer's words", async () => {
+    atmosphere = DECISION
+    currentStory = tinted(passages(10))
+    decideImpl = async () => {
+      throw new DecisionError(
+        "OpenRouter credits exhausted. Top up your account."
+      )
+    }
+    await run()
+    expect(settled[0]!.status).toBe("error")
+    expect(phases.at(-1)).toMatchObject({
+      phase: "failed",
+      message: "OpenRouter credits exhausted. Top up your account.",
+    })
+  })
+
+  test("the story's retention policy binds whichever engine is asking", async () => {
+    atmosphere = DECISION
+    // The bundle says no and the story says yes. It is the story's prose on
+    // the wire, so the story wins — the same OR the prose engine applies.
+    currentStory = tinted({
+      ...passages(10),
+      settings: { ...makeStory().settings, zdr: true },
+    })
+    await run()
+    expect(decideCalls[0]).toMatchObject({ zdr: true })
+  })
+
+  test("an untinted story is asked one question and always given a colour", async () => {
+    atmosphere = DECISION
+    currentStory = makeStory()
+    decideImpl = async () => ({
+      answers: { tint: { type: "choice", choice: "rose", confidence: 0.2 } },
+      generationId: null,
+      usage: null,
+    })
+    await run()
+    expect(
+      Object.keys(decideCalls[0]!.questions as Record<string, unknown>)
+    ).toEqual(["tint"])
     expect(written).toHaveLength(1)
   })
 })
