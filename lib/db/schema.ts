@@ -21,6 +21,7 @@ import {
 
 import type { OpKind } from "@/lib/history/ops"
 import type {
+  AtmosphereEngine,
   ComposerMode,
   CostSource,
   GenerationCallStatus,
@@ -650,6 +651,27 @@ export const appSettings = pgTable("app_settings", {
   // nothing to scale. Separate columns rather than a shared "utility model"
   // bundle: they are two jobs with two right answers, and folding them together
   // would mean changing one to change the other.
+  // Which engine answers the question — a language model told it in prose, or
+  // a decision model handed it as typed questions. Defaulted to 'llm' so the
+  // generated ALTER TABLE leaves every existing install running exactly what
+  // it was running; the decision engine is opt-in, and its accuracy on a
+  // judgement this soft is a matter of taste rather than a known improvement.
+  //
+  // The six columns below stay the LANGUAGE MODEL's, untouched by the engine
+  // switch. Separate columns rather than one bundle is what makes switching
+  // to the decision engine and back lossless: a writer who tuned a model, a
+  // temperature and a cap still has all three when they come back.
+  atmosphereEngine: text("atmosphere_engine")
+    .notNull()
+    .default("llm")
+    .$type<AtmosphereEngine>(),
+  // How peaked the decision engine's answer must be before it repaints, 0–1.
+  // Only read when atmosphere_engine is 'decision'. 0.6 is a middle setting
+  // over eight options, where a confident pick runs high and a scene between
+  // two moods runs low — which is exactly the case that should not repaint.
+  atmosphereMinConfidence: doublePrecision("atmosphere_min_confidence")
+    .notNull()
+    .default(0.6),
   atmosphereModelId: text("atmosphere_model_id"),
   atmosphereThinking: text("atmosphere_thinking")
     .notNull()

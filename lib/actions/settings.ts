@@ -11,6 +11,7 @@ import { appSettings } from "@/lib/db/schema"
 import { clearAtmosphereBreaker } from "@/lib/generation/atmosphere"
 import { resolveOpenRouterKey } from "@/lib/generation/key"
 import {
+  ATMOSPHERE_ENGINES,
   clampLoreBudget,
   IMAGE_CONTEXT_OPTIONS,
   isContextWindow,
@@ -79,6 +80,8 @@ export async function updateAppSettings(
   }
   if (patch.atmosphere !== undefined) {
     const {
+      engine,
+      minConfidence,
       modelId,
       thinking,
       providerTag,
@@ -87,6 +90,22 @@ export async function updateAppSettings(
       maxTokens,
       passagesBetweenChecks,
     } = patch.atmosphere
+    // Guarded like every other closed value set here. An unknown engine would
+    // fall through the runner's branch to the language-model path, which is
+    // the safe direction but a silent one — a writer who switched to the
+    // decision model would keep being billed for the other thing.
+    if (!ATMOSPHERE_ENGINES.includes(engine)) {
+      return { ok: false, error: "Unknown atmosphere engine." }
+    }
+    // The floor is 0.5 rather than 0 because below it the threshold stops
+    // being a threshold: an engine less than half sure would repaint, which
+    // is the runaway the number exists to prevent. The ceiling stops short of
+    // 1 for the same reason in the other direction — nothing is ever certain
+    // about a mood, and a picker that can be set to never fire is a feature
+    // that can be silently switched off by a slider labelled as caution.
+    if (!inRange(minConfidence, 0.5, 0.95)) {
+      return { ok: false, error: "Confidence must be between 0.5 and 0.95." }
+    }
     // Same three guards as the summarizer above, and for the same reason: an
     // unknown thinking level or an out-of-range temperature is a provider 400,
     // and this call is invisible — it would reach the writer as a story that
@@ -108,6 +127,8 @@ export async function updateAppSettings(
     }
     const trimmed = modelId?.trim() ?? ""
     values.atmosphereModelId = trimmed === "" ? null : trimmed
+    values.atmosphereEngine = engine
+    values.atmosphereMinConfidence = minConfidence
     values.atmosphereThinking = thinking
     values.atmosphereProviderTag = providerTag
     values.atmosphereZdr = zdr

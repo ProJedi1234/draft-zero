@@ -133,6 +133,8 @@ type CompleteResult = {
 let currentStory: Story | null = makeStory()
 let apiKey: string | null = "test-key"
 const BASE_ATMOSPHERE: AtmosphereSettings = {
+  engine: "llm",
+  minConfidence: 0.6,
   modelId: null,
   thinking: "off",
   providerTag: null,

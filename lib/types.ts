@@ -508,7 +508,41 @@ export type SummarizerSettings = Omit<GenerationIdentity, "modelId"> & {
  * nullable model for the same reason — "not chosen" follows the app's built-in
  * default as that changes.
  */
+/**
+ * What actually answers the atmosphere question.
+ *
+ * Two engines rather than two models, because they are not interchangeable
+ * behind one picker. A language model is told the question in prose and
+ * answers in prose; a decision model is handed typed questions and answers
+ * with probabilities, and accepts none of the sampling controls the other
+ * half of this bundle exists to carry. A writer choosing between them is
+ * choosing which controls they get, so the choice has to be its own.
+ */
+export const ATMOSPHERE_ENGINES = ["llm", "decision"] as const
+export type AtmosphereEngine = (typeof ATMOSPHERE_ENGINES)[number]
+
 export type AtmosphereSettings = Omit<GenerationIdentity, "modelId"> & {
+  /**
+   * Which engine runs the check. "llm" is the default and the shipped
+   * behaviour; the fields below it are the language model's and are read by
+   * nothing when this is "decision".
+   */
+  engine: AtmosphereEngine
+  /**
+   * How sure the decision engine must be before it repaints, 0–1.
+   *
+   * The hysteresis, as a number. Under the language model the same job is done
+   * by a paragraph of prose asking the model to hold steady through a passing
+   * moment (ATMOSPHERE_KEEP_RULE), which is the best a text answer allows and
+   * which had to be rewritten once already after a story sat on the wrong
+   * colour for several passages. A calibrated engine reports how peaked its
+   * own distribution is, so the same restraint becomes a threshold the writer
+   * can move.
+   *
+   * Read against BOTH questions the decision engine asks — see
+   * interpretAtmosphereAnswers. Ignored entirely under "llm".
+   */
+  minConfidence: number
   modelId: string | null
   temperature: number
   /**
