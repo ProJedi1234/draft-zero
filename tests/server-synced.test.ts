@@ -371,4 +371,23 @@ describe("a caller with no row version", () => {
     control.settle()
     expect(control.render(0.9, null)).toBe(0.9)
   })
+
+  // The settings cards sync a whole bundle this way, and the reason they pass
+  // no version is that a bundle has no order: the atmosphere card's engine
+  // sorts "decision" before "llm", so a version derived from it would read the
+  // tab switch as a payload going backwards and refuse everything after it.
+  test("a bundle changed on another device lands after a local write settles", () => {
+    const llm = { engine: "llm", passagesBetweenChecks: 3 }
+    const decision = { engine: "decision", passagesBetweenChecks: 3 }
+    const control = new Control(llm, null)
+    control.render(llm, null)
+
+    control.write(decision)
+    control.settle()
+    expect(control.render(decision, null)).toEqual(decision)
+
+    // The phone raises the cadence on the row this device just switched.
+    const raised = { engine: "decision", passagesBetweenChecks: 8 }
+    expect(control.render(raised, null)).toEqual(raised)
+  })
 })
