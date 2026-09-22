@@ -26,8 +26,12 @@ export const DEFAULT_ATMOSPHERE_MODEL_ID = "~deepseek/deepseek-v4-flash-latest"
  * it tells a model nothing about when to choose it. A tint without a gloss
  * falls back to its label rather than disappearing from the list — a missing
  * line here should cost the model some judgement, not cost the writer a colour.
+ *
+ * Exported because the decision engine needs the same eight sentences as its
+ * choice criteria (see atmosphere-decision.ts). One copy, so the two engines
+ * cannot end up reading different definitions of the same colour.
  */
-const TINT_MOODS: Record<string, string> = {
+export const TINT_MOODS: Record<string, string> = {
   ember: "firelight, forge-heat, blood, ruin, anger held close",
   amber: "dust and lamplight, late afternoon, old money, slow decay",
   sun: "open daylight, harvest, relief, plain and unhidden things",
