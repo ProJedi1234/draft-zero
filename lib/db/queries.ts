@@ -1354,6 +1354,11 @@ export async function getAppSettings(): Promise<AppSettings> {
       atmosphereTemperature: 0.2,
       atmosphereMaxTokens: 2048,
       atmospherePassagesBetweenChecks: 3,
+      // The language model, because it is what the feature shipped as. The
+      // decision engine is a thing a writer turns on, not a default they are
+      // moved onto by an upgrade.
+      atmosphereEngine: "llm" as const,
+      atmosphereMinConfidence: 0.6,
       requireZdr: false,
       // Null follows the catalog's first eligible entry; 4,096 is the shipped
       // derivation budget — see app/api/image-prompt/route.ts for the why.

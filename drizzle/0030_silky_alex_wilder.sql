@@ -1,0 +1,2 @@
+ALTER TABLE "app_settings" ADD COLUMN "atmosphere_engine" text DEFAULT 'llm' NOT NULL;--> statement-breakpoint
+ALTER TABLE "app_settings" ADD COLUMN "atmosphere_min_confidence" double precision DEFAULT 0.6 NOT NULL;

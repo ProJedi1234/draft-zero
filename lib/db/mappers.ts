@@ -646,6 +646,8 @@ export function toAppSettings(row: AppSettingsRow): AppSettings {
       maxTokens: row.summaryMaxTokens,
     },
     atmosphere: {
+      engine: row.atmosphereEngine,
+      minConfidence: row.atmosphereMinConfidence,
       modelId: row.atmosphereModelId,
       thinking: row.atmosphereThinking,
       providerTag: row.atmosphereProviderTag,
