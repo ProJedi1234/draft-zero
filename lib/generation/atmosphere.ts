@@ -41,9 +41,20 @@ import {
   renderAtmosphereRequest,
   renderAtmosphereSystemPrompt,
 } from "@/lib/generation/atmosphere-prompt"
+import {
+  ATMOSPHERE_DECISION_MODEL_ID,
+  interpretAtmosphereDecision,
+  renderAtmosphereQuestions,
+  renderAtmosphereState,
+} from "@/lib/generation/atmosphere-decision"
+import { decideOnce, DecisionError } from "@/lib/generation/decide"
 import { resolveOpenRouterKey } from "@/lib/generation/key"
 import { completeOnce, mapOpenRouterError } from "@/lib/generation/openrouter"
-import type { GenerationUsage } from "@/lib/generation/types"
+import type {
+  DecisionQuestion,
+  DecisionResult,
+  GenerationUsage,
+} from "@/lib/generation/types"
 import { STORY_TINTS } from "@/lib/story-tint"
 import { publishBus } from "@/lib/sync/bus"
 import type { AtmospherePhase } from "@/lib/sync/types"
@@ -88,6 +99,21 @@ export interface AtmosphereIo {
     generationId: string | null
     usage: GenerationUsage | null
   }>
+  /**
+   * The decision engine's half of the seam. Separate from `complete` rather
+   * than a mode of it because the two take and return different things: one
+   * sends prose and gets prose, the other sends typed questions and gets
+   * probabilities, and collapsing them would mean a union at every call site
+   * to save one method here.
+   */
+  decide(opts: {
+    state: Record<string, unknown>
+    questions: Record<string, DecisionQuestion>
+    modelId: string
+    zdr: boolean
+    key: string
+    signal?: AbortSignal
+  }): Promise<DecisionResult>
   openCall(call: CallStart): Promise<void>
   settle(
     id: string,
@@ -129,6 +155,7 @@ export const liveIo: AtmosphereIo = {
   settings: getAppSettings,
   apiKey: resolveOpenRouterKey,
   complete: completeOnce,
+  decide: decideOnce,
   openCall: recordCallStarted,
   settle: settleCall,
   async writeTint(storyId, tint) {
@@ -307,7 +334,14 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
   const { atmosphere } = await io.settings()
   if (!shouldCheck(story, atmosphere.passagesBetweenChecks)) return
 
-  const modelId = atmosphere.modelId ?? DEFAULT_ATMOSPHERE_MODEL_ID
+  // Which engine answers is the writer's choice, and it decides the model as
+  // well as the route. The decision model is pinned rather than drawn from
+  // atmosphere.modelId: that column holds a LANGUAGE model the writer picked
+  // from the catalog, and sending it down this route would 404.
+  const useDecision = atmosphere.engine === "decision"
+  const modelId = useDecision
+    ? ATMOSPHERE_DECISION_MODEL_ID
+    : (atmosphere.modelId ?? DEFAULT_ATMOSPHERE_MODEL_ID)
   // Announced here rather than at the top of the function: everything above is
   // the gate, and the gate declining is not work — a spinner for it would
   // blink after every turn and mean nothing.
@@ -316,6 +350,10 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
   const requestKind: GenerationRequestKind = "atmosphere"
   // Opened before the request for the same reason a generation's row is: a call
   // that dies mid-flight was still billed, and this is the only trace it leaves.
+  //
+  // Same requestKind for both engines, deliberately. It is one job with one
+  // budget, and splitting the kind would split every total on the usage page
+  // the day a writer tried the other engine.
   await io.openCall({
     id: callId,
     storyId,
@@ -323,49 +361,40 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
     storyTitle: story.title,
     requestKind,
     modelId,
-    thinking: atmosphere.thinking,
-    providerName: atmosphere.providerTag,
+    // A decision model neither reasons nor routes, so both columns record what
+    // was true of the call rather than what the unused half of the bundle says.
+    thinking: useDecision ? "off" : atmosphere.thinking,
+    providerName: useDecision ? null : atmosphere.providerTag,
   })
 
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), ATMOSPHERE_TIMEOUT_MS)
   try {
-    const result = await io.complete({
-      system: renderAtmosphereSystemPrompt(currentTintId(story) !== null),
-      user: renderAtmosphereRequest({
-        current: currentTintId(story),
-        tail: manuscriptTail(story.entries, TAIL_WORDS),
-        memory: story.memory,
-      }),
-      modelId,
-      thinking: atmosphere.thinking,
-      providerTag: atmosphere.providerTag,
-      temperature: atmosphere.temperature,
-      maxTokens: atmosphere.maxTokens,
-      // Both, ORed — see the same line in summarize.ts. It is the story's prose
-      // on the wire, and a manuscript that requires zero retention does not
-      // stop requiring it because a different bundle sent it.
-      zdr: atmosphere.zdr || story.settings.zdr,
-      key,
-      signal: abort.signal,
-    })
-
-    const choice = parseChoice(result.text)
+    // Both engines answer the same question and are read into the same verdict,
+    // so everything from here down — the write, the settle, the watermark, the
+    // phase — is shared and neither engine gets its own copy of it.
+    const verdict = useDecision
+      ? await askDecisionEngine(io, story, atmosphere, key, abort.signal)
+      : await askLanguageModel(
+          io,
+          story,
+          atmosphere,
+          modelId,
+          key,
+          abort.signal
+        )
+    const { choice } = verdict
     if (choice === null) {
-      // A model that would not answer in one word is a failed check, not a
-      // story that should lose its colour. Nothing is written, and it counts
-      // toward the breaker because a model that cannot follow this instruction
-      // will not start following it on the next turn.
+      // An answer that cannot be used is a failed check, not a story that
+      // should lose its colour. Nothing is written, and it counts toward the
+      // breaker because neither engine starts answering differently on the
+      // next turn.
       await io.settle(callId, {
         status: "error",
-        generationId: result.generationId,
-        usage: result.usage,
+        generationId: verdict.generationId,
+        usage: verdict.usage,
       })
-      noteFailure(
-        storyId,
-        io,
-        refusalMessage(modelId, result.text, result.usage)
-      )
+      noteFailure(storyId, io, verdict.why)
       return
     }
 
@@ -387,8 +416,8 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
     }
     await io.settle(callId, {
       status: "ok",
-      generationId: result.generationId,
-      usage: result.usage,
+      generationId: verdict.generationId,
+      usage: verdict.usage,
     })
     // Advanced on "keep" exactly as on a repaint. The question that was asked
     // was "has this story moved", and "no" is an answer — re-asking it every
@@ -405,7 +434,13 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
       generationId: null,
       usage: null,
     })
-    const { message } = mapOpenRouterError(err)
+    // A DecisionError was already phrased for the writer who reads it in a
+    // toast; mapOpenRouterError only knows the SDK's error class and would
+    // flatten it to the generic sentence.
+    const message =
+      err instanceof DecisionError
+        ? err.message
+        : mapOpenRouterError(err).message
     console.error("[atmosphere]", message)
     noteFailure(
       storyId,
@@ -414,6 +449,120 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
     )
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/** What the story should wear, or null when the engine's reply could not be used. */
+type TintChoice = "keep" | { id: string; hue: number; strength: number }
+
+/**
+ * One engine's answer, reduced to what the runner acts on.
+ *
+ * The two engines fail in completely different ways — one returns prose that
+ * is not a tint name, the other returns probabilities that do not clear a
+ * threshold — and `why` is where that difference is spent. It is the sentence
+ * a writer reads in a toast, so each engine phrases its own; everything else
+ * about a failure is handled identically and lives in checkOnce.
+ */
+interface Verdict {
+  choice: TintChoice | null
+  /** Only read when `choice` is null. */
+  why: string
+  generationId: string | null
+  usage: GenerationUsage | null
+}
+
+/** The prose engine: a system turn, a user turn, and one word back. */
+async function askLanguageModel(
+  io: AtmosphereIo,
+  story: Story,
+  atmosphere: AtmosphereSettings,
+  modelId: string,
+  key: string,
+  signal: AbortSignal
+): Promise<Verdict> {
+  const result = await io.complete({
+    system: renderAtmosphereSystemPrompt(currentTintId(story) !== null),
+    user: renderAtmosphereRequest({
+      current: currentTintId(story),
+      tail: manuscriptTail(story.entries, TAIL_WORDS),
+      memory: story.memory,
+    }),
+    modelId,
+    thinking: atmosphere.thinking,
+    providerTag: atmosphere.providerTag,
+    temperature: atmosphere.temperature,
+    maxTokens: atmosphere.maxTokens,
+    // Both, ORed — see the same line in summarize.ts. It is the story's prose
+    // on the wire, and a manuscript that requires zero retention does not
+    // stop requiring it because a different bundle sent it.
+    zdr: atmosphere.zdr || story.settings.zdr,
+    key,
+    signal,
+  })
+  const choice = parseChoice(result.text)
+  return {
+    choice,
+    why:
+      choice === null ? refusalMessage(modelId, result.text, result.usage) : "",
+    generationId: result.generationId,
+    usage: result.usage,
+  }
+}
+
+/**
+ * The decision engine: one round trip, two typed questions, read against the
+ * writer's confidence threshold.
+ *
+ * Both questions go in a single call because the provider answers a question
+ * set in parallel — a second question costs its own input tokens and almost no
+ * additional time, where a second call would cost both again. So there is no
+ * "ask whether it fits, then ask what fits if it does not"; both answers
+ * always come back, and interpretAtmosphereDecision decides which of them
+ * mattered.
+ */
+async function askDecisionEngine(
+  io: AtmosphereIo,
+  story: Story,
+  atmosphere: AtmosphereSettings,
+  key: string,
+  signal: AbortSignal
+): Promise<Verdict> {
+  const current = currentTintId(story)
+  const result = await io.decide({
+    state: renderAtmosphereState({
+      current,
+      tail: manuscriptTail(story.entries, TAIL_WORDS),
+      memory: story.memory,
+    }),
+    questions: renderAtmosphereQuestions(current !== null),
+    modelId: ATMOSPHERE_DECISION_MODEL_ID,
+    // ORed exactly as the prose engine's is, and for the same reason: the
+    // manuscript tail is on the wire either way.
+    zdr: atmosphere.zdr || story.settings.zdr,
+    key,
+    signal,
+  })
+  const decided = interpretAtmosphereDecision(result.answers, {
+    current,
+    minConfidence: atmosphere.minConfidence,
+  })
+  return {
+    choice:
+      decided.kind === "unreadable"
+        ? null
+        : decided.kind === "keep"
+          ? "keep"
+          : { id: decided.id, hue: decided.hue, strength: decided.strength },
+    // Named for the engine rather than the model, because the writer chose an
+    // engine — "the decision model" is a phrase the Settings card also uses,
+    // and a toast naming a provider slug they never typed is a riddle.
+    why:
+      decided.kind === "unreadable"
+        ? `The decision model's answer couldn't be used (${decided.why}).`
+        : "",
+    generationId: result.generationId,
+    usage: result.usage,
   }
 }
 
@@ -550,10 +699,13 @@ function noteFailure(storyId: string, io: AtmosphereIo, why: string): void {
   console.error(
     `[atmosphere] giving up on ${storyId} after ${FAILURE_LIMIT} failures`
   )
+  // Names the setting, not the model: the decision engine's model is pinned and
+  // has no picker, and what actually clears the breaker is saving any atmosphere
+  // setting at all.
   io.announcePhase(
     storyId,
     "stopped",
-    `${why} The atmosphere picker has stopped for this story — change the model in Settings to start it again.`
+    `${why} The atmosphere picker has stopped for this story — change any atmosphere setting to start it again.`
   )
 }
 
