@@ -699,10 +699,13 @@ function noteFailure(storyId: string, io: AtmosphereIo, why: string): void {
   console.error(
     `[atmosphere] giving up on ${storyId} after ${FAILURE_LIMIT} failures`
   )
+  // Names the setting, not the model: the decision engine's model is pinned and
+  // has no picker, and what actually clears the breaker is saving any atmosphere
+  // setting at all.
   io.announcePhase(
     storyId,
     "stopped",
-    `${why} The atmosphere picker has stopped for this story — change the model in Settings to start it again.`
+    `${why} The atmosphere picker has stopped for this story — change any atmosphere setting to start it again.`
   )
 }
 

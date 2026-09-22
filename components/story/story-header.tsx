@@ -110,7 +110,7 @@ function AtmosphereChip({ storyId }: { storyId: string }) {
       </TooltipTrigger>
       <TooltipContent>
         {stopped
-          ? "The atmosphere picker gave up on this story. Change the model in Settings to start it again."
+          ? "The atmosphere picker gave up on this story. Change any atmosphere setting to start it again."
           : "Choosing the colour this story is read in."}
       </TooltipContent>
     </Tooltip>

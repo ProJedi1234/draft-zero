@@ -928,6 +928,10 @@ describe("which engine answers", () => {
       await run()
     }
     expect(phases.at(-1)?.phase).toBe("stopped")
+    // The decision engine's model is pinned and Settings has no picker for it,
+    // so the sentence has to name a control the writer can actually reach.
+    expect(phases.at(-1)?.message).toContain("change any atmosphere setting")
+    expect(phases.at(-1)?.message).not.toContain("change the model")
     // Tripped means tripped: a fourth turn costs nothing.
     currentStory = tinted(passages(13))
     await run()
