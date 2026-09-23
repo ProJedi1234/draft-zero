@@ -1,25 +1,20 @@
-// lib/mcp/tools/write.test.ts — handler shaping, against mocked writes. No DB.
+// lib/mcp/tools/write.test.ts — handler shaping, over the real entries service
+// and a scripted drizzle chain. No live DB.
 //
 // The tool module is imported at the top level, right after the shared mocks
-// (see test-mocks.ts) are wired — not inside a test() body. bun collects
-// every *.test.ts's top-level code before running any test, and mock.module
-// patches its specifier for the whole run; a dynamic `await import(...)`
+// (see test-mocks.ts) are wired — not inside a test() body. mock.module
+// patches its specifier for the whole run, so a dynamic `await import(...)`
 // inside a test body would resolve against whatever the LAST file to touch
-// these shared specifiers left behind, not this file's own mocks. A static
-// import up here binds "@/lib/mcp/tools/write" to this file's mocks at the
-// point this file is collected, before any of that can happen.
+// these shared specifiers left behind, not this file's own doubles.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 
 import type { RegisterTool } from "@/lib/mcp/helpers"
-import {
-  appendEntryOutsideRun,
-  installMocks,
-  resetActionMocks,
-} from "@/lib/mcp/tools/test-mocks"
+import { installMocks, resetActionMocks } from "@/lib/mcp/tools/test-mocks"
 import { captureBus } from "@/lib/services/test-support"
 
-installMocks()
+const db = await installMocks()
 const { registerWrite } = await import("@/lib/mcp/tools/write")
+const { releaseRun, reserveRun } = await import("@/lib/generation/live")
 
 /** Captures the handler a registrar hands to `server.registerTool`. */
 function capture(register: RegisterTool) {
@@ -33,20 +28,33 @@ function capture(register: RegisterTool) {
   return (args: unknown) => handler(args)
 }
 
+/** Scripts storyExists and nextStoryPosition so the append lands at `position`. */
+function appendsAt(position: number) {
+  db.next([{ id: "s1" }])
+  db.next([{ max: position - 1 }])
+  db.next([{ max: null }])
+}
+
+/** The row appendEntryCore inserted (statement 3, after the three reads). */
+function insertedRow() {
+  expect(db.statements[3]?.root).toBe("insert")
+  return db.argsOf(3, "values")?.[0] as Record<string, unknown>
+}
+
 let bus: Awaited<ReturnType<typeof captureBus>>
 
 describe("write", () => {
   beforeEach(async () => {
-    resetActionMocks()
+    resetActionMocks(db)
     bus = await captureBus()
   })
-  afterEach(() => bus.stop())
+  afterEach(() => {
+    bus.stop()
+    releaseRun("s1")
+  })
 
   test("narration appends as narration, through the run-guarded entry point", async () => {
-    appendEntryOutsideRun.mockImplementationOnce(async () => ({
-      ok: true,
-      data: { entry: { position: 5, text: "The door creaks open." } as never },
-    }))
+    appendsAt(5)
     const call = capture(registerWrite)
 
     const result = (await call({
@@ -54,12 +62,14 @@ describe("write", () => {
       text: "The door creaks open.",
     })) as { structuredContent: Record<string, unknown> }
 
-    expect(appendEntryOutsideRun).toHaveBeenCalledWith(
-      "s1",
-      "narration",
-      "The door creaks open."
-    )
-    expect(bus.events).toContainEqual({ kind: "change", storyId: "s1" })
+    expect(insertedRow()).toMatchObject({
+      storyId: "s1",
+      text: "The door creaks open.",
+      actionKind: null,
+      inputText: null,
+    })
+    expect(bus.events).toEqual([{ kind: "change", storyId: "s1" }])
+    expect(db.revalidated).toEqual(["/"])
     expect(result.structuredContent).toEqual({
       storyId: "s1",
       position: 5,
@@ -68,11 +78,8 @@ describe("write", () => {
     })
   })
 
-  test("do/say appends with the given mode", async () => {
-    appendEntryOutsideRun.mockImplementationOnce(async () => ({
-      ok: true,
-      data: { entry: { position: 12, text: "You open the door." } as never },
-    }))
+  test("do/say appends with the given mode, translated", async () => {
+    appendsAt(12)
     const call = capture(registerWrite)
 
     const result = (await call({
@@ -81,21 +88,15 @@ describe("write", () => {
       text: "open the door",
     })) as { structuredContent: Record<string, unknown> }
 
-    expect(appendEntryOutsideRun).toHaveBeenCalledWith(
-      "s1",
-      "do",
-      "open the door"
-    )
+    expect(insertedRow()).toMatchObject({
+      actionKind: "do",
+      inputText: "open the door",
+    })
     expect(result.structuredContent).toMatchObject({ position: 12, kind: "do" })
   })
 
   test("never echoes prose back in structuredContent", async () => {
-    appendEntryOutsideRun.mockImplementationOnce(async () => ({
-      ok: true,
-      data: {
-        entry: { position: 1, text: "Some long passage of prose." } as never,
-      },
-    }))
+    appendsAt(1)
     const call = capture(registerWrite)
 
     const result = (await call({
@@ -109,10 +110,7 @@ describe("write", () => {
   })
 
   test("a failed append becomes a failed() result, not a throw", async () => {
-    appendEntryOutsideRun.mockImplementationOnce(async () => ({
-      ok: false,
-      error: "Story not found.",
-    }))
+    db.next([])
     const call = capture(registerWrite)
 
     const result = (await call({ storyId: "nope", text: "x" })) as {
@@ -122,6 +120,21 @@ describe("write", () => {
 
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text).toBe("Story not found.")
+    expect(bus.events).toEqual([])
+  })
+
+  test("refuses while a generation holds the story", async () => {
+    reserveRun("s1")
+    const call = capture(registerWrite)
+
+    const result = (await call({ storyId: "s1", text: "x" })) as {
+      isError?: boolean
+      content: { text: string }[]
+    }
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toContain("A generation is running")
+    expect(db.statements).toEqual([])
     expect(bus.events).toEqual([])
   })
 })

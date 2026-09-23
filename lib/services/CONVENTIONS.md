@@ -124,5 +124,7 @@ service.
   run. A spec whose service can reach the model catalog or any OpenRouter call doubles
   `@/lib/generation/key` to return null, or the call below the service. `bun test` must pass
   with no network.
+- A spec that runs the real entries service calls `installEntriesDoubles()` from
+  `entries-test-support.ts`, which restores the real `@/lib/db/entry-writes`.
 - Cover, per operation: the success path's writes and bus events, each validation sentence
   with code `invalid`, and `not_found` or `conflict` where the operation can produce them.

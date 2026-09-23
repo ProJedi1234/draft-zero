@@ -1,18 +1,19 @@
 // Owned by the context_breakdown bundle. See lib/mcp/CONVENTIONS.md before
 // touching this.
 //
-// Wraps loadEntryContext (lib/actions/context.ts) rather than composing a
-// second time: that action already reconstructs exactly what a passage was
+// Wraps loadEntryContext (lib/services/entries.ts) rather than composing a
+// second time: that service already reconstructs exactly what a passage was
 // shown, against the lorebook, memory and window AS THEY STAND, and
 // describeContext (lib/generation/breakdown.ts) already slices the result
 // into per-section tokens the way the app's own context viewer does. This
 // tool is a compact re-shaping of both, not a new implementation.
 import { z } from "zod"
 
-import { loadEntryContext } from "@/lib/actions/context"
 import { getStoryFull, resolveStoryRecap } from "@/lib/db/queries"
 import { describeContext } from "@/lib/generation/breakdown"
 import type { ContextSectionId } from "@/lib/generation/types"
+import { NO_ORIGIN } from "@/lib/services/context"
+import { loadEntryContext } from "@/lib/services/entries"
 
 import {
   line,
@@ -128,7 +129,7 @@ export const registerContextBreakdown: RegisterTool = (server) => {
         // loadEntryContext performs a second, identical read a moment later
         // to compose the context itself. Duplicated deliberately rather than
         // reimplementing loadEntryContext's truncation-by-index here: this
-        // tool wraps that action's logic, not the story's manuscript loader.
+        // tool wraps that service's logic, not the story's manuscript loader.
         const story = await getStoryFull(args.storyId)
         if (!story)
           throw new ToolInputError(`No story with id ${args.storyId}.`)
@@ -148,7 +149,10 @@ export const registerContextBreakdown: RegisterTool = (server) => {
         }
 
         const [loaded, recap] = await Promise.all([
-          loadEntryContext(args.storyId, target.id),
+          loadEntryContext(
+            { storyId: args.storyId, entryId: target.id },
+            NO_ORIGIN
+          ),
           resolveStoryRecap(args.storyId),
         ])
         if (!loaded.ok) throw new ToolInputError(loaded.error)

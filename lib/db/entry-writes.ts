@@ -368,7 +368,7 @@ async function appendRetryTakeCore(
  * Retry, another take of an existing slot at that slot's same position.
  *
  * Retry never deletes or truncates — only the last block can be regenerated
- * (see the headstone at the bottom of lib/actions/entries.ts), so it can only
+ * (see the note on appendGeneratedEntry in lib/actions/entries.ts), so it can only
  * add a take to a slot nothing follows.
  */
 export async function persistGeneratedEntry(
