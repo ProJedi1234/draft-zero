@@ -127,7 +127,9 @@ reads the file itself — drizzle-kit needs no flags.
 
 Generated pictures are not in Postgres. The bytes land under `.data/images/`
 beside the database row and are served by `/api/images/[id]`, so back that
-directory up with the database.
+directory up with the database. The production image writes them to `/data`
+instead (`DRAFT_ZERO_DATA_DIR`), and that path must be a mounted volume — a
+container without one loses every picture the next time it is recreated.
 
 ## Scripts
 

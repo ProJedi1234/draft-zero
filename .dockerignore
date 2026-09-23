@@ -10,3 +10,4 @@ coverage
 next-env.d.ts
 .DS_Store
 npm-debug.log*
+.data
