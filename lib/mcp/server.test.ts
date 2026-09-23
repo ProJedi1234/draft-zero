@@ -6,36 +6,17 @@
 // the SDK then rejects. This builds the factory the route uses and asks it
 // `tools/list` over the real handler.
 //
-// The doubles below are not about behavior — no tool is CALLED here. They
-// exist because importing the server pulls in every tool, and through them
-// lib/actions/*, which import "server-only": a module that throws outside a
-// React Server Component. Each double declares exactly the export names its
-// tool imports, matching what that tool's own spec registers, so whichever
-// file the shared module registry ends up pointing at satisfies both.
-import { describe, expect, mock, test } from "bun:test"
+// No tool is CALLED here, so the tools' real write paths load over the fake
+// db. installFakeDb also doubles "server-only", which throws outside a React
+// Server Component and is reached through every service.
+import { describe, expect, test } from "bun:test"
 
 import { EXPIRED_REQUEST_STATE } from "@/lib/mcp/helpers"
 import { installQueryMocks } from "@/lib/mcp/tools/test-queries"
+import { installFakeDb } from "@/lib/services/test-support"
 
 installQueryMocks()
-mock.module("@/lib/actions/commit", () => ({ commitChange: mock(() => {}) }))
-mock.module("@/lib/actions/entries", () => ({
-  appendEntryOutsideRun: mock(async () => ({ ok: true, data: null })),
-  updateEntryText: mock(async () => ({ ok: true, data: null })),
-  rewindToEntry: mock(async () => ({ ok: true, data: null })),
-}))
-mock.module("@/lib/actions/stories", () => ({
-  createStory: mock(async () => ({ ok: true, data: { id: "s1" } })),
-  updateStoryMeta: mock(async () => ({ ok: true, data: null })),
-  deleteStory: mock(async () => ({ ok: true, data: null })),
-}))
-mock.module("@/lib/actions/lorebook", () => ({
-  createLorebookEntry: mock(async () => ({ ok: true, data: { id: "l1" } })),
-  updateLorebookEntry: mock(async () => ({ ok: true, data: null })),
-}))
-mock.module("@/lib/actions/context", () => ({
-  loadEntryContext: mock(async () => ({ ok: true, data: null })),
-}))
+installFakeDb()
 
 const { createMcpHandler } = await import("@modelcontextprotocol/server")
 const { createMcpServer, recoverExpiredState } =

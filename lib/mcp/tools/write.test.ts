@@ -8,15 +8,15 @@
 // these shared specifiers left behind, not this file's own mocks. A static
 // import up here binds "@/lib/mcp/tools/write" to this file's mocks at the
 // point this file is collected, before any of that can happen.
-import { beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 
 import type { RegisterTool } from "@/lib/mcp/helpers"
 import {
   appendEntryOutsideRun,
-  commitChange,
   installMocks,
   resetActionMocks,
 } from "@/lib/mcp/tools/test-mocks"
+import { captureBus } from "@/lib/services/test-support"
 
 installMocks()
 const { registerWrite } = await import("@/lib/mcp/tools/write")
@@ -33,8 +33,14 @@ function capture(register: RegisterTool) {
   return (args: unknown) => handler(args)
 }
 
+let bus: Awaited<ReturnType<typeof captureBus>>
+
 describe("write", () => {
-  beforeEach(resetActionMocks)
+  beforeEach(async () => {
+    resetActionMocks()
+    bus = await captureBus()
+  })
+  afterEach(() => bus.stop())
 
   test("narration appends as narration, through the run-guarded entry point", async () => {
     appendEntryOutsideRun.mockImplementationOnce(async () => ({
@@ -53,7 +59,7 @@ describe("write", () => {
       "narration",
       "The door creaks open."
     )
-    expect(commitChange).toHaveBeenCalledWith("s1")
+    expect(bus.events).toContainEqual({ kind: "change", storyId: "s1" })
     expect(result.structuredContent).toEqual({
       storyId: "s1",
       position: 5,
@@ -116,6 +122,6 @@ describe("write", () => {
 
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text).toBe("Story not found.")
-    expect(commitChange).not.toHaveBeenCalled()
+    expect(bus.events).toEqual([])
   })
 })

@@ -2,7 +2,7 @@
 
 import { and, asc, desc, eq, isNull } from "drizzle-orm"
 
-import { commitChange } from "@/lib/actions/commit"
+import { commitChange } from "@/lib/services/commit"
 import type { DrizzleTx } from "@/lib/db/client"
 import { getDb } from "@/lib/db/client"
 import { applyMutations, recordOp } from "@/lib/db/journal"

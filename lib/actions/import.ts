@@ -2,7 +2,7 @@
 
 import { eq } from "drizzle-orm"
 
-import { commitChange } from "@/lib/actions/commit"
+import { commitChange } from "@/lib/services/commit"
 import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
 import {

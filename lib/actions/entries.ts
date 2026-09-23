@@ -2,7 +2,7 @@
 
 import { and, eq, gt, isNull } from "drizzle-orm"
 
-import { commitChange } from "@/lib/actions/commit"
+import { commitChange } from "@/lib/services/commit"
 import { getDb } from "@/lib/db/client"
 import { listOlderEntries, type OlderEntriesPage } from "@/lib/db/queries"
 import { appendEntryCore, touchStoryRow } from "@/lib/db/entry-writes"

@@ -18,7 +18,7 @@
 // the plan's "Journal + bus" requirement.
 import { z } from "zod"
 
-import { commitChange } from "@/lib/actions/commit"
+import { commitChange } from "@/lib/services/commit"
 import { appendEntryOutsideRun } from "@/lib/actions/entries"
 import {
   line,

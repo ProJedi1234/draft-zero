@@ -2,7 +2,7 @@
 
 import { and, asc, eq, isNull } from "drizzle-orm"
 
-import { commitStoryDelete, commitStoryUpsert } from "@/lib/actions/commit"
+import { commitStoryDelete, commitStoryUpsert } from "@/lib/services/commit"
 import { getDb } from "@/lib/db/client"
 import {
   getAppSettings,

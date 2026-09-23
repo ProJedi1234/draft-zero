@@ -1,4 +1,4 @@
-// lib/actions/commit.ts — The two refreshes every request-scoped write owes,
+// lib/services/commit.ts — The two refreshes every request-scoped write owes,
 // as one call so a mutator cannot make one and forget the other:
 // revalidatePath for the device that acted, touchStory for every device that
 // didn't. Only for request scope — the run loop's detached settle path has no

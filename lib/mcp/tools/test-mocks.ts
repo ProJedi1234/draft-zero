@@ -12,10 +12,11 @@
 import { mock } from "bun:test"
 
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
+import { installFakeDb } from "@/lib/services/test-support"
 import type { ActionResult, StoryEntry } from "@/lib/types"
 
 /* -------------------------------------------------------------------------- */
-/* lib/actions/commit + lib/actions/entries                                   */
+/* lib/actions/entries                                                        */
 /*                                                                            */
 /* write.ts calls appendEntryOutsideRun from "@/lib/actions/entries" rather   */
 /* than appendEntryCore from "@/lib/db/entry-writes" directly, which keeps it */
@@ -23,7 +24,6 @@ import type { ActionResult, StoryEntry } from "@/lib/types"
 /* different shape. See write.ts's file header.                              */
 /* -------------------------------------------------------------------------- */
 
-export const commitChange = mock((_storyId: string | null) => {})
 export const appendEntryOutsideRun = mock(
   async (
     _storyId: string,
@@ -62,7 +62,6 @@ export function resetActionMocks() {
   // In beforeEach, not on import: the query double is shared with every other
   // spec in this directory, and bun collects them all before running a test.
   stubQueries({ getLivePassageAtPosition, countLivePassagesAfter })
-  commitChange.mockClear()
   appendEntryOutsideRun.mockClear()
   updateEntryText.mockClear()
   rewindToEntry.mockClear()
@@ -79,12 +78,14 @@ export function resetActionMocks() {
 }
 
 /**
- * Points "@/lib/actions/commit", "@/lib/actions/entries" and
- * "@/lib/db/queries" at this module's doubles. Call it at the top of each
- * consuming file, immediately before that file's import of the tool module.
+ * Points "@/lib/actions/entries" and "@/lib/db/queries" at this module's
+ * doubles. Call it at the top of each consuming file, immediately before that
+ * file's import of the tool module. lib/services/commit stays real, and never
+ * gets a double: the service specs need the real one in the same process, so
+ * a write is asserted on the bus instead (see captureBus).
  */
 export function installMocks() {
-  mock.module("@/lib/actions/commit", () => ({ commitChange }))
+  installFakeDb()
   mock.module("@/lib/actions/entries", () => ({
     appendEntryOutsideRun,
     updateEntryText,

@@ -2,7 +2,7 @@
 
 import { and, eq, isNull } from "drizzle-orm"
 
-import { commitChange } from "@/lib/actions/commit"
+import { commitChange } from "@/lib/services/commit"
 import { getDb } from "@/lib/db/client"
 import { stopImageRun } from "@/lib/images/live"
 import { storyImages } from "@/lib/db/schema"

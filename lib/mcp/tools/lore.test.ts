@@ -1,9 +1,10 @@
 // lib/mcp/tools/lore.test.ts — handler shaping logic against mocked queries
-// and mocked lib/actions/lorebook. No live DB, no HTTP.
+// and the real lorebook service over a scripted drizzle chain. No live DB.
 import { beforeEach, describe, expect, mock, test } from "bun:test"
 import { z } from "zod"
 
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
+import { installFakeDb } from "@/lib/services/test-support"
 
 /* -------------------------------------------------------------------------- */
 /* Mocks — declared before importing the module under test                   */
@@ -46,29 +47,17 @@ const listLorebookEntriesMock = mock(
 
 installQueryMocks()
 
-const createLorebookEntryMock = mock(
-  async (_storyId: string, _input: unknown) => ({
-    ok: true as const,
-    // The action returns the row it wrote, not just its id — that record is
-    // what confirms an optimistic patch on the client.
-    data: { record: { id: "lore-new" } },
-  })
-)
-type WriteResult = { ok: true; data: null } | { ok: false; error: string }
 const getStoryTitleMock = mock(
   async (_storyId: string) => "Some Story" as string | null
 )
-const updateLorebookEntryMock = mock(
-  async (_id: string, _patch: unknown): Promise<WriteResult> => ({
-    ok: true,
-    data: null,
-  })
-)
 
-mock.module("@/lib/actions/lorebook", () => ({
-  createLorebookEntry: createLorebookEntryMock,
-  updateLorebookEntry: updateLorebookEntryMock,
-}))
+const db = installFakeDb()
+
+/** A lorebook_entries row as the service's insert/update would return it. */
+function rowOf(entry: FakeEntry) {
+  const { keys, ...rest } = entry
+  return { ...rest, keysJson: JSON.stringify(keys) }
+}
 
 const { registerLoreGet, registerLoreWrite } =
   await import("@/lib/mcp/tools/lore")
@@ -112,18 +101,9 @@ beforeEach(() => {
   getStoryTitleMock.mockImplementation(async () => "Some Story")
   getLorebookEntryMock.mockClear()
   listLorebookEntriesMock.mockClear()
-  createLorebookEntryMock.mockClear()
-  updateLorebookEntryMock.mockClear()
+  db.reset()
   getLorebookEntryMock.mockImplementation(async () => null)
   listLorebookEntriesMock.mockImplementation(async () => [])
-  createLorebookEntryMock.mockImplementation(async () => ({
-    ok: true as const,
-    data: { record: { id: "lore-new" } },
-  }))
-  updateLorebookEntryMock.mockImplementation(async () => ({
-    ok: true,
-    data: null,
-  }))
 })
 
 describe("lore_get", () => {
@@ -187,6 +167,7 @@ describe("lore_write", () => {
   }
 
   test("creates a new entry when id is omitted", async () => {
+    db.next([rowOf({ ...EXISTING, id: "lore-new" })])
     const result = await handler()({
       storyId: "s1",
       name: "Vell",
@@ -195,8 +176,8 @@ describe("lore_write", () => {
       content: "A wanderer.",
     })
     expect(result.isError).toBeUndefined()
-    expect(createLorebookEntryMock).toHaveBeenCalledTimes(1)
-    expect(createLorebookEntryMock.mock.calls[0]?.[0]).toBe("s1")
+    expect(db.statements.map((statement) => statement.root)).toEqual(["insert"])
+    expect(db.argsOf(0, "values")?.[0]).toMatchObject({ storyId: "s1" })
     expect(result.structuredContent).toMatchObject({
       id: "lore-new",
       name: "Vell",
@@ -207,6 +188,7 @@ describe("lore_write", () => {
   test("create reports the fields the caller set, not every field", async () => {
     // Everything "changed" on a create by definition, so echoing the defaulted
     // fields back says nothing about what the model actually chose.
+    db.next([rowOf({ ...EXISTING, id: "lore-new" })])
     const result = await handler()({
       storyId: "s1",
       name: "Vell",
@@ -235,7 +217,7 @@ describe("lore_write", () => {
 
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text).toContain("No story with id s-typo")
-    expect(createLorebookEntryMock).not.toHaveBeenCalled()
+    expect(db.statements).toEqual([])
   })
 
   test("reads back an entry whose stored category predates the enum", async () => {
@@ -286,11 +268,12 @@ describe("lore_write", () => {
   test("creating without a name fails before touching the db", async () => {
     const result = await handler()({ storyId: "s1" })
     expect(result.isError).toBe(true)
-    expect(createLorebookEntryMock).not.toHaveBeenCalled()
+    expect(db.statements).toEqual([])
   })
 
   test("updates only the fields that were actually passed and differ", async () => {
     getLorebookEntryMock.mockImplementation(async () => EXISTING)
+    db.next([rowOf(EXISTING)])
     const result = await handler()({
       storyId: "s1",
       id: "lore-1",
@@ -298,13 +281,11 @@ describe("lore_write", () => {
       priority: 50, // unchanged — must not appear in `changed`
     })
     expect(result.isError).toBeUndefined()
-    expect(updateLorebookEntryMock).toHaveBeenCalledTimes(1)
-    const [id, patch] = updateLorebookEntryMock.mock.calls[0] as [
-      string,
-      Record<string, unknown>,
-    ]
-    expect(id).toBe("lore-1")
-    expect(patch).toEqual({ content: "A wandering swordswoman with a grudge." })
+    expect(db.statements.map((statement) => statement.root)).toEqual(["update"])
+    expect(db.argsOf(0, "set")?.[0]).toEqual({
+      content: "A wandering swordswoman with a grudge.",
+      updatedAt: expect.any(String),
+    })
     expect(result.structuredContent?.changed).toEqual(["content"])
   })
 
@@ -317,7 +298,7 @@ describe("lore_write", () => {
       keys: ["vell", "the wanderer"],
     })
     expect(result.isError).toBeUndefined()
-    expect(updateLorebookEntryMock).not.toHaveBeenCalled()
+    expect(db.statements).toEqual([])
     expect(result.structuredContent?.changed).toEqual([])
     expect(result.structuredContent?.created).toBe(false)
   })
@@ -333,18 +314,26 @@ describe("lore_write", () => {
       content: "x",
     })
     expect(result.isError).toBe(true)
-    expect(updateLorebookEntryMock).not.toHaveBeenCalled()
+    expect(db.statements).toEqual([])
   })
 
-  test("surfaces the action's own error as a model-fixable failure", async () => {
+  test("a blank name fails locally, before the service writes", async () => {
     getLorebookEntryMock.mockImplementation(async () => EXISTING)
-    updateLorebookEntryMock.mockImplementation(async () => ({
-      ok: false,
-      error: "Name is required.",
-    }))
     const result = await handler()({ storyId: "s1", id: "lore-1", name: "  " })
-    // name trims to blank before hitting the action, so this should fail
-    // locally with the same message class, not reach updateLorebookEntry.
     expect(result.isError).toBe(true)
+    expect(db.statements).toEqual([])
+  })
+
+  test("surfaces the service's own error as a model-fixable failure", async () => {
+    // The entry vanished between the tool's read and the service's write.
+    getLorebookEntryMock.mockImplementation(async () => EXISTING)
+    db.next([])
+    const result = await handler()({
+      storyId: "s1",
+      id: "lore-1",
+      content: "x",
+    })
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toBe("Lorebook entry not found.")
   })
 })
