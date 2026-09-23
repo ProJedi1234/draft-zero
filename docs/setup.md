@@ -44,6 +44,7 @@ table below.
 | `MCP_ALLOWED_HOSTS` | extra hostnames `/api/mcp` answers to beside localhost |
 | `DRAFT_ZERO_DEV_ORIGINS` | extra origins the dev server trusts, so HMR works from a phone on your LAN |
 | `DRAFT_ZERO_TIME_ZONE` / `DRAFT_ZERO_LOCALE` | the day boundary and date format on the usage page |
+| `DRAFT_ZERO_IMAGES_S3_*` | optional — five variables that move generated pictures into an S3 bucket; see below |
 
 ## Docker
 
@@ -130,6 +131,16 @@ beside the database row and are served by `/api/images/[id]`, so back that
 directory up with the database. The production image writes them to `/data`
 instead (`DRAFT_ZERO_DATA_DIR`), and that path must be a mounted volume — a
 container without one loses every picture the next time it is recreated.
+
+Set all five `DRAFT_ZERO_IMAGES_S3_*` variables (endpoint, bucket, region,
+access key id, secret access key) and pictures go to an S3-compatible bucket
+instead of disk. Requests are path-style (`<endpoint>/<bucket>/<key>`), so
+self-hosted servers such as Garage or MinIO work without a wildcard DNS name.
+The object key is the same `<imageId>.<ext>` file name the disk store uses, so
+an existing `images/` directory copies into the bucket root unchanged. Setting
+only some of the five makes every image read and write fail with an error
+naming the missing ones, never a quiet fall back to disk. `bun run db:seed`
+writes its pictures through the same switch.
 
 ## Scripts
 

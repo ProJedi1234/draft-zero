@@ -25,6 +25,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@modelcontextprotocol/server": "^2.0.0",
     "@openrouter/sdk": "1.2.25",
+    "aws4fetch": "^1.0.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

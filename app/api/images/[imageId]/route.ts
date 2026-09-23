@@ -3,12 +3,12 @@
 // A route rather than /public: illustrations are user data written at runtime,
 // and Next only serves /public as it stood at build time. The row is consulted
 // first because it holds the media type, which is what tells the store which
-// file on disk this id became.
+// file or object key this id became.
 import { getStoryImageMedia } from "@/lib/db/queries"
 import { readImage } from "@/lib/images/store"
 
-// Node, explicitly: the store reads the filesystem, which an edge isolate has
-// no access to at all.
+// Node, explicitly: the disk backend reads the filesystem, which an edge
+// isolate has no access to at all.
 export const runtime = "nodejs"
 
 export async function GET(

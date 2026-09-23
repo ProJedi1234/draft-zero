@@ -5,8 +5,6 @@
 // something to show. Mock `activeLorebookEntryIds` are deliberately NOT stored:
 // they are recomputed at read time by real trigger matching.
 
-import { mkdir, writeFile } from "node:fs/promises"
-
 import { closeDb, getDb } from "@/lib/db/client"
 import {
   appSettings,
@@ -26,7 +24,7 @@ import {
   MOCK_IMAGE_MEDIA_TYPE,
   MockImageProvider,
 } from "@/lib/images/mock-provider"
-import { imageFilePath, IMAGE_DIR } from "@/lib/images/blob-path"
+import { resolveImageBackend, writeBlob } from "@/lib/images/blob-store"
 
 /**
  * The final frame the offline mock draws for a seed, with the shimmer skipped.
@@ -60,6 +58,9 @@ async function renderFixtureImage(
 }
 
 async function seed() {
+  // Resolved before the wipe, so a half-set S3 config fails with the database
+  // still intact rather than halfway through a reseed.
+  const imageBackend = resolveImageBackend()
   const db = await getDb()
 
   await db.delete(storyImages)
@@ -141,19 +142,20 @@ async function seed() {
     }))
   )
 
-  // Illustrations last: the bytes land on disk beside the row, and a row whose
-  // file is missing is the one state the image route cannot recover from.
+  // Illustrations last: the bytes land in the blob store beside the row, and a
+  // row whose blob is missing is the one state the image route cannot recover
+  // from.
   let takeCount = 0
   for (const slot of MOCK_ILLUSTRATIONS) {
     for (const [takeIndex, seed] of slot.seeds.entries()) {
       const id = `${slot.imageGroupId}-take-${takeIndex}`
-      // Written here rather than through lib/images/store, which is
-      // `server-only` and throws the moment a plain script imports it. The path
-      // arithmetic is shared, so a seeded blob still lands exactly where the
-      // image route will look for it.
-      await mkdir(IMAGE_DIR, { recursive: true })
-      await writeFile(
-        imageFilePath(id, MOCK_IMAGE_MEDIA_TYPE),
+      // Written through blob-store rather than lib/images/store, which is
+      // `server-only` and throws the moment a plain script imports it. Both
+      // resolve the same backend, so a seeded blob lands where the route looks.
+      await writeBlob(
+        imageBackend,
+        id,
+        MOCK_IMAGE_MEDIA_TYPE,
         Buffer.from(
           await renderFixtureImage(seed, slot.modelId, slot.aspectRatio),
           "base64"
