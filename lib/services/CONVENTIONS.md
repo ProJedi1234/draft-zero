@@ -128,3 +128,8 @@ service.
   `entries-test-support.ts`, which restores the real `@/lib/db/entry-writes`.
 - Cover, per operation: the success path's writes and bus events, each validation sentence
   with code `invalid`, and `not_found` or `conflict` where the operation can produce them.
+- `tests/db/*.pg.ts` run services against a real, throwaway Postgres, for the things a fake db
+  cannot show: transaction boundaries, what the op journal replays, and that a write publishes
+  only after it commits. `bun test` skips them; run
+  `DRAFT_ZERO_TEST_DATABASE_URL=postgres://…/<name>_test bun run test:db`. The harness refuses a
+  database whose name does not end in `_test`, because the suites truncate every table.
