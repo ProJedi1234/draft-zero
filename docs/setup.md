@@ -142,6 +142,11 @@ only some of the five makes every image read and write fail with an error
 naming the missing ones, never a quiet fall back to disk. `bun run db:seed`
 writes its pictures through the same switch.
 
+`compose.s3.yaml` runs the same setup locally against a throwaway Garage:
+`docker compose -f compose.yaml -f compose.s3.yaml --profile app up -d`. CI
+starts that Garage too and runs `tests/image-blob-store.garage.test.ts`
+against it, so a signature a real server rejects fails the build.
+
 ## Scripts
 
 | Command | Does |
