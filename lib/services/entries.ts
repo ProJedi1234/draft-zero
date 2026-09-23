@@ -339,7 +339,7 @@ export const updateEntryText: Service<UpdateEntryTextInput, null> = async (
  * passage the writer deleted twice and expected to stay gone.
  */
 export const deleteEntry: Service<DeleteEntryInput, null> = async (raw) => {
-  // Same guard as the history walkers (see lib/actions/history.ts): a delete
+  // Same guard as the history walkers (see lib/services/history.ts): a delete
   // from a device that isn't mirroring the run can soft-delete the take the
   // run is about to persist beside, and the billed passage is refused.
   const running = refuseRun(raw.storyId)
