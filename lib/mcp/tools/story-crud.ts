@@ -2,16 +2,11 @@
 //
 // Three tools in one file because they are one table's lifecycle. They
 // register separately so each keeps its place in the global ordering. All
-// three call into lib/actions/stories.ts so the ops journal, revalidation and
-// sync bus stay identical to what the UI produces — this module never opens
-// Drizzle for a write.
+// three call lib/services/stories.ts, the same service behind the UI's own
+// actions, so revalidation and the sync bus stay identical to what the UI
+// produces — this module never opens Drizzle for a write.
 import { z } from "zod"
 
-import {
-  createStory,
-  deleteStory,
-  updateStoryMeta,
-} from "@/lib/actions/stories"
 import { countLivePassages, getStoryTitle } from "@/lib/db/queries"
 import {
   acceptedContent,
@@ -29,6 +24,13 @@ import {
   type RegisterTool,
   type RequestStatePayload,
 } from "@/lib/mcp/helpers"
+import { NO_ORIGIN } from "@/lib/services/context"
+import {
+  createStory,
+  deleteStory,
+  updateStoryMeta,
+} from "@/lib/services/stories"
+import type { UpdateStoryMetaInput } from "@/lib/services/stories.schema"
 
 /* -------------------------------- create --------------------------------- */
 
@@ -96,7 +98,7 @@ export const registerCreateStory: RegisterTool = (server) => {
     },
     async (args) =>
       runTool("create_story", async () => {
-        const created = await createStory({ title: args.title })
+        const created = await createStory({ title: args.title }, NO_ORIGIN)
         if (!created.ok) throw new ToolInputError(created.error)
         const { id } = created.data
 
@@ -104,13 +106,13 @@ export const registerCreateStory: RegisterTool = (server) => {
         // passed is a metadata patch applied right after, same as the UI would
         // do by creating then editing. Skipped entirely when nothing else was
         // given, so a bare create_story stays a single write.
-        const patch: Parameters<typeof updateStoryMeta>[1] = {}
+        const patch: UpdateStoryMetaInput["patch"] = {}
         for (const field of META_FIELDS) {
           const value = args[field]
           if (value !== undefined) patch[field] = value
         }
         if (Object.keys(patch).length > 0) {
-          const patched = await updateStoryMeta(id, patch)
+          const patched = await updateStoryMeta({ id, patch }, NO_ORIGIN)
           if (!patched.ok) throw new ToolInputError(patched.error)
         }
 
@@ -164,14 +166,14 @@ export const registerUpdateStory: RegisterTool = (server) => {
           )
         }
 
-        const patch: Parameters<typeof updateStoryMeta>[1] = {}
+        const patch: UpdateStoryMetaInput["patch"] = {}
         if (fields.title !== undefined) patch.title = fields.title
         for (const field of META_FIELDS) {
           const value = fields[field]
           if (value !== undefined) patch[field] = value
         }
 
-        const result = await updateStoryMeta(storyId, patch)
+        const result = await updateStoryMeta({ id: storyId, patch }, NO_ORIGIN)
         if (!result.ok) throw new ToolInputError(result.error)
 
         return structured(line(`updated ${storyId}`, changed.join(", ")), {
@@ -317,7 +319,7 @@ export const registerDeleteStory: RegisterTool = (server, deps) => {
           })
         }
 
-        const result = await deleteStory(storyId)
+        const result = await deleteStory({ id: storyId }, NO_ORIGIN)
         if (!result.ok) throw new ToolInputError(result.error)
 
         return structured(line(`deleted "${title}"`, storyId), {
