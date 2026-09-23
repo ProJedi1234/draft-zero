@@ -45,12 +45,19 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
+      # A real Garage, so the S3 backend is checked against actual signature
+      # validation instead of only a stubbed fetch.
+      - name: Start Garage
+        run: docker compose -f compose.yaml -f compose.s3.yaml up -d --wait garage
+
       # Ordered cheapest-first, and every step carries `!cancelled()` so one
       # failure does not hide the others. A run that reports the lint error AND
       # the type error is one round trip; a run that stops at the first is
       # three.
       - name: Tests
         run: bun test
+        env:
+          DRAFT_ZERO_TEST_GARAGE_ENDPOINT: http://127.0.0.1:3900
 
       - name: Format
         if: ${{ !cancelled() }}

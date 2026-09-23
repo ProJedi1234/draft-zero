@@ -1,0 +1,48 @@
+# compose.s3.yaml — store pictures in a local Garage bucket instead of .data.
+#
+#   docker compose -f compose.yaml -f compose.s3.yaml --profile app up -d
+#   docker compose -f compose.yaml -f compose.s3.yaml up -d --wait garage
+#
+# The second form is Garage alone, for `next dev` on the host or for
+# tests/image-blob-store.garage.test.ts. Credentials are fixed throwaway values
+# for a store that never leaves this box, like the Postgres ones in compose.yaml.
+
+services:
+  garage:
+    image: dxflrs/garage:v2.3.0
+    restart: unless-stopped
+    command:
+      ["/garage", "-c", "/etc/garage.toml", "server", "--single-node", "--default-bucket"]
+    environment:
+      GARAGE_RPC_SECRET: 22d32e4a9023a9b5afaff3b450c83e379110e4198a5b319fec0d9df4528063be
+      GARAGE_DEFAULT_BUCKET: draft-zero-images-dev
+      GARAGE_DEFAULT_ACCESS_KEY: GK3f4eb4bad19b83d4a0eae4ba
+      GARAGE_DEFAULT_SECRET_KEY: 5e1044ae375a0c9ae8e18091eabb9f0374ccfad3816c4f4cf354f1c8f992e828
+    ports:
+      # Overridable so a second worktree, or another project's Garage, can
+      # run alongside.
+      - "127.0.0.1:${GARAGE_PORT:-3900}:3900"
+    volumes:
+      - ./docker/garage/garage.toml:/etc/garage.toml:ro
+      - garage-data:/var/lib/garage
+    healthcheck:
+      # The image has no shell, so the CLI's own RPC round trip is the probe.
+      test: ["CMD", "/garage", "-c", "/etc/garage.toml", "status"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  app:
+    environment:
+      # Service name, not localhost: the app container is not the S3 host.
+      DRAFT_ZERO_IMAGES_S3_ENDPOINT: http://garage:3900
+      DRAFT_ZERO_IMAGES_S3_BUCKET: draft-zero-images-dev
+      DRAFT_ZERO_IMAGES_S3_REGION: garage
+      DRAFT_ZERO_IMAGES_S3_ACCESS_KEY_ID: GK3f4eb4bad19b83d4a0eae4ba
+      DRAFT_ZERO_IMAGES_S3_SECRET_ACCESS_KEY: 5e1044ae375a0c9ae8e18091eabb9f0374ccfad3816c4f4cf354f1c8f992e828
+    depends_on:
+      garage:
+        condition: service_healthy
+
+volumes:
+  garage-data:

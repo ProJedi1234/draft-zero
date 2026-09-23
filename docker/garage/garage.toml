@@ -1,0 +1,19 @@
+# Single-node Garage for local dev and CI: a real S3 server with no account.
+# `server --single-node --default-bucket` (compose.s3.yaml) builds the layout,
+# bucket and key at boot, so nothing here describes a cluster.
+#
+# The RPC secret arrives as GARAGE_RPC_SECRET rather than living here, which
+# keeps Garage's check against world-readable secret files quiet.
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "lmdb"
+
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"

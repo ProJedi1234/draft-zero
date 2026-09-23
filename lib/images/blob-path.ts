@@ -1,4 +1,4 @@
-// lib/images/blob-path.ts — Where an illustration's bytes sit on disk.
+// lib/images/blob-path.ts — Where an illustration's bytes sit on disk or in a bucket.
 //
 // Split out of store.ts, which is `server-only`, so that scripts outside the
 // Next runtime — the seed, above all — can write a blob the app will later
@@ -28,9 +28,17 @@ function extensionFor(mediaType: string): string {
   return EXTENSIONS[mediaType] ?? "bin"
 }
 
-export function imageFilePath(id: string, mediaType: string): string {
+/**
+ * An image's file name, which is also its S3 object key at the bucket root.
+ * One name for both so a directory synced into the bucket needs no renaming.
+ */
+export function imageObjectKey(id: string, mediaType: string): string {
   // The id is a UUID minted server-side, never user input, so it cannot walk
   // out of the directory — but basename it anyway rather than rely on that
   // staying true of every future caller.
-  return path.join(IMAGE_DIR, `${path.basename(id)}.${extensionFor(mediaType)}`)
+  return `${path.basename(id)}.${extensionFor(mediaType)}`
+}
+
+export function imageFilePath(id: string, mediaType: string): string {
+  return path.join(IMAGE_DIR, imageObjectKey(id, mediaType))
 }
