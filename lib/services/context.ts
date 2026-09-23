@@ -14,6 +14,12 @@ export interface ServiceContext {
 export const NO_ORIGIN: ServiceContext = { origin: null }
 
 /**
+ * The HTTP header that carries `origin`. A client mints one id per session, as
+ * the PWA's syncClientId does, and sends it on every write.
+ */
+export const ORIGIN_HEADER = "x-sync-origin"
+
+/**
  * The (raw, ctx) contract every service meets. A service that never reads ctx
  * is declared as a const of this type and omits the parameter, so callers
  * still pass it and nothing trips the unused-argument lint.

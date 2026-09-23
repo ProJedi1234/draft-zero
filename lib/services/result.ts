@@ -5,7 +5,7 @@ import type { z } from "zod"
 
 /**
  * Why a call failed, in a form a client can branch on. The PWA reads only
- * `error`; a route maps `code` to a status.
+ * `error`; a route maps `code` to a status (see lib/api/respond.ts).
  *
  * - `invalid`: the input failed its schema or a rule the schema cannot state
  * - `not_found`: the row the input names does not exist

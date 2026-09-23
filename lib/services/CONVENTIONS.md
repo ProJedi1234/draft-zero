@@ -13,9 +13,11 @@ MCP tool. `lib/services/lorebook*.ts` is the reference implementation. Copy its 
 | `lib/services/<resource>.ts` | `"server-only"` first | One exported async function per operation |
 | `lib/services/<resource>.test.ts` | `test-support.ts` | Spec against the fake db and the real bus |
 | `lib/actions/<resource>.ts` | the service | `"use server"` wrappers, signatures unchanged |
+| `app/api/<resource>/…/route.ts` | `lib/api/respond.ts`, the service | Thin HTTP handlers |
+| `tests/api/<resource>-routes.test.ts` | `test-support.ts` | Route round trips |
 
 Shared, already written: `result.ts`, `context.ts`, `schema.ts`, `commit.ts`,
-`test-support.ts`.
+`test-support.ts`, `lib/api/respond.ts`.
 
 `*.schema.ts` must never import a server module, `lib/db/*` included (type-only imports are
 fine). A contract package lifts these files out later.
@@ -133,3 +135,30 @@ service.
   only after it commits. `bun test` skips them; run
   `DRAFT_ZERO_TEST_DATABASE_URL=postgres://…/<name>_test bun run test:db`. The harness refuses a
   database whose name does not end in `_test`, because the suites truncate every table.
+
+## 6. Routes
+
+```ts
+export const runtime = "nodejs"
+
+export async function PATCH(request: Request, { params }: Params) {
+  const { thingId } = await params
+  const body = await readJson(request)
+  if (!body.ok) return refuse(body)
+  const result = await updateThing(
+    { id: thingId, patch: body.data as UpdateThingInput["patch"] },
+    contextOf(request)
+  )
+  return respond(updateThingOutput, result)
+}
+```
+
+- Flat resource paths, `app/api/<resource>/route.ts` and `app/api/<resource>/[id]/route.ts`.
+  Ids from the path, everything else from the JSON body. `POST` creates, `PATCH` updates,
+  `DELETE` deletes, and `POST /api/<resource>/[id]/<verb>` covers operations that are neither.
+- The body is the whole `ServiceResult`, success or failure, and `respond` picks the status.
+- `respond(schema, result)` checks the result against the output schema at compile time. It does
+  not parse at runtime.
+- The caller's sync id arrives in the `x-sync-origin` header (`ORIGIN_HEADER` in `context.ts`,
+  read by `contextOf`). Only writes that publish entity events stamp it; plain `change` events
+  carry no origin, so on those routes the header is accepted and unused.
