@@ -42,25 +42,33 @@ export async function createLorebookEntry(
   const db = await getDb()
   const now = new Date().toISOString()
 
-  const inserted = await db
-    .insert(lorebookEntries)
-    .values({
-      id,
-      storyId: input.storyId,
-      name: input.name,
-      category: input.category,
-      keysJson: JSON.stringify(input.keys),
-      content: input.content,
-      enabled: input.enabled,
-      alwaysActive: input.alwaysActive,
-      priority: input.priority,
-      createdAt: now,
-      updatedAt: now,
-    })
-    // The retry's landing pad: the same id arriving twice is one write, and the
-    // row already there is the answer both attempts wanted.
-    .onConflictDoNothing({ target: lorebookEntries.id })
-    .returning()
+  let inserted
+  try {
+    inserted = await db
+      .insert(lorebookEntries)
+      .values({
+        id,
+        storyId: input.storyId,
+        name: input.name,
+        category: input.category,
+        keysJson: JSON.stringify(input.keys),
+        content: input.content,
+        enabled: input.enabled,
+        alwaysActive: input.alwaysActive,
+        priority: input.priority,
+        createdAt: now,
+        updatedAt: now,
+      })
+      // The retry's landing pad: the same id arriving twice is one write, and the
+      // row already there is the answer both attempts wanted.
+      .onConflictDoNothing({ target: lorebookEntries.id })
+      .returning()
+  } catch (error) {
+    // A story deleted on another device, or an id that never existed.
+    if (isForeignKeyViolation(error))
+      return fail("not_found", "Story not found.")
+    throw error
+  }
 
   const row = inserted[0] ?? (await readRow(id))
   if (row === undefined) return fail("not_found", "Lorebook entry not found.")
@@ -135,4 +143,9 @@ async function readRow(id: string) {
     .from(lorebookEntries)
     .where(eq(lorebookEntries.id, id))
   return rows[0]
+}
+
+function isForeignKeyViolation(error: unknown): boolean {
+  const cause = (error as { cause?: { code?: unknown } } | null)?.cause
+  return cause?.code === "23503"
 }

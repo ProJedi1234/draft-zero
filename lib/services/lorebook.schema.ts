@@ -15,6 +15,9 @@ const name = z
   .trim()
   .min(1, "Name is required.")
 
+// The column is an integer; a fraction would reach Postgres and throw there.
+const priority = z.number().int("Priority must be a whole number.")
+
 const storyId = entityId("Invalid story id.")
 const entryId = entityId("Invalid entry id.")
 
@@ -30,7 +33,7 @@ export const createLorebookEntryInput = z.object({
   content: z.string().default(""),
   enabled: z.boolean().default(true),
   alwaysActive: z.boolean().default(false),
-  priority: z.number().default(50),
+  priority: priority.default(50),
 })
 
 export const lorebookEntryPatch = z.object({
@@ -40,7 +43,7 @@ export const lorebookEntryPatch = z.object({
   content: z.string().optional(),
   enabled: z.boolean().optional(),
   alwaysActive: z.boolean().optional(),
-  priority: z.number().optional(),
+  priority: priority.optional(),
 })
 
 export const updateLorebookEntryInput = z.object({
