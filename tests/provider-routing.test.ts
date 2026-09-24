@@ -27,10 +27,12 @@ mock.module("@/lib/generation/key", () => ({
 }))
 
 const streamCalls: Array<{ key: string }> = []
+const realOpenRouter = await import("@/lib/generation/openrouter")
 mock.module("@/lib/generation/openrouter", () => ({
-  // Present so the module's surface matches the real one: lib/generation/
-  // summarize.ts imports it, and a mock missing an export fails the IMPORT,
-  // which surfaces as an unrelated file refusing to load.
+  // A module mock is process-wide, so every export has to survive it: a missing
+  // one fails the IMPORT in whichever unrelated file loads next (reasoningParam,
+  // through lib/images/derive-live). completeOnce is stubbed for summarize.ts.
+  ...realOpenRouter,
   completeOnce: async () => ({
     text: "",
     truncated: false,
