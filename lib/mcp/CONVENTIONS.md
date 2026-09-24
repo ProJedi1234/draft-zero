@@ -19,7 +19,7 @@ modules; `server.ts`, `helpers.ts` and `app/api/mcp/route.ts` are shared and alr
 | `lib/mcp/helpers.ts` | shared | `structured`, `failed`, `runTool`, pagination, position ranges, compact formatters. |
 | `lib/mcp/tools/*.ts` | one bundle each | Tool declarations and handlers. **Your file.** |
 
-To add a tool beyond the fourteen, you must edit `server.ts` — coordinate first. To
+To add a tool beyond the fifteen, you must edit `server.ts` — coordinate first. To
 implement one that is, you only edit your own file.
 
 Packages installed for this: `@modelcontextprotocol/server@2.0.0` (pulls
@@ -214,8 +214,8 @@ journal and the sync bus behave identically.
 These are the reason the server is worth building; a tool that breaks them costs the writer
 tokens on every call.
 
-1. **Workflow-shaped, not CRUD.** Fourteen tools cover the whole surface. If you find yourself
-   wanting a fifteenth, the answer is usually a flag on an existing one.
+1. **Workflow-shaped, not CRUD.** Fifteen tools cover the whole surface. If you find yourself
+   wanting a sixteenth, the answer is usually a flag on an existing one.
 2. **Compact by default.** Lists return ids and counts. Reads default to the tail (~10 entries).
    Searches return snippets (`snippet()`, ~160 chars), never passages. Detail is opt-in.
 3. **Map before manuscript.** `story_map` is the cheap orientation; other tools may assume the
@@ -228,7 +228,7 @@ tokens on every call.
 6. **Every tool declares `outputSchema` and returns `structuredContent`.** §3.
 7. **Registration order is fixed** and lives in `server.ts`. Reads, then writes, then destroy.
 
-Descriptions are the most-read text in the server: the client model sees all fourteen on every
+Descriptions are the most-read text in the server: the client model sees all fifteen on every
 `tools/list`. Aim for one or two sentences — what it does, what it returns, when to reach for it
 over its neighbour. `read`'s description earns its length by naming its default (the tail) so the
 model does not send a range it did not need.
@@ -291,7 +291,7 @@ throws when called, so a spec whose tool reads it must stub it.
 
 ### The integration spec
 
-`lib/mcp/server.test.ts` builds the real factory and asks it `tools/list`: all fourteen names in
+`lib/mcp/server.test.ts` builds the real factory and asks it `tools/list`: all fifteen names in
 the fixed order, an object `outputSchema` and `inputSchema` on each, and the annotations reads
 and destructive tools are supposed to carry. It never CALLS a tool, but importing the server reaches
 every service, which imports `"server-only"` — so it installs the fake db, which doubles that

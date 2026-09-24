@@ -70,7 +70,7 @@ what they cost, and the usage page breaks it down by day, by model, and by
 image model.
 
 **Automate it.** An MCP endpoint at `/api/mcp` exposes the library to any MCP
-client — Claude Code, Codex, Claude Desktop — with fourteen tools: read
+client — Claude Code, Codex, Claude Desktop — with fifteen tools: read
 passages, search, write and rewind, manage lore, and see what a passage was
 actually shown. See [docs/mcp.md](docs/mcp.md).
 
@@ -129,7 +129,7 @@ package manager and test runner.
   retention
 - [Importing](docs/importing.md) — NovelAI and AI Dungeon, in detail
 - [MCP](docs/mcp.md) — connecting Claude Code, Codex or Claude Desktop, and
-  the fourteen tools
+  the fifteen tools
 
 ## License
 

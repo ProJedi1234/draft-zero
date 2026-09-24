@@ -83,7 +83,7 @@ saving.
 
 ## Tools
 
-The fourteen tools, in the order the server lists them: reads first, then
+The fifteen tools, in the order the server lists them: reads first, then
 writes, then the one destructive tool.
 
 | Tool | Does |
@@ -96,6 +96,7 @@ writes, then the one destructive tool.
 | `usage` | Aggregated spend from the call ledger — cost, calls and token splits grouped by model, request kind, day or story, over an optional date window. |
 | `context_breakdown` | Why the model wrote what it wrote: exactly what a passage was shown. Which lore entries fired and on which keys, which were dropped for want of budget, which recap version resolved, and per-section token counts. The tool for "my lore did not seem to apply". |
 | `create_story` | Start a new, empty story, configured in one call. Returns its id. |
+| `duplicate_story` | Copy a story's live manuscript, lore and settings into a new story, optionally under a new title. Images, recaps and undo history stay behind. Returns the copy's id. |
 | `write` | Append one passage as narration or as a Do or Say turn — a turn is translated into second person exactly as the composer does it. Returns the position it took. |
 | `edit` | Replace the text of one passage in place, by position. |
 | `rewind` | Retire every passage after a position, the way the app's rewind does — a soft delete, so the recap falls back to the newest version the remaining text still covers. |

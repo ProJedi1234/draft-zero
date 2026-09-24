@@ -1,6 +1,7 @@
-// lib/mcp/tools/story-crud.ts — create_story + update_story + delete_story.
+// lib/mcp/tools/story-crud.ts — create_story + duplicate_story + update_story
+// + delete_story.
 //
-// Three tools in one file because they are one table's lifecycle. They
+// Four tools in one file because they are one table's lifecycle. They
 // register separately so each keeps its place in the global ordering. All
 // three call lib/services/stories.ts, the same service behind the UI's own
 // actions, so revalidation and the sync bus stay identical to what the UI
@@ -28,6 +29,7 @@ import { NO_ORIGIN } from "@/lib/services/context"
 import {
   createStory,
   deleteStory,
+  duplicateStory,
   updateStoryMeta,
 } from "@/lib/services/stories"
 import type { UpdateStoryMetaInput } from "@/lib/services/stories.schema"
@@ -119,6 +121,64 @@ export const registerCreateStory: RegisterTool = (server) => {
         return structured(line(`created "${args.title}"`, id), {
           id,
           title: args.title,
+        })
+      })
+  )
+}
+
+/* ------------------------------- duplicate ------------------------------- */
+
+const duplicateInput = z.object({
+  storyId: z.string(),
+  title: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Title for the copy. Default: the original\'s, plus " (copy)".'),
+})
+
+const duplicateOutput = z.object({
+  id: z.string(),
+  title: z.string(),
+  sourceId: z.string(),
+})
+
+export const registerDuplicateStory: RegisterTool = (server) => {
+  server.registerTool(
+    "duplicate_story",
+    {
+      title: "Duplicate story",
+      description:
+        "Copy a story — its live manuscript, lore and settings — into a new story, to branch it or try a direction without touching the original. Images, recaps and undo history stay behind. Returns the copy's id.",
+      inputSchema: duplicateInput,
+      outputSchema: duplicateOutput,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async (args) =>
+      runTool("duplicate_story", async () => {
+        const copied = await duplicateStory({ id: args.storyId }, NO_ORIGIN)
+        if (!copied.ok) throw new ToolInputError(copied.error)
+        const { id } = copied.data
+        let title = copied.data.record.title
+
+        if (args.title !== undefined) {
+          const renamed = await updateStoryMeta(
+            { id, patch: { title: args.title } },
+            NO_ORIGIN
+          )
+          if (!renamed.ok) throw new ToolInputError(renamed.error)
+          title = args.title
+        }
+
+        return structured(line(`duplicated as "${title}"`, id), {
+          id,
+          title,
+          sourceId: args.storyId,
         })
       })
   )

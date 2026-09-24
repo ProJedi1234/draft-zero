@@ -39,8 +39,12 @@ const countLivePassagesMock = mock(async (_id: string) => 0)
 installQueryMocks()
 const db = installFakeDb()
 
-const { registerCreateStory, registerDeleteStory, registerUpdateStory } =
-  await import("@/lib/mcp/tools/story-crud")
+const {
+  registerCreateStory,
+  registerDeleteStory,
+  registerDuplicateStory,
+  registerUpdateStory,
+} = await import("@/lib/mcp/tools/story-crud")
 
 /* -------------------------------------------------------------------------- */
 /* Harness — a fake McpServer that just records registered handlers          */
@@ -212,6 +216,80 @@ describe("create_story", () => {
 
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain("Story could not be created.")
+  })
+})
+
+/* -------------------------------------------------------------------------- */
+/* duplicate_story                                                           */
+/* -------------------------------------------------------------------------- */
+
+describe("duplicate_story", () => {
+  function duplicateHandler() {
+    const { server, handlers } = makeFakeServer()
+    registerDuplicateStory(server as never, undefined as never)
+    return handlers.get("duplicate_story")!
+  }
+
+  /** Scripts the service's reads and the copy insert, for an empty story. */
+  function scriptEmptyCopy() {
+    db.next([STORY_ROW])
+    db.next([])
+    db.next([])
+    db.next([{ ...STORY_ROW, title: "Doomed Story (copy)" }])
+  }
+
+  /** The id the service minted for the copy. */
+  function copyId() {
+    return (db.argsOf(3, "values")?.[0] as { id: string }).id
+  }
+
+  test("copies under the service's default title", async () => {
+    scriptEmptyCopy()
+    const result = (await duplicateHandler()(
+      { storyId: "story-1" },
+      makeCtx()
+    )) as {
+      isError?: boolean
+      structuredContent: { id: string; title: string; sourceId: string }
+    }
+
+    expect(roots()).toEqual(["select", "select", "select", "insert"])
+    expect(result.isError).toBeUndefined()
+    expect(copyId()).not.toBe("story-1")
+    expect(result.structuredContent).toEqual({
+      id: copyId(),
+      title: "Doomed Story (copy)",
+      sourceId: "story-1",
+    })
+    expect(bus.events[0]).toMatchObject({ op: "upsert", origin: null })
+  })
+
+  test("renames the copy, not the original, when a title is given", async () => {
+    scriptEmptyCopy()
+    db.next([{ ...STORY_ROW, title: "Road Not Taken" }])
+    const result = (await duplicateHandler()(
+      { storyId: "story-1", title: "Road Not Taken" },
+      makeCtx()
+    )) as { structuredContent: { id: string; title: string } }
+
+    expect(roots()).toEqual(["select", "select", "select", "insert", "update"])
+    expect(whereNames(4, copyId())).toBe(true)
+    expect(whereNames(4, "story-1")).toBe(false)
+    expect(updateSet(4)).toEqual({ title: "Road Not Taken" })
+    expect(result.structuredContent.title).toBe("Road Not Taken")
+  })
+
+  test("an unknown story is a model-fixable failure", async () => {
+    db.next([])
+    const result = (await duplicateHandler()(
+      { storyId: "missing" },
+      makeCtx()
+    )) as { isError?: boolean; content: { text: string }[] }
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toBe("Story not found.")
+    expect(roots()).toEqual(["select"])
+    expect(bus.events).toEqual([])
   })
 })
 
