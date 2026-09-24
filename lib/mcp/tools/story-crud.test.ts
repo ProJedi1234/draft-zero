@@ -264,19 +264,35 @@ describe("duplicate_story", () => {
     expect(bus.events[0]).toMatchObject({ op: "upsert", origin: null })
   })
 
-  test("renames the copy, not the original, when a title is given", async () => {
-    scriptEmptyCopy()
+  test("names the copy at insert when a title is given", async () => {
+    db.next([STORY_ROW])
+    db.next([])
+    db.next([])
     db.next([{ ...STORY_ROW, title: "Road Not Taken" }])
     const result = (await duplicateHandler()(
       { storyId: "story-1", title: "Road Not Taken" },
       makeCtx()
     )) as { structuredContent: { id: string; title: string } }
 
-    expect(roots()).toEqual(["select", "select", "select", "insert", "update"])
-    expect(whereNames(4, copyId())).toBe(true)
-    expect(whereNames(4, "story-1")).toBe(false)
-    expect(updateSet(4)).toEqual({ title: "Road Not Taken" })
+    // One insert, no follow-up rename: a rename that failed after the copy
+    // was published would read as an error, and a retry would copy again.
+    expect(roots()).toEqual(["select", "select", "select", "insert"])
+    expect(db.argsOf(3, "values")?.[0]).toMatchObject({
+      title: "Road Not Taken",
+    })
     expect(result.structuredContent.title).toBe("Road Not Taken")
+  })
+
+  test("a blank title is refused before anything is written", async () => {
+    const result = (await duplicateHandler()(
+      { storyId: "story-1", title: "   " },
+      makeCtx()
+    )) as { isError?: boolean; content: { text: string }[] }
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toBe("Title can't be empty.")
+    expect(db.statements).toEqual([])
+    expect(bus.events).toEqual([])
   })
 
   test("an unknown story is a model-fixable failure", async () => {

@@ -161,23 +161,16 @@ export const registerDuplicateStory: RegisterTool = (server) => {
     },
     async (args) =>
       runTool("duplicate_story", async () => {
-        const copied = await duplicateStory({ id: args.storyId }, NO_ORIGIN)
+        const copied = await duplicateStory(
+          { id: args.storyId, title: args.title },
+          NO_ORIGIN
+        )
         if (!copied.ok) throw new ToolInputError(copied.error)
-        const { id } = copied.data
-        let title = copied.data.record.title
+        const { id, record } = copied.data
 
-        if (args.title !== undefined) {
-          const renamed = await updateStoryMeta(
-            { id, patch: { title: args.title } },
-            NO_ORIGIN
-          )
-          if (!renamed.ok) throw new ToolInputError(renamed.error)
-          title = args.title
-        }
-
-        return structured(line(`duplicated as "${title}"`, id), {
+        return structured(line(`duplicated as "${record.title}"`, id), {
           id,
-          title,
+          title: record.title,
           sourceId: args.storyId,
         })
       })
