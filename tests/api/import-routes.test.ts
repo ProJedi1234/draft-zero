@@ -132,6 +132,29 @@ describe("POST /api/import/backup", () => {
     expect((await res.json()).error).toBe("That backup is too large to import.")
     expect(db.statements).toEqual([])
   })
+
+  test("an oversized chunked body is refused before it is drained", async () => {
+    const chunk = new Uint8Array(1024 * 1024)
+    let pulled = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled > MAX_BACKUP_BYTES * 2) return controller.close()
+        pulled += chunk.byteLength
+        controller.enqueue(chunk)
+      },
+    })
+    const res = await backupRoute.POST(
+      new Request("http://local/api/import/backup", {
+        method: "POST",
+        body,
+        duplex: "half",
+      } as RequestInit)
+    )
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe("That backup is too large to import.")
+    expect(pulled).toBeLessThan(MAX_BACKUP_BYTES * 2)
+    expect(db.statements).toEqual([])
+  })
 })
 
 describe("POST /api/stories/:storyId/story-cards", () => {

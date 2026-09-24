@@ -12,7 +12,6 @@ import {
   type StartGenerationInput,
   type StopGenerationInput,
 } from "@/lib/services/generation.schema"
-import type { ServiceResult } from "@/lib/services/result"
 
 // Node, explicitly: the run registry lives on globalThis in this one process,
 // and an edge isolate would never see the run it just started.
@@ -39,7 +38,7 @@ export async function DELETE(
   { params }: Params
 ): Promise<Response> {
   const { storyId } = await params
-  const body = request.body === null ? EMPTY : await readJson(request)
+  const body = await readJson(request, { allowEmpty: true })
   if (!body.ok) return refuse(body)
   const result = await stopGeneration(
     { ...(body.data as Omit<StopGenerationInput, "storyId">), storyId },
@@ -47,7 +46,3 @@ export async function DELETE(
   )
   return respond(stopGenerationOutput, result)
 }
-
-// A bare DELETE is a stop with no run named. readJson refuses anything that is
-// not an object, so an array or string can never spread into a bare Continue.
-const EMPTY: ServiceResult<Record<string, unknown>> = { ok: true, data: {} }

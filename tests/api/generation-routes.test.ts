@@ -90,8 +90,13 @@ describe("POST /api/stories/:storyId/generation", () => {
 describe("DELETE /api/stories/:storyId/generation", () => {
   test("with no body, answers ok and aborts nothing it does not own", async () => {
     live.reserveRun(STORY, "turn-1")
+    // Next hands a handler an empty stream for a bodiless DELETE, never null.
     const res = await route.DELETE(
-      new Request(ENDPOINT, { method: "DELETE" }),
+      new Request(ENDPOINT, {
+        method: "DELETE",
+        body: new ReadableStream({ start: (c) => c.close() }),
+        duplex: "half",
+      } as RequestInit),
       params
     )
     expect(res.status).toBe(200)
@@ -107,5 +112,10 @@ describe("DELETE /api/stories/:storyId/generation", () => {
     )
     expect(res.status).toBe(200)
     expect(stopLatched()).toBe(true)
+  })
+
+  test("a body that is not an object is still refused", async () => {
+    const res = await route.DELETE(request("DELETE", ["runId"]), params)
+    expect(res.status).toBe(400)
   })
 })
