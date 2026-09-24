@@ -1,21 +1,21 @@
 // lib/mcp/tools/context-breakdown.test.ts — handler shaping logic against
-// mocked queries and mocked lib/actions/context + lib/generation/breakdown.
-// No live DB.
+// mocked queries, with the real loadEntryContext service and the real
+// describeContext composing what the tool reshapes. No live DB, no network.
 import { beforeEach, describe, expect, mock, test } from "bun:test"
 
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
+import { installEntriesDoubles } from "@/lib/services/entries-test-support"
+import type { LorebookEntry, Story, StoryEntry } from "@/lib/types"
 
 /* -------------------------------------------------------------------------- */
-/* Mocks — declared before importing the module under test                   */
+/* Doubles — declared before importing the module under test                  */
 /* -------------------------------------------------------------------------- */
-
-interface FakeStory {
-  entries: { id: string; position: number }[]
-  settings: { loreBudget: number; contextWindow: number }
-}
 
 const getStoryFullMock = mock(
-  async (_id: string): Promise<FakeStory | null> => null
+  async (_id: string): Promise<Story | null> => null
+)
+const listLorebookEntriesMock = mock(
+  async (_id: string): Promise<LorebookEntry[]> => []
 )
 const resolveStoryRecapMock = mock(
   async (
@@ -27,126 +27,97 @@ const resolveStoryRecapMock = mock(
   } | null> => null
 )
 
+await installEntriesDoubles()
 installQueryMocks()
-
-const loadEntryContextMock = mock(
-  async (_storyId: string, _entryId: string) =>
-    ({
-      ok: true as const,
-      data: {
-        context: FAKE_COMPOSED_CONTEXT,
-        contextWindow: 8000,
-        modelId: "some-model",
-      },
-    }) as
-      | {
-          ok: true
-          data: {
-            context: unknown
-            contextWindow: number
-            modelId: string | null
-          } | null
-        }
-      | { ok: false; error: string }
-)
-mock.module("@/lib/actions/context", () => ({
-  loadEntryContext: loadEntryContextMock,
-}))
-
-const describeContextMock = mock(
-  (_ctx: unknown, _windowTokens: number) => FAKE_BREAKDOWN
-)
-mock.module("@/lib/generation/breakdown", () => ({
-  describeContext: describeContextMock,
-}))
 
 const { registerContextBreakdown } =
   await import("@/lib/mcp/tools/context-breakdown")
+const { loadEntryContext } = await import("@/lib/services/entries")
 
 /* -------------------------------------------------------------------------- */
 /* Fixtures                                                                   */
 /* -------------------------------------------------------------------------- */
 
-const FAKE_COMPOSED_CONTEXT = {
-  // Two lore entries triggered, only one survived the budget — the shape
-  // droppedLore is computed from.
-  fit: {
-    loreMatched: 2,
-    loreStableMatched: 1,
-    storyChars: 500,
-    storyCharsKept: 500,
-  },
-  lore: [{ id: "lore-1", name: "Vell" }],
+function passage(id: string, position: number, text: string): StoryEntry {
+  return {
+    id,
+    position,
+    source: "generated",
+    text,
+    actionKind: null,
+    inputText: null,
+    variantGroupId: id,
+    variantIndex: 0,
+    variantCount: 1,
+    variantProfilesMixed: false,
+    generation: null,
+    costUsd: null,
+    reasoningTokens: null,
+    callStatus: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+  }
 }
 
-const FAKE_BREAKDOWN = {
-  sections: [
-    {
-      id: "system" as const,
-      label: "Instructions",
-      tokens: 50,
-      chars: 200,
-      text: "",
-      fit: null,
-      fitNote: "",
-      items: [],
-    },
-    {
-      id: "memory" as const,
-      label: "Memory",
-      tokens: 10,
-      chars: 40,
-      text: "",
-      fit: null,
-      fitNote: "",
-      items: [],
-    },
-    {
-      id: "lore" as const,
-      label: "Lorebook",
-      tokens: 30,
-      chars: 120,
-      text: "",
-      fit: 0.5,
-      fitNote: "",
-      items: [
-        {
-          id: "lore-1",
-          label: "Vell",
-          tokens: 30,
-          matchedKey: "vell",
-          triggeredBy: null,
-          depth: 0,
-          stable: true,
-          text: "",
-        },
-      ],
-    },
-    {
-      id: "story" as const,
-      label: "Story",
-      tokens: 100,
-      chars: 400,
-      text: "",
-      fit: 1,
-      fitNote: "",
-      items: [],
-    },
-  ],
-  spans: [],
-  usedTokens: 190,
-  windowTokens: 8000,
-  freeTokens: 7810,
-  overflowing: false,
-  cacheableTokens: 60,
+function lore(id: string, overrides: Partial<LorebookEntry> = {}) {
+  return {
+    id,
+    storyId: "story-1",
+    name: "Vell",
+    category: "character",
+    keys: ["vell"],
+    content: "A wanderer with a grudge.",
+    enabled: true,
+    alwaysActive: false,
+    priority: 50,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    ...overrides,
+  } satisfies LorebookEntry
 }
 
-const STORY: FakeStory = {
-  entries: [
-    { id: "entry-1", position: 1 },
-    { id: "entry-5", position: 5 },
-  ],
-  settings: { loreBudget: 20, contextWindow: 8000 },
+function story(overrides: Partial<Story> = {}): Story {
+  return {
+    id: "story-1",
+    title: "Test",
+    description: "",
+    genre: "",
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    wordCount: 0,
+    tintHue: null,
+    tintStrength: 1,
+    tintAuto: true,
+    entries: [
+      passage("entry-1", 1, "Vell walked into the harbour at dusk."),
+      passage("entry-5", 5, "The lamps came on one by one."),
+    ],
+    images: [],
+    imageModelId: null,
+    profileId: null,
+    settings: {
+      modelId: "~test/model",
+      thinking: "off",
+      providerTag: null,
+      zdr: false,
+      temperature: 1,
+      topP: 1,
+      contextWindow: 8192,
+      loreBudget: 20,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+    },
+    memory: "The sea is cold here.",
+    summarize: true,
+    summary: "",
+    authorsNote: "",
+    systemPrompt: null,
+    activeLorebookEntryIds: [],
+    canUndo: false,
+    canRedo: false,
+    undoSummary: null,
+    redoSummary: null,
+    ...overrides,
+  }
 }
 
 const RECAP = {
@@ -183,23 +154,15 @@ function registeredHandler(): ToolHandler {
 beforeEach(() => {
   stubQueries({
     getStoryFull: getStoryFullMock,
+    listLorebookEntries: listLorebookEntriesMock,
     resolveStoryRecap: resolveStoryRecapMock,
   })
   getStoryFullMock.mockClear()
+  listLorebookEntriesMock.mockClear()
   resolveStoryRecapMock.mockClear()
-  loadEntryContextMock.mockClear()
-  describeContextMock.mockClear()
-  getStoryFullMock.mockImplementation(async () => STORY)
+  getStoryFullMock.mockImplementation(async () => story())
+  listLorebookEntriesMock.mockImplementation(async () => [lore("lore-1")])
   resolveStoryRecapMock.mockImplementation(async () => RECAP)
-  loadEntryContextMock.mockImplementation(async () => ({
-    ok: true as const,
-    data: {
-      context: FAKE_COMPOSED_CONTEXT,
-      contextWindow: 8000,
-      modelId: "some-model",
-    },
-  }))
-  describeContextMock.mockImplementation(() => FAKE_BREAKDOWN)
 })
 
 describe("context_breakdown", () => {
@@ -208,56 +171,79 @@ describe("context_breakdown", () => {
 
     const result = await handler({ storyId: "story-1" })
 
-    expect(loadEntryContextMock).toHaveBeenCalledWith("story-1", "entry-5")
     expect(result.isError).toBeUndefined()
     const data = result.structuredContent as Record<string, unknown>
     expect(data.position).toBe(5)
-    expect(data.recap).toEqual({
-      id: "recap-1",
-      throughPosition: 3,
-      createdAt: "2026-08-01T00:00:00.000Z",
-    })
-    expect(data.sections).toEqual([
-      { name: "systemPrompt", tokens: 50, chars: 200 },
-      { name: "memory", tokens: 10, chars: 40 },
-      { name: "lore", tokens: 30, chars: 120 },
-      { name: "manuscript", tokens: 100, chars: 400 },
-    ])
-    expect(data.memory).toEqual({ present: true, tokens: 10 })
-    // No authorsNote section in the fixture breakdown — absent, not zeroed
-    // silently: `present` says so explicitly.
+    expect(data.recap).toEqual(RECAP)
+    // Only the passage BEFORE entry-5 was composed, and it names Vell.
+    expect(
+      (data.sections as { name: string }[]).map((section) => section.name)
+    ).toEqual(["systemPrompt", "memory", "lore", "manuscript"])
+    expect(data.memory).toMatchObject({ present: true })
+    // No author's note in the fixture — absent, not zeroed silently.
     expect(data.authorsNote).toEqual({ present: false, tokens: 0 })
     expect(data.lore).toEqual([
-      { id: "lore-1", name: "Vell", triggeredBy: ["vell"], tokens: 30 },
+      {
+        id: "lore-1",
+        name: "Vell",
+        triggeredBy: ["vell"],
+        tokens: expect.any(Number),
+      },
     ])
-    // 2 triggered, 1 kept.
-    expect(data.droppedLore).toBe(1)
-    // A percent of the leftover window, not a token count — the field name
-    // says which, because 20 tokens beside 30 tokens of lore is impossible.
+    expect(data.droppedLore).toBe(0)
+    // A percent of the leftover window, not a token count.
     expect(data.loreBudgetPercent).toBe(20)
-    expect(data.totalTokens).toBe(190)
-    expect(data.contextWindow).toBe(8000)
+    expect(data.totalTokens).toBeGreaterThan(0)
   })
 
   test("resolves a given position instead of the newest", async () => {
     const handler = registeredHandler()
 
-    await handler({ storyId: "story-1", position: 1 })
+    const result = await handler({ storyId: "story-1", position: 1 })
 
-    expect(loadEntryContextMock).toHaveBeenCalledWith("story-1", "entry-1")
+    // Nothing precedes entry-1, so no manuscript and no lore trigger.
+    const data = result.structuredContent as Record<string, unknown>
+    expect(data.position).toBe(1)
+    expect(data.lore).toEqual([])
   })
 
-  test("an unknown position fails without calling loadEntryContext", async () => {
+  test("counts lore that triggered but lost the budget", async () => {
+    const long = "A long history. ".repeat(400)
+    listLorebookEntriesMock.mockImplementation(async () => [
+      lore("lore-1", { content: long }),
+      lore("lore-2", { name: "Vell's blade", content: long }),
+    ])
+    getStoryFullMock.mockImplementation(async () =>
+      story({
+        settings: { ...story().settings, contextWindow: 2048, loreBudget: 5 },
+      })
+    )
+    const handler = registeredHandler()
+
+    const result = await handler({ storyId: "story-1" })
+
+    const direct = await loadEntryContext(
+      { storyId: "story-1", entryId: "entry-5" },
+      { origin: null }
+    )
+    if (!direct.ok || !direct.data) throw new Error("expected a context")
+    const dropped =
+      direct.data.context.fit.loreMatched - direct.data.context.lore.length
+    expect(dropped).toBeGreaterThan(0)
+    expect(result.structuredContent?.droppedLore).toBe(dropped)
+  })
+
+  test("an unknown position fails without composing a context", async () => {
     const handler = registeredHandler()
 
     const result = await handler({ storyId: "story-1", position: 999 })
 
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text).toContain("999")
-    expect(loadEntryContextMock).not.toHaveBeenCalled()
+    expect(listLorebookEntriesMock).not.toHaveBeenCalled()
   })
 
-  test("an unknown story fails before touching loadEntryContext", async () => {
+  test("an unknown story fails before composing a context", async () => {
     getStoryFullMock.mockImplementation(async () => null)
     const handler = registeredHandler()
 
@@ -265,14 +251,11 @@ describe("context_breakdown", () => {
 
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text).toContain("No story with id nope")
-    expect(loadEntryContextMock).not.toHaveBeenCalled()
+    expect(listLorebookEntriesMock).not.toHaveBeenCalled()
   })
 
   test("a story with no passages yet fails with a helpful message", async () => {
-    getStoryFullMock.mockImplementation(async () => ({
-      entries: [],
-      settings: { loreBudget: 20, contextWindow: 8000 },
-    }))
+    getStoryFullMock.mockImplementation(async () => story({ entries: [] }))
     const handler = registeredHandler()
 
     const result = await handler({ storyId: "story-1" })
@@ -282,13 +265,17 @@ describe("context_breakdown", () => {
   })
 
   test("surfaces a loadEntryContext failure as failed(), not a throw", async () => {
-    loadEntryContextMock.mockImplementation(async () => ({
-      ok: false as const,
-      error: "Couldn't work out the context for this passage.",
-    }))
+    // The tool's own read succeeds; the service's second read does not.
+    getStoryFullMock.mockImplementationOnce(async () => story())
+    getStoryFullMock.mockImplementationOnce(async () => {
+      throw new Error("connection reset")
+    })
+    const quiet = console.error
+    console.error = () => {}
     const handler = registeredHandler()
 
     const result = await handler({ storyId: "story-1" })
+    console.error = quiet
 
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text).toContain("Couldn't work out the context")

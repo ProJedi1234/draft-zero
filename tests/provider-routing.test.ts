@@ -27,10 +27,12 @@ mock.module("@/lib/generation/key", () => ({
 }))
 
 const streamCalls: Array<{ key: string }> = []
+const realOpenRouter = await import("@/lib/generation/openrouter")
 mock.module("@/lib/generation/openrouter", () => ({
-  // Present so the module's surface matches the real one: lib/generation/
-  // summarize.ts imports it, and a mock missing an export fails the IMPORT,
-  // which surfaces as an unrelated file refusing to load.
+  // A module mock is process-wide, so every export has to survive it: a missing
+  // one fails the IMPORT in whichever unrelated file loads next (reasoningParam,
+  // through lib/images/derive-live). completeOnce is stubbed for summarize.ts.
+  ...realOpenRouter,
   completeOnce: async () => ({
     text: "",
     truncated: false,
@@ -54,6 +56,12 @@ mock.module("@/lib/generation/openrouter", () => ({
 // pinned in generation-calls.test.ts and generation-stream.test.ts. Only leaf
 // infrastructure is mocked — mock.module is process-global, and mocking a
 // module another test file imports as its SUBJECT would poison that file.
+function unreachable(name: string) {
+  return async () => {
+    throw new Error(`${name} is not doubled in this spec.`)
+  }
+}
+
 mock.module("@/lib/db/entry-writes", () => ({
   persistGeneratedEntry: async () => ({
     ok: true,
@@ -64,6 +72,12 @@ mock.module("@/lib/db/entry-writes", () => ({
   // an export the import graph touches from ANY test file has to exist — its
   // absence fails whichever file's imports resolve while this mock is live.
   nextStoryPosition: async () => 0,
+  // Never called here; present because mock.module is process-global and the
+  // services reach these through lib/services/*.
+  storyExists: unreachable("storyExists"),
+  touchStoryRow: unreachable("touchStoryRow"),
+  nextTakeVariant: unreachable("nextTakeVariant"),
+  appendEntryCore: unreachable("appendEntryCore"),
 }))
 const silentDb = {
   insert: () => ({ values: async () => {} }),

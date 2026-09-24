@@ -1,19 +1,20 @@
 // lib/mcp/tools/edit.test.ts — handler shaping, against a mocked position
-// lookup and a mocked updateEntryText. No live DB.
+// lookup and the real updateEntryText service over a scripted drizzle chain.
+// No live DB.
 //
 // See write.test.ts's header for why the tool module is imported at the top
 // level rather than inside a test().
-import { beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 
 import type { RegisterTool } from "@/lib/mcp/helpers"
 import {
   getLivePassageAtPosition,
   installMocks,
   resetActionMocks,
-  updateEntryText,
 } from "@/lib/mcp/tools/test-mocks"
+import { captureBus } from "@/lib/services/test-support"
 
-installMocks()
+const db = await installMocks()
 const { registerEdit } = await import("@/lib/mcp/tools/edit")
 
 function capture(register: RegisterTool) {
@@ -27,14 +28,27 @@ function capture(register: RegisterTool) {
   return (args: unknown) => handler(args)
 }
 
+/** The prose read and the passage update the service opens with. */
+function editLands(previous: string) {
+  db.next([{ text: previous, actionKind: null, inputText: null }])
+  db.next([{ id: "e1" }])
+}
+
+let bus: Awaited<ReturnType<typeof captureBus>>
+
 describe("edit", () => {
-  beforeEach(resetActionMocks)
+  beforeEach(async () => {
+    resetActionMocks(db)
+    bus = await captureBus()
+  })
+  afterEach(() => bus.stop())
 
   test("rewrites the passage at a live position and reports the word delta", async () => {
     getLivePassageAtPosition.mockImplementation(async () => ({
       id: "e1",
       text: "one two three",
     }))
+    editLands("one two three")
     const call = capture(registerEdit)
 
     const result = (await call({
@@ -43,11 +57,12 @@ describe("edit", () => {
       text: "one two three four five",
     })) as { structuredContent: Record<string, unknown> }
 
-    expect(updateEntryText).toHaveBeenCalledWith(
-      "s1",
-      "e1",
-      "one two three four five"
-    )
+    expect(db.argsOf(1, "set")?.[0]).toEqual({
+      text: "one two three four five",
+      actionKind: null,
+      inputText: null,
+    })
+    expect(bus.events).toEqual([{ kind: "change", storyId: "s1" }])
     expect(result.structuredContent).toEqual({
       storyId: "s1",
       position: 4,
@@ -61,6 +76,7 @@ describe("edit", () => {
       id: "e1",
       text: "old text",
     }))
+    editLands("old text")
     const call = capture(registerEdit)
 
     const result = (await call({
@@ -85,7 +101,7 @@ describe("edit", () => {
 
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text).toContain("99")
-    expect(updateEntryText).not.toHaveBeenCalled()
+    expect(db.statements).toEqual([])
   })
 
   test("propagates a mutation failure as failed(), not a throw", async () => {
@@ -93,10 +109,7 @@ describe("edit", () => {
       id: "e1",
       text: "old",
     }))
-    updateEntryText.mockImplementationOnce(async () => ({
-      ok: false,
-      error: "Passage not found.",
-    }))
+    db.next([])
     const call = capture(registerEdit)
 
     const result = (await call({
@@ -107,5 +120,6 @@ describe("edit", () => {
 
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text).toBe("Passage not found.")
+    expect(bus.events).toEqual([])
   })
 })

@@ -7,7 +7,6 @@
 // soft-deleted" is exactly how the two tools would drift apart.
 import { z } from "zod"
 
-import { updateEntryText } from "@/lib/actions/entries"
 import { getLivePassageAtPosition } from "@/lib/db/queries"
 import {
   line,
@@ -17,6 +16,8 @@ import {
   wordCount,
   type RegisterTool,
 } from "@/lib/mcp/helpers"
+import { NO_ORIGIN } from "@/lib/services/context"
+import { updateEntryText } from "@/lib/services/entries"
 
 const inputSchema = z.object({
   storyId: z.string(),
@@ -64,9 +65,8 @@ export const registerEdit: RegisterTool = (server) => {
         }
 
         const result = await updateEntryText(
-          args.storyId,
-          existing.id,
-          args.text
+          { storyId: args.storyId, entryId: existing.id, text: args.text },
+          NO_ORIGIN
         )
         if (!result.ok) throw new ToolInputError(result.error)
 

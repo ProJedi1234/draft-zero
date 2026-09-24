@@ -125,7 +125,7 @@ export interface EntryGeneration {
  * the kinds the writer never asked for and never watches, and the only ones
  * that produce no passage. They are in this union because the spend ledger is
  * keyed by it and a billed call that no aggregate can see is worse than one
- * recorded oddly — see REQUEST_KINDS in lib/actions/generation.ts, which keeps
+ * recorded oddly — see REQUEST_KINDS in lib/services/generation.ts, which keeps
  * the kinds the client is allowed to name separate from the ones that only the
  * server raises.
  *

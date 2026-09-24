@@ -184,7 +184,7 @@ export function useModelSettings({
 
   // That display clamp is cosmetic until it is written, and every other reader
   // of the row has to defend itself against the difference — startGeneration
-  // re-clamps for itself rather than trust it (lib/actions/generation.ts). Write
+  // re-clamps for itself rather than trust it (lib/services/generation.ts). Write
   // the fix-up from an effect, since saving during a render is not allowed, and
   // key it on the ceiling rather than on mount: `endpoints` arrive well after
   // mount, and the endpoint is frequently the binding constraint.

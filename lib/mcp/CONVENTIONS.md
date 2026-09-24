@@ -196,10 +196,11 @@ journal and the sync bus behave identically.
   The position reads are shared on purpose — `read`/`story_map` want the same bounds and
   `edit`/`rewind` the same lookup, and two private copies of "live means the active take and
   not soft-deleted" is how the tools would drift apart.
-- **Writes**: the server actions in `lib/actions/*` — `createStory`, `updateStoryMeta`,
-  `deleteStory`, `appendActionEntry`, `updateEntryText`, `rewindToEntry`, `createLorebookEntry`,
-  `updateLorebookEntry`, `loadEntryContext`. They carry `"use server"`, which is fine to import
-  and await from a route handler; a direct call is a direct call.
+- **Writes**: the services in `lib/services/*` — `createStory`, `updateStoryMeta`,
+  `deleteStory`, `appendEntryOutsideRun`, `updateEntryText`, `rewindToEntry`,
+  `createLorebookEntry`, `updateLorebookEntry`, `loadEntryContext` — called with `NO_ORIGIN` as
+  the context. The server actions are wrappers over the same services, so a tool and the UI
+  cannot drift. See `lib/services/CONVENTIONS.md`.
 - **Never bypass the ops journal.** Every mutation goes through the path that writes `story_ops`
   and calls `commitChange` / `touchStory`, or an AI write becomes the one thing the writer cannot
   undo and open browsers show stale text.
@@ -282,17 +283,19 @@ So there is one double, `lib/mcp/tools/test-queries.ts`. Its registered shape is
 complete; behavior sits in a table behind it. A spec calls `installQueryMocks()` at module scope
 and `stubQueries({ … })` from `beforeEach` — from `beforeEach` because bun collects every spec's
 top level before running a test, so a module-scope choice would be overwritten by the next file
-collected. **Add a name to that module's `DEFAULTS` when a tool starts importing a new read.**
+collected. The double registers every export of `queries.ts`; one with no entry in `DEFAULTS`
+throws when called, so a spec whose tool reads it must stub it.
 
-`test-mocks.ts` does the same for the write tools' `lib/actions/*` doubles.
+`test-mocks.ts` sets up the write tools' specs: the real entries service over the fake db from
+`lib/services/test-support.ts`. Never double a service module — see `lib/services/CONVENTIONS.md`.
 
 ### The integration spec
 
 `lib/mcp/server.test.ts` builds the real factory and asks it `tools/list`: all fourteen names in
 the fixed order, an object `outputSchema` and `inputSchema` on each, and the annotations reads
-and destructive tools are supposed to carry. It never CALLS a tool — its doubles exist only
-because importing the server reaches `lib/actions/*`, which import `"server-only"` and throw
-outside a React Server Component.
+and destructive tools are supposed to carry. It never CALLS a tool, but importing the server reaches
+every service, which imports `"server-only"` — so it installs the fake db, which doubles that
+module.
 
 To drive the handler directly — no server, no network — see that spec, or:
 

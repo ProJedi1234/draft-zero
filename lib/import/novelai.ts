@@ -21,7 +21,7 @@
 // spellings are accepted.
 //
 // This module is pure and client-safe: the import dialog parses here to preview
-// a file, and lib/actions/import.ts re-parses the same bytes server-side rather
+// a file, and lib/services/import.ts re-parses the same bytes server-side rather
 // than trusting the client's parse.
 
 import type {

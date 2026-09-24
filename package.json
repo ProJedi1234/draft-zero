@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "bun test",
+    "test:db": "bun test ./tests/db/*.pg.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "bun scripts/seed.ts",

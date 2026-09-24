@@ -1,16 +1,12 @@
-// lore_get + lore_write — the lorebook's two MCP entry points. Both call
-// straight into lib/actions/lorebook.ts so create/update behavior (validation,
-// the undo/bus commit) is byte-identical to the UI's own editor.
+// lore_get + lore_write — the lorebook's two MCP entry points. Writes call
+// lib/services/lorebook.ts, the same service behind the UI's own editor, so
+// create/update behavior (validation, the bus commit) cannot drift from it.
 //
 // Two tools in one file because they share one table and one shape. They
 // register separately so each keeps its place in the global ordering: lore_get
 // sits with the reads, lore_write with the writes.
 import { z } from "zod"
 
-import {
-  createLorebookEntry,
-  updateLorebookEntry,
-} from "@/lib/actions/lorebook"
 import {
   getLorebookEntry,
   getStoryTitle,
@@ -22,6 +18,11 @@ import {
   ToolInputError,
   type RegisterTool,
 } from "@/lib/mcp/helpers"
+import { NO_ORIGIN } from "@/lib/services/context"
+import {
+  createLorebookEntry,
+  updateLorebookEntry,
+} from "@/lib/services/lorebook"
 import { LOREBOOK_CATEGORIES } from "@/lib/types"
 import type { LorebookCategory, NewLorebookEntry } from "@/lib/types"
 
@@ -234,7 +235,10 @@ export const registerLoreWrite: RegisterTool = (server) => {
           }
 
           if (changed.length > 0) {
-            const result = await updateLorebookEntry(args.id, patch)
+            const result = await updateLorebookEntry(
+              { id: args.id, patch },
+              NO_ORIGIN
+            )
             if (!result.ok) throw new ToolInputError(result.error)
           }
 
@@ -265,15 +269,19 @@ export const registerLoreWrite: RegisterTool = (server) => {
           )
         }
 
-        const result = await createLorebookEntry(args.storyId, {
-          name,
-          category: args.category ?? "concept",
-          keys: args.keys ?? [],
-          content: args.content ?? "",
-          priority: args.priority ?? 50,
-          enabled: args.enabled ?? true,
-          alwaysActive: args.alwaysActive ?? false,
-        })
+        const result = await createLorebookEntry(
+          {
+            storyId: args.storyId,
+            name,
+            category: args.category ?? "concept",
+            keys: args.keys ?? [],
+            content: args.content ?? "",
+            priority: args.priority ?? 50,
+            enabled: args.enabled ?? true,
+            alwaysActive: args.alwaysActive ?? false,
+          },
+          NO_ORIGIN
+        )
         if (!result.ok) throw new ToolInputError(result.error)
 
         // Only what the caller actually set. On a create everything "changed"

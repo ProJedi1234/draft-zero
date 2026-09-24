@@ -6,10 +6,10 @@
 // narration is prose as-is with no actionKind. Both bottom out in
 // appendEntryCore, the one place position, provenance and the story_ops
 // journal entry get written together, and both are reached through
-// appendEntryOutsideRun (added to lib/actions/entries.ts for this) so the
-// live-run guard the composer gets from reserveRun covers this caller too.
+// appendEntryOutsideRun (lib/services/entries.ts) so the live-run guard the
+// composer gets from reserveRun covers this caller too.
 //
-// The wrapper does not call commitChange — the doc comment on appendActionEntry
+// The service does not call commitChange — the doc comment on appendActionEntry
 // explains why (the UI's caller owns the timing so a request-scoped
 // revalidate doesn't sit in the critical path before the first generated
 // token). That reason doesn't apply here: this tool has no optimistic echo to
@@ -18,8 +18,7 @@
 // the plan's "Journal + bus" requirement.
 import { z } from "zod"
 
-import { commitChange } from "@/lib/actions/commit"
-import { appendEntryOutsideRun } from "@/lib/actions/entries"
+import { commitChange } from "@/lib/services/commit"
 import {
   line,
   plural,
@@ -29,7 +28,8 @@ import {
   wordCount,
   type RegisterTool,
 } from "@/lib/mcp/helpers"
-import type { ActionKind } from "@/lib/types"
+import { NO_ORIGIN } from "@/lib/services/context"
+import { appendEntryOutsideRun } from "@/lib/services/entries"
 
 const inputSchema = z.object({
   storyId: z.string(),
@@ -77,9 +77,8 @@ export const registerWrite: RegisterTool = (server) => {
         // loop for a position, and the loser's insert dies on the partial
         // unique index, taking a billed passage with it.
         const result = await appendEntryOutsideRun(
-          args.storyId,
-          mode as "narration" | ActionKind,
-          args.text
+          { storyId: args.storyId, mode, text: args.text },
+          NO_ORIGIN
         )
         if (!result.ok) throw new ToolInputError(result.error)
 

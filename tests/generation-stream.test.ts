@@ -145,6 +145,12 @@ const persists: Array<{
   opts: Record<string, unknown>
 }> = []
 let persistOk = true
+function unreachable(name: string) {
+  return async () => {
+    throw new Error(`${name} is not doubled in this spec.`)
+  }
+}
+
 mock.module("@/lib/db/entry-writes", () => ({
   persistGeneratedEntry: async (
     storyId: string,
@@ -161,6 +167,12 @@ mock.module("@/lib/db/entry-writes", () => ({
   // called here, but mock.module replaces the whole module, so every export
   // the import graph touches has to exist.
   nextStoryPosition: async () => 0,
+  // Never called here; present because mock.module is process-global and the
+  // services reach these through lib/services/*.
+  storyExists: unreachable("storyExists"),
+  touchStoryRow: unreachable("touchStoryRow"),
+  nextTakeVariant: unreachable("nextTakeVariant"),
+  appendEntryCore: unreachable("appendEntryCore"),
 }))
 
 mock.module("@/lib/db/client", () => ({

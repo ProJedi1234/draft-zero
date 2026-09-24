@@ -1,55 +1,32 @@
 // lib/mcp/tools/story-crud.test.ts — handler shaping logic against mocked
-// queries and mocked lib/actions/stories. No live DB, no HTTP.
-import { beforeEach, describe, expect, mock, test } from "bun:test"
+// queries and the real stories service over a scripted drizzle chain. No live
+// DB, no HTTP.
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
-import type { StoryRecord } from "@/lib/store/records"
+import { captureBus, installFakeDb } from "@/lib/services/test-support"
 
 /* -------------------------------------------------------------------------- */
 /* Mocks — declared before importing the module under test                   */
 /* -------------------------------------------------------------------------- */
 
-/** What the reworked actions return: the canonical row travels with the id. */
-const storyRecord: StoryRecord = {
+/** A stories row as the service's insert or update returns it. */
+const STORY_ROW = {
   id: "story-1",
   title: "Doomed Story",
   description: "",
   genre: "",
   createdAt: "2026-08-28T00:00:00.000Z",
   updatedAt: "2026-08-28T00:00:01.000Z",
-  wordCount: 0,
   tintHue: null,
   tintStrength: 1,
   tintAuto: true,
 }
 
-const createStoryMock = mock(
-  async (_input?: {
-    title?: string
-    id?: string
-    origin?: string
-  }): Promise<
-    | { ok: true; data: { id: string; record: StoryRecord } }
-    | { ok: false; error: string }
-  > => ({
-    ok: true,
-    data: { id: "story-1", record: storyRecord },
-  })
-)
-const updateStoryMetaMock = mock(async (_id: string, _patch: unknown) => ({
-  ok: true as const,
-  data: { record: storyRecord },
-}))
-const deleteStoryMock = mock(async (_id: string) => ({
-  ok: true as const,
-  data: null,
-}))
-
-mock.module("@/lib/actions/stories", () => ({
-  createStory: createStoryMock,
-  updateStoryMeta: updateStoryMetaMock,
-  deleteStory: deleteStoryMock,
-}))
+// recordFor's word-count read, which follows every story write.
+const listStoryRecordsMock = mock(async (options: { storyId?: string }) => [
+  { id: options.storyId, version: "v", row: { wordCount: 0 } },
+])
 
 // The two reads behind delete_story's confirmation question. getStoryTitle
 // doubles as the existence check, so `null` is how a missing story reaches
@@ -60,6 +37,7 @@ const getStoryTitleMock = mock(
 const countLivePassagesMock = mock(async (_id: string) => 0)
 
 installQueryMocks()
+const db = installFakeDb()
 
 const { registerCreateStory, registerDeleteStory, registerUpdateStory } =
   await import("@/lib/mcp/tools/story-crud")
@@ -94,19 +72,51 @@ function makeCtx(
   }
 }
 
-beforeEach(() => {
+/** The root of every statement the service ran, in order. */
+function roots() {
+  return db.statements.map((statement) => statement.root)
+}
+
+/** An update's column values, minus the server-minted version. */
+function updateSet(index: number) {
+  const set = db.argsOf(index, "set")?.[0] as Record<string, unknown>
+  const { updatedAt: _version, ...columns } = set
+  return columns
+}
+
+/** Whether statement `index`'s WHERE binds `value` anywhere in its SQL tree. */
+function whereNames(index: number, value: string): boolean {
+  const seen = new Set<unknown>()
+  const walk = (node: unknown): boolean => {
+    if (node === value) return true
+    if (typeof node !== "object" || node === null || seen.has(node)) {
+      return false
+    }
+    seen.add(node)
+    return Object.values(node).some(walk)
+  }
+  return walk(db.argsOf(index, "where"))
+}
+
+let bus: Awaited<ReturnType<typeof captureBus>>
+
+beforeEach(async () => {
   stubQueries({
     getStoryTitle: getStoryTitleMock,
     countLivePassages: countLivePassagesMock,
+    getAppSettings: async () => ({ defaultProfileId: null }),
+    listStoryRecords: listStoryRecordsMock,
   })
-  createStoryMock.mockClear()
-  updateStoryMetaMock.mockClear()
-  deleteStoryMock.mockClear()
+  db.reset()
+  bus = await captureBus()
+  listStoryRecordsMock.mockClear()
   getStoryTitleMock.mockClear()
   countLivePassagesMock.mockClear()
   getStoryTitleMock.mockImplementation(async () => "Doomed Story")
   countLivePassagesMock.mockImplementation(async () => 0)
 })
+
+afterEach(() => bus.stop())
 
 /* -------------------------------------------------------------------------- */
 /* create_story                                                              */
@@ -118,20 +128,22 @@ describe("create_story", () => {
     registerCreateStory(server as never, undefined as never)
     const handler = handlers.get("create_story")!
 
-    const result: never = (await handler(
-      { title: "The Long Road" },
-      makeCtx()
-    )) as never
+    db.next([{ ...STORY_ROW, title: "The Long Road" }])
+    const result = (await handler({ title: "The Long Road" }, makeCtx())) as {
+      isError?: boolean
+      structuredContent: { id: string; title: string }
+    }
 
-    expect(createStoryMock).toHaveBeenCalledTimes(1)
-    expect(updateStoryMetaMock).not.toHaveBeenCalled()
-    expect(
-      (result as { structuredContent: unknown }).structuredContent
-    ).toEqual({
-      id: "story-1",
+    expect(roots()).toEqual(["insert"])
+    const inserted = db.argsOf(0, "values")?.[0] as Record<string, unknown>
+    expect(inserted.title).toBe("The Long Road")
+    expect(result.structuredContent).toEqual({
+      id: inserted.id as string,
       title: "The Long Road",
     })
-    expect((result as { isError?: boolean }).isError).toBeUndefined()
+    expect(result.isError).toBeUndefined()
+    // MCP has no sync channel of its own, so every device hears the create.
+    expect(bus.events[0]).toMatchObject({ op: "upsert", origin: null })
   })
 
   test("patches metadata in a follow-up call when extra fields are given", async () => {
@@ -139,14 +151,17 @@ describe("create_story", () => {
     registerCreateStory(server as never, undefined as never)
     const handler = handlers.get("create_story")!
 
+    db.next([STORY_ROW])
+    db.next([STORY_ROW])
     await handler(
       { title: "The Long Road", genre: "western", memory: "Dust everywhere." },
       makeCtx()
     )
 
-    expect(updateStoryMetaMock).toHaveBeenCalledTimes(1)
-    expect(updateStoryMetaMock.mock.calls[0][0]).toBe("story-1")
-    expect(updateStoryMetaMock.mock.calls[0][1]).toEqual({
+    expect(roots()).toEqual(["insert", "update"])
+    const createdId = (db.argsOf(0, "values")?.[0] as { id: string }).id
+    expect(whereNames(1, createdId)).toBe(true)
+    expect(updateSet(1)).toEqual({
       genre: "western",
       memory: "Dust everywhere.",
     })
@@ -160,6 +175,8 @@ describe("create_story", () => {
     registerCreateStory(server as never, undefined as never)
     const handler = handlers.get("create_story")!
 
+    db.next([STORY_ROW])
+    db.next([STORY_ROW])
     await handler(
       {
         title: "The Long Road",
@@ -172,7 +189,7 @@ describe("create_story", () => {
       makeCtx()
     )
 
-    expect(updateStoryMetaMock.mock.calls[0][1]).toEqual({
+    expect(updateSet(1)).toEqual({
       description: "A western.",
       genre: "western",
       memory: "Dust everywhere.",
@@ -182,10 +199,8 @@ describe("create_story", () => {
   })
 
   test("surfaces a failed create as a model-visible error, not a throw", async () => {
-    createStoryMock.mockImplementationOnce(async () => ({
-      ok: false as const,
-      error: "boom",
-    }))
+    // An insert that returns no row is the service's own failure path.
+    db.next([])
     const { server, handlers } = makeFakeServer()
     registerCreateStory(server as never, undefined as never)
     const handler = handlers.get("create_story")!
@@ -196,7 +211,7 @@ describe("create_story", () => {
     }
 
     expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain("boom")
+    expect(result.content[0].text).toContain("Story could not be created.")
   })
 })
 
@@ -210,15 +225,19 @@ describe("update_story", () => {
     registerUpdateStory(server as never, undefined as never)
     const handler = handlers.get("update_story")!
 
+    db.next([STORY_ROW])
     const result = (await handler(
       { storyId: "story-1", title: "New Title", memory: "Updated memory." },
       makeCtx()
     )) as { structuredContent: { id: string; changed: string[] } }
 
-    expect(updateStoryMetaMock).toHaveBeenCalledWith("story-1", {
+    expect(roots()).toEqual(["update"])
+    expect(whereNames(0, "story-1")).toBe(true)
+    expect(updateSet(0)).toEqual({
       title: "New Title",
       memory: "Updated memory.",
     })
+    expect(bus.events[0]).toMatchObject({ id: "story-1", origin: null })
     expect(result.structuredContent.changed.sort()).toEqual(
       ["memory", "title"].sort()
     )
@@ -229,18 +248,19 @@ describe("update_story", () => {
     registerUpdateStory(server as never, undefined as never)
     const handler = handlers.get("update_story")!
 
+    db.next([STORY_ROW])
     const result = (await handler(
       { storyId: "story-1", systemPrompt: "You are a laconic narrator." },
       makeCtx()
     )) as { structuredContent: { id: string; changed: string[] } }
 
-    expect(updateStoryMetaMock.mock.calls[0][1]).toEqual({
+    expect(updateSet(0)).toEqual({
       systemPrompt: "You are a laconic narrator.",
     })
     expect(result.structuredContent.changed).toEqual(["systemPrompt"])
   })
 
-  test("rejects a call with nothing to update, without touching the action", async () => {
+  test("rejects a call with nothing to update, without touching the service", async () => {
     const { server, handlers } = makeFakeServer()
     registerUpdateStory(server as never, undefined as never)
     const handler = handlers.get("update_story")!
@@ -250,7 +270,28 @@ describe("update_story", () => {
     }
 
     expect(result.isError).toBe(true)
-    expect(updateStoryMetaMock).not.toHaveBeenCalled()
+    expect(db.statements).toEqual([])
+  })
+
+  test("surfaces the service's refusal as a model-fixable failure", async () => {
+    const { server, handlers } = makeFakeServer()
+    registerUpdateStory(server as never, undefined as never)
+    const handler = handlers.get("update_story")!
+
+    const blank = (await handler(
+      { storyId: "story-1", title: "   " },
+      makeCtx()
+    )) as { isError?: boolean; content: { text: string }[] }
+    expect(blank.isError).toBe(true)
+    expect(blank.content[0].text).toBe("Title can't be empty.")
+
+    db.next([])
+    const missing = (await handler(
+      { storyId: "story-1", genre: "noir" },
+      makeCtx()
+    )) as { isError?: boolean; content: { text: string }[] }
+    expect(missing.content[0].text).toBe("Story not found.")
+    expect(bus.events).toEqual([])
   })
 })
 
@@ -278,7 +319,7 @@ describe("delete_story", () => {
       inputRequests?: { confirm: { params: { message: string } } }
     }
 
-    expect(deleteStoryMock).not.toHaveBeenCalled()
+    expect(roots()).not.toContain("delete")
     expect(deps.mintRequestState).toHaveBeenCalledTimes(1)
     expect(deps.mintRequestState.mock.calls[0][0]).toMatchObject({
       tool: "delete_story",
@@ -304,7 +345,7 @@ describe("delete_story", () => {
     }
 
     expect(result.isError).toBe(true)
-    expect(deleteStoryMock).not.toHaveBeenCalled()
+    expect(roots()).not.toContain("delete")
   })
 
   test("confirmed retry deletes and reports the delta", async () => {
@@ -312,6 +353,7 @@ describe("delete_story", () => {
     registerDeleteStory(server as never, deps as never)
     const handler = handlers.get("delete_story")!
 
+    db.next([{ id: "story-1" }])
     const result = (await handler(
       { storyId: "story-1" },
       makeCtx({
@@ -326,7 +368,14 @@ describe("delete_story", () => {
       })
     )) as { structuredContent: { id: string; title: string; deleted: boolean } }
 
-    expect(deleteStoryMock).toHaveBeenCalledWith("story-1")
+    expect(roots()).toEqual(["delete"])
+    expect(whereNames(0, "story-1")).toBe(true)
+    expect(bus.events[0]).toMatchObject({
+      op: "delete",
+      entity: "story",
+      id: "story-1",
+      origin: null,
+    })
     expect(result.structuredContent).toEqual({
       id: "story-1",
       title: "Doomed Story",
@@ -359,7 +408,7 @@ describe("delete_story", () => {
         inputRequests?: unknown
       }
 
-      expect(deleteStoryMock).not.toHaveBeenCalled()
+      expect(roots()).not.toContain("delete")
       expect(result.inputRequests).toBeUndefined()
       expect(result.structuredContent).toEqual({
         id: "story-1",
@@ -388,7 +437,7 @@ describe("delete_story", () => {
       })
     )) as { structuredContent: { id: string; title: string; deleted: boolean } }
 
-    expect(deleteStoryMock).not.toHaveBeenCalled()
+    expect(roots()).not.toContain("delete")
     expect(result.structuredContent.deleted).toBe(false)
   })
 
@@ -413,7 +462,7 @@ describe("delete_story", () => {
 
     // The writer confirmed story-1; nothing may be deleted on a retry that
     // swapped the argument. Falls back to round 1 and asks about story-2.
-    expect(deleteStoryMock).not.toHaveBeenCalled()
+    expect(roots()).not.toContain("delete")
     expect(result.structuredContent).toBeUndefined()
     expect(deps.mintRequestState.mock.calls[0][0]).toMatchObject({
       storyId: "story-2",
@@ -436,6 +485,6 @@ describe("delete_story", () => {
     )
 
     // Falls back to round 1 (asks again) instead of deleting on a foreign seal.
-    expect(deleteStoryMock).not.toHaveBeenCalled()
+    expect(roots()).not.toContain("delete")
   })
 })

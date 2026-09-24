@@ -9,7 +9,7 @@
  * and total the moment the URL stops saying localhost.
  *
  * Server code doesn't need this (Node's global always has it), so the call
- * sites in lib/actions/* are left alone. The fallback is a real v4 UUID because
+ * sites in lib/services/* are left alone. The fallback is a real v4 UUID because
  * getRandomValues has no such restriction — no reason to weaken the id.
  */
 export function randomId(): string {

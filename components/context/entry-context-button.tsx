@@ -9,7 +9,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { loadEntryContext, type EntryContext } from "@/lib/actions/context"
+import { loadEntryContext } from "@/lib/actions/context"
+import type { EntryContext } from "@/lib/services/entries.schema"
 import { describeContext } from "@/lib/generation/breakdown"
 import { shortModelId } from "@/lib/format"
 

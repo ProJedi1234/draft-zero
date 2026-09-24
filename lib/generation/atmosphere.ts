@@ -26,7 +26,7 @@ import "server-only"
 
 import { and, eq } from "drizzle-orm"
 
-import { publishStoryUpsert } from "@/lib/actions/commit"
+import { publishStoryUpsert } from "@/lib/services/commit"
 import { getDb } from "@/lib/db/client"
 import { getAppSettings, getStory, listStoryRecords } from "@/lib/db/queries"
 import { stories } from "@/lib/db/schema"

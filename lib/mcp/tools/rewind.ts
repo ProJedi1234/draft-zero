@@ -1,7 +1,7 @@
 // lib/mcp/tools/rewind.ts — retires everything after a position, the way the
 // app's rewind button does.
 //
-// rewindToEntry (lib/actions/entries.ts) takes an entryId and only ever
+// rewindToEntry (lib/services/entries.ts) takes an entryId and only ever
 // touches story_entries — story_images are not part of this cut in the app
 // today, so this tool doesn't invent an image-retiring step of its own; that
 // would diverge from what "the app's rewind" actually does. See the run
@@ -14,7 +14,6 @@
 // header.
 import { z } from "zod"
 
-import { rewindToEntry } from "@/lib/actions/entries"
 import {
   countLivePassagesAfter,
   getLivePassageAtPosition,
@@ -28,6 +27,8 @@ import {
   ToolInputError,
   type RegisterTool,
 } from "@/lib/mcp/helpers"
+import { NO_ORIGIN } from "@/lib/services/context"
+import { rewindToEntry } from "@/lib/services/entries"
 
 const inputSchema = z.object({
   storyId: z.string(),
@@ -87,7 +88,10 @@ export const registerRewind: RegisterTool = (server) => {
           )
         }
 
-        const result = await rewindToEntry(args.storyId, anchor.id)
+        const result = await rewindToEntry(
+          { storyId: args.storyId, entryId: anchor.id },
+          NO_ORIGIN
+        )
         if (!result.ok) throw new ToolInputError(result.error)
 
         // Read the tail back rather than assuming it is the anchor. Both
