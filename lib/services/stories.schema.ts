@@ -87,6 +87,8 @@ export const setStoryTintAutoInput = z.object({
 export const duplicateStoryInput = z.object({
   copyId: newStoryId.optional(),
   id: existingStoryId,
+  /** Names the copy at insert. Default: the original's, plus " (copy)". */
+  title: storyMetaPatch.shape.title,
 })
 
 export const deleteStoryInput = z.object({ id: existingStoryId })

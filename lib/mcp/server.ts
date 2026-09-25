@@ -29,6 +29,7 @@ import { registerSearch } from "@/lib/mcp/tools/search"
 import {
   registerCreateStory,
   registerDeleteStory,
+  registerDuplicateStory,
   registerUpdateStory,
 } from "@/lib/mcp/tools/story-crud"
 import { registerStoryMap } from "@/lib/mcp/tools/story-map"
@@ -71,6 +72,7 @@ const REGISTRARS: readonly RegisterTool[] = [
   registerContextBreakdown,
   // Writes
   registerCreateStory,
+  registerDuplicateStory,
   registerWrite,
   registerEdit,
   registerRewind,
@@ -81,7 +83,7 @@ const REGISTRARS: readonly RegisterTool[] = [
 ]
 
 /**
- * The `tools/list` answer is a build-time constant — the same 14 declarations
+ * The `tools/list` answer is a build-time constant — the same 15 declarations
  * every request — so it is worth caching client-side. `private` because a
  * single-user LAN app has no shared cache to populate.
  *

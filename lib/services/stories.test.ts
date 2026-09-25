@@ -416,6 +416,33 @@ describe("duplicateStory", () => {
     expect(bus.events).toEqual(upsertEvents(COPY, null))
   })
 
+  test("a given title names the copy, trimmed", async () => {
+    db.next([row()])
+    db.next([])
+    db.next([])
+    db.next([row({ id: COPY, title: "Road Not Taken" })])
+    await stories.duplicateStory(
+      { id: STORY, copyId: COPY, title: "  Road Not Taken " },
+      CTX
+    )
+    expect(db.argsOf(3, "values")?.[0]).toMatchObject({
+      title: "Road Not Taken",
+    })
+  })
+
+  test("a blank title is refused before the source is read", async () => {
+    const result = await stories.duplicateStory(
+      { id: STORY, title: "   " },
+      CTX
+    )
+    expect(result).toEqual({
+      ok: false,
+      code: "invalid",
+      error: "Title can't be empty.",
+    })
+    expect(db.statements).toEqual([])
+  })
+
   test("an empty story copies only its row", async () => {
     db.next([row()])
     db.next([])

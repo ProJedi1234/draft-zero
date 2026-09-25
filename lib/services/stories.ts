@@ -344,7 +344,7 @@ export async function duplicateStory(
       .values({
         ...source,
         id: copyId,
-        title: `${source.title} (copy)`,
+        title: parsed.data.title ?? `${source.title} (copy)`,
         // No ops are copied, so the copy's cursor has to start where an
         // untouched story's does. Undo history is a record of what the writer
         // did to *this* manuscript; inheriting the original's would offer to
