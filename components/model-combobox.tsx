@@ -114,10 +114,13 @@ export function ModelCombobox({
         </span>
         <ChevronsUpDownIcon className="opacity-50" />
       </PopoverTrigger>
-      <PopoverContent className="w-(--anchor-width) p-0" sideOffset={4}>
-        <Command>
+      <PopoverContent
+        className="max-h-(--available-height) w-(--anchor-width) overflow-hidden p-0"
+        sideOffset={4}
+      >
+        <Command className="min-h-0">
           <CommandInput placeholder="Search models…" />
-          <CommandList>
+          <CommandList className="min-h-0">
             <CommandEmpty>No model found.</CommandEmpty>
             {providers.map(({ provider, models: providerModels }) => (
               <CommandGroup key={provider} heading={provider}>
