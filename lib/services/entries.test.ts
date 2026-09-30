@@ -7,6 +7,7 @@ import { installEntriesDoubles } from "@/lib/services/entries-test-support"
 import {
   appendEntryOutput,
   entryContextOutput,
+  nextContextOutput,
   olderEntriesPageOutput,
 } from "@/lib/services/entries.schema"
 import { captureBus } from "@/lib/services/test-support"
@@ -694,5 +695,42 @@ describe("loadEntryContext", () => {
     expect(
       await entries.loadEntryContext({ storyId: "bad id", entryId: ENTRY }, CTX)
     ).toEqual({ ok: false, code: "invalid", error: "Invalid story id." })
+  })
+
+  describe("loadNextContext", () => {
+    test("composes from the whole manuscript and names the story's model", async () => {
+      stubQueries({
+        getStoryFull: async () => story(),
+        listLorebookEntries: async () => [],
+      })
+      const result = await entries.loadNextContext({ storyId: STORY }, CTX)
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      const data = nextContextOutput.parse(result.data)
+      expect(data.modelId).toBe("~test/model")
+      expect(data.contextWindow).toBe(8192)
+      expect(data.context.storyText).toContain("The lighthouse was dark.")
+      expect(data.context.storyText).toContain("Then it lit.")
+      expectNothingWritten()
+    })
+
+    test("a missing story is not_found", async () => {
+      stubQueries({
+        getStoryFull: async () => null,
+        listLorebookEntries: async () => [],
+      })
+      expect(await entries.loadNextContext({ storyId: STORY }, CTX)).toEqual({
+        ok: false,
+        code: "not_found",
+        error: "Story not found.",
+      })
+    })
+
+    test("a bad id is invalid", async () => {
+      expect(await entries.loadNextContext({ storyId: "bad id" }, CTX)).toEqual(
+        { ok: false, code: "invalid", error: "Invalid story id." }
+      )
+    })
   })
 })
