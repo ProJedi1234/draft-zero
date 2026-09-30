@@ -1,0 +1,210 @@
+[
+  {
+    "keys": "Decsos",
+    "value": "Decsos is a town in the kingdom of Yalann. It was a planned community by the gnomes to show off to the humans the superiority of the gnomes in all ways. It is a detailed and organized town on a grand scale. The architecture is baroque but practical.",
+    "type": "location",
+    "title": "Decsos",
+    "description": "Decsos is a town in the kingdom of Yalann. It was a planned community by the gnomes to show off to the humans the superiority of the gnomes in all ways. It is a detailed and organized town on a grand scale. The architecture is baroque but practical.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Somara",
+    "value": "Somara is a small farming town just outside the capital city of Yalann. Somara has traded with the capital for years and distance hasn't made it any less dependent on the whims of the royal family. As of late the town has been growing more and more agitated with the current policies of the royal family and has started to have more and more demonstrations against the reigning monarchs. In protest against the taxes the royal family has put on their exports the town's people have started to rebel and produce less material goods that they are now forced to sell at a lower price.",
+    "type": "location",
+    "title": "Somara",
+    "description": "Somara is a small farming town just outside the capital city of Yalann. Somara has traded with the capital for years and distance hasn't made it any less dependent on the whims of the royal family. As of late the town has been growing more and more agitated with the current policies of the royal family and has started to have more and more demonstrations against the reigning monarchs. In protest against the taxes the royal family has put on their exports the town's people have started to rebel and produce less material goods that they are now forced to sell at a lower price.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Hutson",
+    "value": "Hutson is the small nearby town of the capitol in Yalann. Hutson has a rich history with the capitol. Since Yalann has a high gnomish population, gnomish culture has tended to be reflected in the town itself.",
+    "type": "location",
+    "title": "Hutson",
+    "description": "Hutson is the small nearby town of the capitol in Yalann. Hutson has a rich history with the capitol. Since Yalann has a high gnomish population, gnomish culture has tended to be reflected in the town itself.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Gerzona",
+    "value": "Gerzona is a farming village in the kingdom of Kuzos. The town's position makes it a tempting target for other magic-using kingdoms, but, the Kings plan of resettlement has made the town unappealing to raiders.",
+    "type": "location",
+    "title": "Gerzona",
+    "description": "Gerzona is a farming village in the kingdom of Kuzos. The town's position makes it a tempting target for other magic-using kingdoms, but, the Kings plan of resettlement has made the town unappealing to raiders.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Boka",
+    "value": "Boka is a quiet town that is located near the border of neighboring kingdom. The town's economy depends heavily on trade with neighboring towns. Recently the town has been celebrating the defeat of the nearby kingdom of Nobe. The people of the town know that they have won a battle, but will likely eventually have to win a war in this dark and dangerous world.",
+    "type": "location",
+    "title": "Boka",
+    "description": "Boka is a quiet town that is located near the border of neighboring kingdom. The town's economy depends heavily on trade with neighboring towns. Recently the town has been celebrating the defeat of the nearby kingdom of Nobe. The people of the town know that they have won a battle, but will likely eventually have to win a war in this dark and dangerous world.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Morthem",
+    "value": "When the king of Orlania recently abdicated the throne to his son the king's second wife and child requested they be allowed to move away from the pressures of court life to a more peaceful setting. The family was tasked with the ruling of Morthem which was heavily populated by small fishing villages and lumber mills. This was a not a problem for the small fishing villages that had no use for a central leader and immediately chose to split off and rule themselves under a constitutional monarchy. The lumber mills had been recently attacked by a nearby orcish clan and were happy to have the protection.",
+    "type": "location",
+    "title": "Morthem",
+    "description": "When the king of Orlania recently abdicated the throne to his son the king's second wife and child requested they be allowed to move away from the pressures of court life to a more peaceful setting. The family was tasked with the ruling of Morthem which was heavily populated by small fishing villages and lumber mills. This was a not a problem for the small fishing villages that had no use for a central leader and immediately chose to split off and rule themselves under a constitutional monarchy. The lumber mills had been recently attacked by a nearby orcish clan and were happy to have the protection.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Uruk",
+    "value": "",
+    "type": "location",
+    "title": "Uruk",
+    "description": "Uruk is a town in the empire of Orlania. The town is the gateway to the great city of Orlania. In returned for its importance, Uruk is well protected, with a strong military presence in the surrounding hills protecting the city from attack. The town hosts various diverse landmarks such as a beautiful palace, a tavern, two temples (To Orlan and Alarathos), a small schools. The town is always bustling with travelers from all parts of the kingdom and even some trade with the goblins of the mountains.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Nausicaa",
+    "value": "Nausicaa is a small settlement in the kingdom of Orlania. Orlania has recently sent a band of soldiers to help maintain order in Nausicaa and some have dubbed the area part of Orlania proper. This unsettled feeling of belonging has led leaders in the city to take steps to increase the size of the town itself. The current inhabitants of Nausicaa have come to view themselves independent merchants and farmers that must expand to survive.",
+    "type": "location",
+    "title": "Nausicaa",
+    "description": "Nausicaa is a small settlement in the kingdom of Orlania. Orlania has recently sent a band of soldiers to help maintain order in Nausicaa and some have dubbed the area part of Orlania proper. This unsettled feeling of belonging has led leaders in the city to take steps to increase the size of the town itself. The current inhabitants of Nausicaa have come to view themselves independent merchants and farmers that must expand to survive.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Yalann",
+    "value": "Yalann is a kingdom in which the gnomes control society. They live among the humans, but exert a heavy control over the people. Humans are considered second class citizens in Yalann, mostly used for manual labor. Since the gnomes control the academies, they control the flow of information and education for the people which is the true source of contention between the races. They have a powerful standing army and navy to expand their borders.",
+    "type": "faction",
+    "title": "Yalann",
+    "description": "Yalann is a kingdom in which the gnomes control society. They live among the humans, but exert a heavy control over the people. Humans are considered second class citizens in Yalann, mostly used for manual labor. Since the gnomes control the academies, they control the flow of information and education for the people which is the true source of contention between the races. They have a powerful standing army and navy to expand their borders.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Kuzos",
+    "value": "Kuzos is a struggling kingdom in a dark world. The magic-less kingdom is beset on all sides by powerful magic-using kingdoms that have burned and pillaged many of Kuzos' great towns. The land is filled with fields of ash and ruin. Yet, in the last few years King Konok has risen to the throne. He has used his veteran army pushed back many of the kingdoms around him and has reclaimed some of Kuzos' land. Kuzos is not without danger, the kingdom is filled with an uneasy peace.",
+    "type": "faction",
+    "title": "Kuzos",
+    "description": "Kuzos is a struggling kingdom in a dark world. The magic-less kingdom is beset on all sides by powerful magic-using kingdoms that have burned and pillaged many of Kuzos' great towns. The land is filled with fields of ash and ruin. Yet, in the last few years King Konok has risen to the throne. He has used his veteran army pushed back many of the kingdoms around him and has reclaimed some of Kuzos' land. Kuzos is not without danger, the kingdom is filled with an uneasy peace.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Orlania",
+    "value": "Orlania is a kingdom in the world of Xaxas. Orlania is a peaceful kingdom where everyone has a home and a place in society. Orlania is prosperous, and it is the capital of civilization in the world. Orlania is the focus of trade and knowledge in the Xaxas world.",
+    "type": "faction",
+    "title": "Orlania",
+    "description": "Orlania is a kingdom in the world of Xaxas. Orlania is a peaceful kingdom where everyone has a home and a place in society. Orlania is prosperous, and it is the capital of civilization in the world. Orlania is the focus of trade and knowledge in the Xaxas world.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Alchemist",
+    "value": "Alchemists are a very diverse group on Xaxas. However, they all specialize in one thing: the creation of potions. There are many different schools of thought, some alchemists specialize in making healing potions, while others make battle-enhancing potions. Some potions can even transform the imbiber for a certain period of time.",
+    "type": "class",
+    "title": "Alchemist",
+    "description": "Alchemists are a very diverse group on Xaxas. However, they all specialize in one thing: the creation of potions. There are many different schools of thought, some alchemists specialize in making healing potions, while others make battle-enhancing potions. Some potions can even transform the imbiber for a certain period of time.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Druid",
+    "value": "Druids have the ability to change their form into that of a wild animal. This grants them the animal's strength, swiftness, agility, and other natural abilities. They are a versatile class that can fill a variety of roles in battle situations.",
+    "type": "class",
+    "title": "Druid",
+    "description": "Druids have the ability to change their form into that of a wild animal. This grants them the animal's strength, swiftness, agility, and other natural abilities. They are a versatile class that can fill a variety of roles in battle situations.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Hunter",
+    "value": "Hunters are by far the most skilled in the art of hunting and tracking. They are able to withstand the wilderness and hunt for its hidden creatures. Their bow and arrow is an instrument of precision that many creatures fear. Hunters can also tame some of these creatures, whether it be a quick feathered fowl or a mighty reptile, a Hunter is someone to be recognized.",
+    "type": "class",
+    "title": "Hunter",
+    "description": "Hunters are by far the most skilled in the art of hunting and tracking. They are able to withstand the wilderness and hunt for its hidden creatures. Their bow and arrow is an instrument of precision that many creatures fear. Hunters can also tame some of these creatures, whether it be a quick feathered fowl or a mighty reptile, a Hunter is someone to be recognized.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Paladin",
+    "value": "Paladins are the warriors of Xaxas. They can wield the holy power of the gods for both righteous and unrighteous causes. Paladins are able to call upon the power of any of the gods towards either good or evil.",
+    "type": "class",
+    "title": "Paladin",
+    "description": "Paladins are the warriors of Xaxas. They can wield the holy power of the gods for both righteous and unrighteous causes. Paladins are able to call upon the power of any of the gods towards either good or evil.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Mage",
+    "value": "Mages are able to channel the natural forces of the world of Xaxas. They are able to transform the elements into powerful offensive and defensive spells.",
+    "type": "class",
+    "title": "Mage",
+    "description": "Mages are able to channel the natural forces of the world of Xaxas. They are able to transform the elements into powerful offensive and defensive spells.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Bard",
+    "value": "Bards are the charismatic and often inspirational leaders of the Xaxian people. They provide their allies with powerful spells that enhance their abilities to fight and resist magical damage. Bards are capable of fusing their magic with song, thus creating a powerful bond between themselves and their allies.",
+    "type": "class",
+    "title": "Bard",
+    "description": "Bards are the charismatic and often inspirational leaders of the Xaxian people. They provide their allies with powerful spells that enhance their abilities to fight and resist magical damage. Bards are capable of fusing their magic with song, thus creating a powerful bond between themselves and their allies.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Scholar",
+    "value": "Scholars are students of the world, magic, and technology. Due to the world they inhabit, they are more attuned to knowledge than any other profession. Their minds are open to new ideas and they are able to manipulate magical energies in ways no one else is able to.",
+    "type": "class",
+    "title": "Scholar",
+    "description": "Scholars are students of the world, magic, and technology. Due to the world they inhabit, they are more attuned to knowledge than any other profession. Their minds are open to new ideas and they are able to manipulate magical energies in ways no one else is able to.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Servant",
+    "value": "Servants are people who serve rich and powerful people. They take care of their needs, be it protection, food, clothing, or any other needs.",
+    "type": "class",
+    "title": "Servant",
+    "description": "Servants are people who serve rich and powerful people. They take care of their needs, be it protection, food, clothing, or any other needs.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Human",
+    "value": "Humanity is much like the Elves, in that they wish to maintain the peace of Xaxas. Humans farm, mine, and trade. They are gifted craftsman and merchants, they are a peaceful people.",
+    "type": "race",
+    "title": "Human",
+    "description": "Humanity is much like the Elves, in that they wish to maintain the peace of Xaxas. Humans farm, mine, and trade. They are gifted craftsman and merchants, they are a peaceful people.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": " elf, elv",
+    "value": "Elves are a friendly and welcoming people. They have a deep sense of justice and a thirst for knowledge. They wish to understand the world they live in and strive to keep the peace. They are a caring people, towards everything that has a pulse, but are not gullible.",
+    "type": "race",
+    "title": "Elf",
+    "description": "Elves are a friendly and welcoming people. They have a deep sense of justice and a thirst for knowledge. They wish to understand the world they live in and strive to keep the peace. They are a caring people, towards everything that has a pulse, but are not gullible.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Dwar",
+    "value": "The dwarves are a proud people, and their work ethic is second to none. They've built the finest of cities, as well as the most well-defended citadels, in all of Xaxas. The dwarves are skilled craftsmen, capable of creating stunning works of art, as well as some of the most powerful weapons that have ever been forged.",
+    "type": "race",
+    "title": "Dwarf",
+    "description": "The dwarves are a proud people, and their work ethic is second to none. They've built the finest of cities, as well as the most well-defended citadels, in all of Xaxas. The dwarves are skilled craftsmen, capable of creating stunning works of art, as well as some of the most powerful weapons that have ever been forged.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "gnome",
+    "value": "The gnomes of Xaxas are primarily engineers and scholars. They are not very interested in adventure, but will turn their hands to anything if it will lead to inventing the next great machine. While gnomes don't like the idea of being told what to do by others, they will turn their lives over to a person they admire and respect.",
+    "type": "race",
+    "title": "Gnome",
+    "description": "The gnomes of Xaxas are primarily engineers and scholars. They are not very interested in adventure, but will turn their hands to anything if it will lead to inventing the next great machine. While gnomes don't like the idea of being told what to do by others, they will turn their lives over to a person they admire and respect.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "ogre",
+    "value": "Ogres are brutish cousins of humans. They are large muscular creatures that have a strong predilection towards fighting. Despite their love for brawling and violence, Ogres are not savage by nature. They have a strong empathy for the common people. They have been known to protect the weak and innocent with a burning passion few other races can possibly manage.",
+    "type": "race",
+    "title": "Ogre",
+    "description": "Ogres are brutish cousins of humans. They are large muscular creatures that have a strong predilection towards fighting. Despite their love for brawling and violence, Ogres are not savage by nature. They have a strong empathy for the common people. They have been known to protect the weak and innocent with a burning passion few other races can possibly manage.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Halfling",
+    "value": "Halflings are above all - artists. They are as boastful of themselves as they are good at throwing a great gathering of friends. Halflings are capable of shaping primordial magic using musical instruments of meticulous design and construction. Their spell-songs are not only great morale boosters for any party, they are also able to inflict deep emotional distress on enemies as well.",
+    "type": "race",
+    "title": "Halfling",
+    "description": "Halflings are above all - artists. They are as boastful of themselves as they are good at throwing a great gathering of friends. Halflings are capable of shaping primordial magic using musical instruments of meticulous design and construction. Their spell-songs are not only great morale boosters for any party, they are also able to inflict deep emotional distress on enemies as well.",
+    "useForCharacterCreation": true
+  },
+  {
+    "keys": "Xaxas",
+    "value": "Xaxas is a world of peace and prosperity. It is a land in which all races live together in harmony. The gnomes build their machines and live among the humans. Elves run the academies in which people come to learn. Ogres have no qualms living in the same town as humans or gnomes. Yet, all is not well.",
+    "type": "worldDescription",
+    "title": "Xaxas",
+    "description": "Xaxas is a world of peace and prosperity. It is a land in which all races live together in harmony. The gnomes build their machines and live among the humans. Elves run the academies in which people come to learn. Ogres have no qualms living in the same town as humans or gnomes. Yet, all is not well.",
+    "useForCharacterCreation": true
+  }
+]

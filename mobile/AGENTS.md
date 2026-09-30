@@ -24,6 +24,25 @@ The Xcode project is `mobile/Draft Zero/Draft Zero.xcodeproj`; Swift sources liv
 - Keep network requests and expensive processing outside `body`. Match task lifetime to the owning view or service, and handle cancellation separately from failures shown to the user.
 - Use native controls, semantic text styles, and accessible labels. Verify Dynamic Type, VoiceOver, and Reduce Motion where the change affects them.
 
+## Where things live
+
+The target is iPhone and iPad only (iOS 27), Swift 5 mode with main-actor default isolation. Model and networking types are `nonisolated`.
+
+| Path under `mobile/Draft Zero/Draft Zero/` | Holds |
+|---|---|
+| `App/` | `AppModel` (server, sync channel, navigation), `LibraryStore`, `NoticeCenter`, the tab shell |
+| `Core/Models/` | Codable mirrors of `lib/types.ts` and the page payloads |
+| `Core/Networking/` | `APIClient`, one `API+<resource>.swift` per route family, `NDJSONReader` |
+| `Core/Sync/` | Wire events for the four NDJSON channels, `SyncChannel`, timing constants |
+| `Core/Domain/` | Ports of pure web logic: `ActionVoice`, `LoreMatcher`, `ImageStyles`, `Format` |
+| `Core/Design/`, `Core/Images/` | The OKLCH story palette, shared constants, image loading (SVG from the mock provider is rasterized) |
+| `Features/Story/Model/` | `StoryWorkspace` and its run controllers, ports of `hooks/use-generation.ts`, `use-image-generation.ts` and `use-composer-draft-sync.ts` |
+| `Features/<Area>/` | One directory per screen |
+
+`Draft ZeroTests/Fixtures/` holds verbatim server responses. When a route's shape changes, re-capture its fixture from a running server rather than editing the JSON by hand. The settings, usage, gallery and library screens read `GET /api/settings`, `/api/usage`, `/api/gallery` and `/api/library`, which share their builders in `lib/payloads/` with the web pages.
+
+For a local test server, run the backend against a throwaway Postgres with `OPENROUTER_API_KEY` empty, so generation uses the free mock provider. Launch the app with `-serverURL http://localhost:<port>`, and optionally `-initialTab <library|gallery|usage|settings>`, `-openStory <id>` and `-openLorebook YES`. Keep few simulators booted; several at once can stall the Mac.
+
 ## Backend and sync
 
 - The native app calls the existing HTTP API. Generation, provider calls, and canonical story persistence stay on the backend.

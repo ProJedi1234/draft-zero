@@ -1,0 +1,7 @@
+{"type":"run","runId":"1d4448e3-168a-4609-a675-cfcbf45a97d4","storyId":"7cc03b17-7698-4d8c-bd11-29d4d6881123","requestKind":"generate","userEntryId":"8493d357-95f5-4008-82e2-c3a5baf8574f","removingEntryIds":[],"reasoningChars":0,"text":"The light came in low and yellow across the floorboards, marking out the shapes of things that had been left where they fell. Dust turned slowly through it, patient as ash. Somewhere a clock kept time for no one in particular, and the sound of it was less a measure than a companion.\n\nFootsteps crossed the room above, paused, and went on. There was no need to look up; the ceiling told the whole story in its small complaints. A breath was drawn and held a beat too long before it was let go. Whatever had been decided in the hours before dawn had not yet been spoken aloud, and until"}
+{"type":"text","value":" it was, the"}
+{"type":"text","value":" morning could be"}
+{"type":"text","value":" pretended into something"}
+{"type":"text","value":" ordinary."}
+{"type":"usage","usage":{"promptTokens":417,"completionTokens":163,"reasoningTokens":0,"costUsd":null,"cachedPromptTokens":null,"upstreamPromptCostUsd":null,"upstreamCompletionCostUsd":null,"isByok":null}}
+{"type":"end","status":"ok","entryId":"4daeb9df-36ae-4be7-a1da-8ba92009ba4e","error":null,"usage":{"promptTokens":417,"completionTokens":163,"reasoningTokens":0,"costUsd":null,"cachedPromptTokens":null,"upstreamPromptCostUsd":null,"upstreamCompletionCostUsd":null,"isByok":null}}
