@@ -58,6 +58,8 @@ export const loadOlderEntriesInput = z.object({
 
 export const loadEntryContextInput = z.object({ storyId, entryId })
 
+export const loadNextContextInput = z.object({ storyId })
+
 const entryGeneration = z.object({
   modelId: z.string(),
   thinking: z.string(),
@@ -131,17 +133,20 @@ export const composedContext = z.object({
   trim: z.object({ windowStart: z.number(), quantum: z.number() }),
 })
 
+const entryContext = z.object({
+  context: composedContext,
+  contextWindow: z.number(),
+  modelId: z.string().nullable(),
+})
+
 /**
  * Null is the ordinary answer for a passage no longer in the manuscript
  * (deleted, or an inactive take), not a failure.
  */
-export const entryContextOutput = z
-  .object({
-    context: composedContext,
-    contextWindow: z.number(),
-    modelId: z.string().nullable(),
-  })
-  .nullable()
+export const entryContextOutput = entryContext.nullable()
+
+/** What the next passage would be sent, and the model that would write it. */
+export const nextContextOutput = entryContext
 
 /** A passage's context, composed on demand. */
 export interface EntryContext {
@@ -162,3 +167,4 @@ export type DeleteEntryInput = z.input<typeof deleteEntryInput>
 export type RewindToEntryInput = z.input<typeof rewindToEntryInput>
 export type LoadOlderEntriesInput = z.input<typeof loadOlderEntriesInput>
 export type LoadEntryContextInput = z.input<typeof loadEntryContextInput>
+export type LoadNextContextInput = z.input<typeof loadNextContextInput>

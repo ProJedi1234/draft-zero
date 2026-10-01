@@ -1,10 +1,5 @@
 import { LibraryView } from "@/components/library/library-view"
-import { listGalleryImages, listStoryExcerpts } from "@/lib/db/queries"
-import { listActiveImageRuns } from "@/lib/images/live"
-import { listActiveRuns } from "@/lib/generation/live"
-
-/** How many pictures the rail carries before it runs off the edge. */
-const RAIL_LIMIT = 12
+import { buildLibraryPayload } from "@/lib/payloads/library"
 
 /**
  * The library index, and — more load-bearing than it looks — the one URL in
@@ -17,21 +12,16 @@ const RAIL_LIMIT = 12
  *
  * The stories themselves still come from the client store. What is read here
  * is only what the store does not hold: the prose of each story's latest
- * passage, and the newest pictures.
+ * passage, the newest pictures, and the runs in flight — the same payload
+ * GET /api/library serves the native client.
  */
 export default async function Page() {
-  const [excerpts, images] = await Promise.all([
-    listStoryExcerpts(),
-    listGalleryImages({ limit: RAIL_LIMIT }),
-  ])
-  // Both kinds, like the sidebar: a story drawing a picture is busy in exactly
-  // the way one streaming prose is.
-  const activeRuns = [...listActiveRuns(), ...listActiveImageRuns()]
+  const { excerpts, railImages, activeRuns } = await buildLibraryPayload()
 
   return (
     <LibraryView
       excerpts={excerpts}
-      railImages={images}
+      railImages={railImages}
       activeRuns={activeRuns}
     />
   )

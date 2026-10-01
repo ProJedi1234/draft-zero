@@ -33,6 +33,7 @@ import {
   appendEntryOutsideRunInput,
   deleteEntryInput,
   loadEntryContextInput,
+  loadNextContextInput,
   loadOlderEntriesInput,
   rewindToEntryInput,
   updateActionEntryInput,
@@ -42,6 +43,7 @@ import {
   type DeleteEntryInput,
   type EntryContext,
   type LoadEntryContextInput,
+  type LoadNextContextInput,
   type LoadOlderEntriesInput,
   type RewindToEntryInput,
   type UpdateActionEntryInput,
@@ -60,6 +62,8 @@ import {
   endpointForTag,
   type ActionKind,
   type ActionResult,
+  type OpenRouterModel,
+  type Story,
   type StoryEntry,
 } from "@/lib/types"
 
@@ -497,6 +501,28 @@ export const loadOlderEntries: Service<
 }
 
 /**
+ * The window a real request would compose against. The same clamp
+ * startGeneration applies, for the same reason: the stored window can outlive
+ * the model that justified it, and a viewer composed against a budget no
+ * request would use is worse than no viewer.
+ */
+async function requestContextWindow(
+  story: Story,
+  models: OpenRouterModel[]
+): Promise<number> {
+  const endpoints =
+    story.settings.providerTag == null
+      ? []
+      : await listModelEndpoints(story.settings.modelId)
+  return clampContextWindow(
+    story.settings.contextWindow,
+    endpointForTag(endpoints, story.settings.providerTag)?.contextLength ??
+      models.find((m) => m.id === story.settings.modelId)?.contextLength ??
+      0
+  )
+}
+
+/**
  * What this passage was shown, composed from the story truncated to just
  * before it.
  *
@@ -544,19 +570,7 @@ export const loadEntryContext: Service<
     const index = story.entries.findIndex((entry) => entry.id === entryId)
     if (index === -1) return ok(null)
 
-    // The same clamp startGeneration applies, for the same reason: the stored
-    // window can outlive the model that justified it, and a viewer composed
-    // against a budget no request would use is worse than no viewer.
-    const endpoints =
-      story.settings.providerTag == null
-        ? []
-        : await listModelEndpoints(story.settings.modelId)
-    const contextWindow = clampContextWindow(
-      story.settings.contextWindow,
-      endpointForTag(endpoints, story.settings.providerTag)?.contextLength ??
-        models.find((m) => m.id === story.settings.modelId)?.contextLength ??
-        0
-    )
+    const contextWindow = await requestContextWindow(story, models)
 
     return ok({
       context: composeContext({
@@ -572,5 +586,38 @@ export const loadEntryContext: Service<
   } catch (err) {
     console.error("[context] failed to compose a passage's context", err)
     return fail("failed", "Couldn't work out the context for this passage.")
+  }
+}
+
+/**
+ * What the next passage would be sent, composed from the whole manuscript as
+ * it stands — the question the inspector's context meter answers. The model is
+ * the one the story would write with now, since nothing has been written yet.
+ */
+export const loadNextContext: Service<
+  LoadNextContextInput,
+  EntryContext
+> = async (raw) => {
+  const parsed = parseInput(loadNextContextInput, raw)
+  if (!parsed.ok) return parsed
+  const { storyId } = parsed.data
+
+  try {
+    const [story, lorebookEntries, models] = await Promise.all([
+      getStoryFull(storyId),
+      listLorebookEntries(storyId),
+      listModels(),
+    ])
+    if (!story) return fail("not_found", "Story not found.")
+
+    const contextWindow = await requestContextWindow(story, models)
+    return ok({
+      context: composeContext({ story, lorebookEntries, contextWindow }),
+      contextWindow,
+      modelId: story.settings.modelId,
+    })
+  } catch (err) {
+    console.error("[context] failed to compose the next context", err)
+    return fail("failed", "Couldn't work out the context for the next passage.")
   }
 }
