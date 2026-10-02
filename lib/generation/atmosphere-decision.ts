@@ -247,13 +247,25 @@ export type AtmosphereDecision =
   | { kind: "unreadable"; why: string }
 
 /**
- * The two answers, read together, against one threshold.
+ * Fit score at which the current tint vetoes a repaint. Fixed, not the slider,
+ * because a higher slider must mean steadier colours. Calibrated on the pinned
+ * Jev 1.13: passing moments scored 0.67 and up, moved-on stories 0.54 or less.
+ */
+export const STILL_FITS_VETO = 0.6
+
+/**
+ * The two answers, read together.
  *
- * `minConfidence` means one thing — how sure the engine must be before it is
- * allowed to repaint a story — and it is applied to both questions in that
- * sense. Repainting needs the engine to be that sure the old tint is WRONG
- * (1 − P(still fits)) and that sure about the new one. Either doubt keeps the
- * room as it is, which is the direction a decoration should fail in.
+ * The fit question holds a colour: when it is at least STILL_FITS_VETO sure the
+ * current tint still fits, the story keeps it whatever the pick says. That is
+ * what carries a story through a passing moment, because the pick question
+ * tends to chase the last passage. Otherwise a pick at least `minConfidence`
+ * sure repaints.
+ *
+ * The rule used to demand the reverse, that the engine be sure the old tint
+ * was WRONG. On a scene that has moved on but shares something with the old
+ * colour, the fit question settles between 0.4 and 0.55, so that rule kept the
+ * old colour indefinitely.
  *
  * An untinted story bypasses the threshold entirely and takes the pick at
  * whatever confidence it arrived with. That is not an oversight and it mirrors
@@ -291,7 +303,7 @@ export function interpretAtmosphereDecision(
   if (fits === undefined || fits.type !== "noul") {
     return { kind: "unreadable", why: "no fit answer" }
   }
-  if (1 - fits.noul < input.minConfidence) return { kind: "keep" }
+  if (fits.noul >= STILL_FITS_VETO) return { kind: "keep" }
   if (choiceConfidence(pick) < input.minConfidence) return { kind: "keep" }
   return painted
 }
