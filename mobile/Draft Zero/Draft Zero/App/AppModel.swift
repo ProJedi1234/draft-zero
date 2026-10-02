@@ -21,6 +21,8 @@ final class AppModel {
     let sync = SyncChannel()
     let library = LibraryStore()
     let notices = NoticeCenter()
+    /// What this device keeps between launches; nil when the store can't open.
+    let local: LocalStore?
 
     private(set) var serverURL: URL?
     private(set) var api: APIClient?
@@ -32,7 +34,8 @@ final class AppModel {
     @ObservationIgnored private var librarySubscription: SyncSubscription?
     @ObservationIgnored private var reconnectSubscription: SyncSubscription?
 
-    init() {
+    init(local: LocalStore? = LocalStore.openDefault()) {
+        self.local = local
         if let saved = UserDefaults.standard.string(forKey: Self.serverURLKey),
            let url = URL(string: saved) {
             use(url)
@@ -68,9 +71,10 @@ final class AppModel {
         use(url)
     }
 
-    /// Forgets the server; the app returns to setup.
+    /// Forgets the server and everything this device kept of it; the app returns to setup.
     func disconnect() {
         UserDefaults.standard.removeObject(forKey: Self.serverURLKey)
+        local?.erase()
         sync.stop()
         librarySubscription = nil
         reconnectSubscription = nil
@@ -86,7 +90,8 @@ final class AppModel {
         serverURL = url
         api = client
         connection = .connecting
-        library.attach(api: client)
+        local?.bind(to: url)
+        library.attach(api: client, local: local)
         librarySubscription = sync.subscribe { [weak self] event in
             self?.library.handle(event)
         }
@@ -94,6 +99,7 @@ final class AppModel {
             self?.library.scheduleRefresh()
         }
         sync.start(api: client)
+        Task { await self.library.restore() }
         Task { await self.library.load() }
     }
 
@@ -127,7 +133,7 @@ final class AppModel {
         guard api != nil else { return .unconfigured }
         switch sync.state {
         case .open: return .online
-        case .idle, .connecting: return library.isLoaded ? .online : .connecting
+        case .idle, .connecting: return library.isLive ? .online : .connecting
         case .retrying(let attempt):
             return attempt >= 2 ? .offline("Can't reach the server. Retrying…") : .connecting
         }

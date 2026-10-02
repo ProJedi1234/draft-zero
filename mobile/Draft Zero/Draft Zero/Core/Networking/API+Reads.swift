@@ -41,9 +41,15 @@ extension APIClient {
         try await payload(.get, "api/health", as: Health.self).ok
     }
 
-    /// GET /api/story/:id/workspace — everything the story screen mounts with.
-    func workspace(storyId: String) async throws -> WorkspacePayload {
-        try await payload(.get, "api/story/\(storyId)/workspace")
+    /// GET /api/story/:id/workspace — everything the story screen mounts with,
+    /// and the response bytes, which the device keeps as they came.
+    func workspace(storyId: String) async throws -> (payload: WorkspacePayload, json: Data) {
+        guard let response = try await optionalPayloadAndData(
+            .get, "api/story/\(storyId)/workspace", as: WorkspacePayload.self
+        ) else {
+            throw APIError.decoding("Expected a body, got 204.")
+        }
+        return (response.value, response.data)
     }
 
     /// GET /api/store/snapshot — every story, or those moved since a version.

@@ -10,4 +10,15 @@ nonisolated struct ComposerDraft: Codable, Sendable, Hashable {
     var imageStyle: String?
     var imageExcludedLoreIds: [String]
     var updatedAt: String
+
+    var payload: DraftPayload {
+        DraftPayload(
+            text: text,
+            mode: mode,
+            imagePrompt: imagePrompt,
+            imageAssisted: imageAssisted,
+            imageStyle: imageStyle,
+            imageExcludedLoreIds: imageExcludedLoreIds
+        )
+    }
 }

@@ -7,6 +7,7 @@ import Observation
 /// The server is the authority. Every change event for this story, and every
 /// write this device makes, ends in a fresh read of the workspace payload;
 /// what the controllers show ahead of the server is derived from that data.
+/// Until the first read lands, the screen shows the payload this device kept.
 @Observable
 final class StoryWorkspace {
     enum LoadState: Equatable {
@@ -48,6 +49,7 @@ final class StoryWorkspace {
 
     @ObservationIgnored let library: LibraryStore
     @ObservationIgnored private let sync: SyncChannel
+    @ObservationIgnored private let local: LocalStore?
     @ObservationIgnored private var subscriptions: [SyncSubscription] = []
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshAgain = false
@@ -63,10 +65,11 @@ final class StoryWorkspace {
         notices = app.notices
         library = app.library
         sync = app.sync
+        local = app.local
         generation = GenerationController(storyId: storyId, api: api, notices: app.notices)
         illustration = IllustrationController(storyId: storyId, api: api, notices: app.notices)
         derivation = DerivationController(storyId: storyId, api: api, notices: app.notices)
-        composer = ComposerModel(storyId: storyId, api: api, notices: app.notices, seed: nil)
+        composer = ComposerModel(storyId: storyId, api: api, notices: app.notices, seed: nil, local: app.local)
         generation.workspace = self
         illustration.workspace = self
         derivation.composer = composer
@@ -94,7 +97,27 @@ final class StoryWorkspace {
         derivation.attach(nil)
         generation.reconcile(liveRuns: library.activeRuns)
 
-        Task { await refreshNow() }
+        Task { await open() }
+    }
+
+    /// Shows what this device kept, then reads the server. Both go first so
+    /// the read's draft row is weighed against the saved one, and an offline
+    /// read fails onto a full screen rather than an empty one.
+    private func open() async {
+        let saved = await local?.savedStory(storyId)
+        if let draft = saved?.draft { composer.restore(draft) }
+        if let json = saved?.workspace { await showSaved(json) }
+        await refreshNow()
+    }
+
+    private func showSaved(_ json: Data) async {
+        guard let payload = try? await APIClient.decode(WorkspacePayload.self, from: json) else {
+            local?.deleteWorkspace(storyId)
+            return
+        }
+        // A change event's read may have landed while this decoded; its payload stands.
+        guard story == nil, loadState != .notFound else { return }
+        await apply(payload, fresh: false)
     }
 
     /// Detaches listeners and flushes the draft. Server runs keep going.
@@ -158,12 +181,14 @@ final class StoryWorkspace {
 
     private func load() async {
         do {
-            let payload = try await api.workspace(storyId: storyId)
-            await apply(payload)
+            let (payload, json) = try await api.workspace(storyId: storyId)
+            await apply(payload, fresh: true)
+            local?.saveWorkspace(storyId, json: json)
         } catch is CancellationError {
             return
         } catch let error as APIError where error.isNotFound {
             loadState = .notFound
+            local?.deleteWorkspace(storyId)
         } catch {
             if story == nil {
                 loadState = .failed((error as? LocalizedError)?.errorDescription ?? "Couldn't open this story.")
@@ -171,7 +196,9 @@ final class StoryWorkspace {
         }
     }
 
-    private func apply(_ payload: WorkspacePayload) async {
+    /// A saved payload only fills the screen; the run controllers and the
+    /// draft's resend wait for one the server just sent.
+    private func apply(_ payload: WorkspacePayload, fresh: Bool) async {
         let previousUpdatedAt = lastUpdatedAt
         story = payload.story
         lorebook = payload.lorebookEntries
@@ -188,6 +215,8 @@ final class StoryWorkspace {
 
         reconcileOlderEntries(with: payload.story)
         composer.reconcile(payload.composerDraft)
+        guard fresh else { return }
+        composer.resendUnsent()
         generation.workspaceDidRefresh()
         illustration.settle(images: payload.story.images)
 

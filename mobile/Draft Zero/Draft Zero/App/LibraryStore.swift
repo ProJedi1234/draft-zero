@@ -7,7 +7,8 @@ import Observation
 /// Stories come from the store snapshot, full on first load and as deltas
 /// after that, and entity events on the sync channel fold single rows in
 /// between. Rows are arbitrated last-writer-wins on `updatedAt`, the version
-/// the server mints.
+/// the server mints. The library this device kept fills the screen until the
+/// first read lands, which is always a full one, as on the web.
 @Observable
 final class LibraryStore {
     /// How a story's latest run ended, marked only for stories nobody had open.
@@ -23,20 +24,25 @@ final class LibraryStore {
     private(set) var activeRuns: [ActiveRun] = []
     /// Endings that landed while their story was not open.
     private(set) var endings: [String: RunEndStatus] = [:]
+    /// There is a library to show, from the server or from this device.
     private(set) var isLoaded = false
+    /// The server has answered a library read since this server was chosen.
+    private(set) var isLive = false
     private(set) var loadError: APIError?
 
     /// The story currently on screen; its endings are not news.
     @ObservationIgnored var openStoryId: String?
 
     @ObservationIgnored private var api: APIClient?
+    @ObservationIgnored private var local: LocalStore?
     @ObservationIgnored private var snapshotTime: String?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshRequested = false
     @ObservationIgnored private var activeRunObservers: [UUID: ([ActiveRun]) -> Void] = [:]
 
-    func attach(api: APIClient) {
+    func attach(api: APIClient, local: LocalStore?) {
         self.api = api
+        self.local = local
         stories = []
         excerpts = [:]
         railImages = []
@@ -44,6 +50,7 @@ final class LibraryStore {
         endings = [:]
         snapshotTime = nil
         isLoaded = false
+        isLive = false
         loadError = nil
     }
 
@@ -78,6 +85,16 @@ final class LibraryStore {
 
     // MARK: - Loading
 
+    /// Shows the library this device kept, unless the server's has already arrived.
+    /// Runs are left empty: a kept run is one that has long since ended.
+    func restore() async {
+        guard let saved = await local?.library(), !isLive else { return }
+        stories = saved.stories.sorted(by: Self.newestFirst)
+        excerpts = saved.excerpts
+        railImages = saved.railImages
+        isLoaded = true
+    }
+
     /// Full load: every story, then the excerpts and rail.
     func load() async {
         guard let api else { return }
@@ -87,6 +104,8 @@ final class LibraryStore {
             snapshotTime = snapshot.serverTime
             loadError = nil
             isLoaded = true
+            isLive = true
+            local?.saveStories(stories)
             try await loadLibraryPayload(api)
         } catch is CancellationError {
             return
@@ -120,7 +139,7 @@ final class LibraryStore {
         }
         do {
             let snapshot = try await api.storySnapshot(since: since)
-            for record in snapshot.records { upsert(record) }
+            for record in snapshot.records { fold(record) }
             if let allIds = snapshot.allIds {
                 let live = Set(allIds.map(\.id))
                 stories.removeAll { !live.contains($0.id) }
@@ -128,6 +147,8 @@ final class LibraryStore {
             snapshotTime = snapshot.serverTime
             loadError = nil
             isLoaded = true
+            isLive = true
+            local?.saveStories(stories)
             try await loadLibraryPayload(api)
         } catch is CancellationError {
             return
@@ -141,6 +162,7 @@ final class LibraryStore {
         excerpts = payload.excerpts
         railImages = payload.railImages
         setActiveRuns(payload.activeRuns)
+        local?.saveLibraryExtras(excerpts: payload.excerpts, railImages: payload.railImages)
     }
 
     // MARK: - Sync
@@ -181,15 +203,21 @@ final class LibraryStore {
 
     // MARK: - Local writes
 
-    /// Folds a row in if it is at least as new as the one held.
+    /// Folds a row in if it is at least as new as the one held, and keeps it on the device.
     func upsert(_ record: StoryRecord) {
+        if fold(record) { local?.upsertStory(record) }
+    }
+
+    @discardableResult
+    private func fold(_ record: StoryRecord) -> Bool {
         if let index = stories.firstIndex(where: { $0.id == record.id }) {
-            guard record.updatedAt >= stories[index].updatedAt else { return }
+            guard record.updatedAt >= stories[index].updatedAt else { return false }
             stories[index] = record
         } else {
             stories.append(record)
         }
         stories.sort(by: Self.newestFirst)
+        return true
     }
 
     func remove(_ storyId: String) {
@@ -197,6 +225,7 @@ final class LibraryStore {
         excerpts[storyId] = nil
         endings[storyId] = nil
         railImages.removeAll { $0.storyId == storyId }
+        local?.deleteStory(storyId)
     }
 
     /// Creates a story with a client-minted id, so it can open before the reply.

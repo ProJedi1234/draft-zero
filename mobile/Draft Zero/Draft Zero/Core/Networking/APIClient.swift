@@ -101,13 +101,24 @@ nonisolated struct APIClient: Sendable {
         body: JSONObject? = nil,
         as type: T.Type = T.self
     ) async throws -> T? {
+        try await optionalPayloadAndData(method, path, query: query, body: body, as: type)?.value
+    }
+
+    /// Like `optionalPayload`, with the bytes the value was decoded from, for keeping on the device.
+    func optionalPayloadAndData<T: Decodable & Sendable>(
+        _ method: Method = .get,
+        _ path: String,
+        query: [URLQueryItem] = [],
+        body: JSONObject? = nil,
+        as type: T.Type = T.self
+    ) async throws -> (value: T, data: Data)? {
         let request = try makeRequest(method, path, query: query, body: body.map(encodeBody))
         let (data, response) = try await perform(request)
         if response.statusCode == 204 { return nil }
         guard (200..<300).contains(response.statusCode) else {
             throw await Self.failure(data: data, status: response.statusCode)
         }
-        return try await Self.decode(T.self, from: data)
+        return (try await Self.decode(T.self, from: data), data)
     }
 
     /// Uploads raw bytes to a service route, as the backup importer takes them.

@@ -9,6 +9,10 @@ import Observation
 /// `draft` events and are adopted unless they are our own echo, older than what
 /// is on display, or racing a save of ours that has not been acknowledged.
 /// Adopted values never publish, or two devices would volley forever.
+///
+/// Every save also writes the composer to the device, so words typed with no
+/// server survive a relaunch and go out once a fresh read finds nothing newer.
+/// A newer row from the server wins over them, as a newer event does.
 @Observable
 final class ComposerModel {
     /// Whether the next image send develops the brief or draws.
@@ -92,11 +96,15 @@ final class ComposerModel {
     @ObservationIgnored private var queued: (seq: Int, payload: DraftPayload)?
     @ObservationIgnored private var saveTimer: Task<Void, Never>?
     @ObservationIgnored private var lastSaveFailed = false
+    /// The server has not acknowledged what the composer holds.
+    @ObservationIgnored private(set) var unsent = false
+    @ObservationIgnored private let local: LocalStore?
 
-    init(storyId: String, api: APIClient, notices: NoticeCenter, seed: ComposerDraft?) {
+    init(storyId: String, api: APIClient, notices: NoticeCenter, seed: ComposerDraft?, local: LocalStore? = nil) {
         self.storyId = storyId
         self.api = api
         self.notices = notices
+        self.local = local
         if let seed { apply(seed) }
         if seed?.imagePrompt != nil {
             developedFor = DevelopedFor(brief: brief, muteKey: Self.muteKey(excludedLoreIds))
@@ -255,6 +263,8 @@ final class ComposerModel {
             imageExcludedLoreIds: event.imageExcludedLoreIds,
             updatedAt: event.version
         ))
+        unsent = false
+        persist()
     }
 
     /// Squares the composer with a row read from the server; nil is "no row".
@@ -262,7 +272,7 @@ final class ComposerModel {
         guard pendingSeq == nil else { return }
         guard let row else {
             // Absence only means "never touched" while no version has been seen.
-            if version == nil {
+            if version == nil && !unsent {
                 applyingRemote = true
                 text = ""
                 applyingRemote = false
@@ -272,6 +282,19 @@ final class ComposerModel {
         if let version, row.updatedAt <= version { return }
         version = row.updatedAt
         apply(row)
+        unsent = false
+        persist()
+    }
+
+    /// Puts back the composer this device last left, before any server row is seen.
+    func restore(_ saved: LocalDraft) {
+        guard version == nil, pendingSeq == nil else { return }
+        show(saved.payload)
+        version = saved.version
+        unsent = saved.unsent
+        if saved.payload.imagePrompt != nil {
+            developedFor = DevelopedFor(brief: brief, muteKey: Self.muteKey(excludedLoreIds))
+        }
     }
 
     /// Re-reads the row after a reconnect: draft events missed while the socket was down are gone.
@@ -280,6 +303,7 @@ final class ComposerModel {
             do {
                 let row = try await api.draft(storyId: storyId)
                 reconcile(row?.asDraft)
+                resendUnsent()
             } catch {
                 // The next reconnect probes again.
             }
@@ -287,6 +311,11 @@ final class ComposerModel {
     }
 
     private func apply(_ draft: ComposerDraft) {
+        show(draft.payload)
+        if version == nil { version = draft.updatedAt }
+    }
+
+    private func show(_ draft: DraftPayload) {
         applyingRemote = true
         text = draft.text
         mode = draft.mode
@@ -296,7 +325,6 @@ final class ComposerModel {
         imageStyle = draft.imageStyle
         excludedLoreIds = Set(draft.imageExcludedLoreIds)
         applyingRemote = false
-        if version == nil { version = draft.updatedAt }
     }
 
     // MARK: - Sync out
@@ -329,23 +357,46 @@ final class ComposerModel {
         saveTimer?.cancel()
         guard let queued else { return }
         self.queued = nil
+        unsent = true
+        persist()
         Task { await save(queued.seq, queued.payload) }
+    }
+
+    /// Sends what the server never acknowledged. Called only after a fresh
+    /// read, so a newer row from another device has already had its chance to win.
+    func resendUnsent() {
+        guard unsent, pendingSeq == nil, queued == nil else { return }
+        seq += 1
+        pendingSeq = seq
+        let sending = (seq: seq, payload: payload)
+        Task { await save(sending.seq, sending.payload) }
     }
 
     private func save(_ seq: Int, _ payload: DraftPayload) async {
         do {
             let saved = try await api.saveDraft(storyId: storyId, draft: payload)
             if version.map({ saved > $0 }) ?? true { version = saved }
-            if pendingSeq == seq { pendingSeq = nil }
+            if pendingSeq == seq {
+                pendingSeq = nil
+                unsent = false
+            }
             lastSaveFailed = false
+            // Also moves a newer unsent edit's base past our own write, or it would later lose to it.
+            persist()
         } catch is CancellationError {
             pendingSeq = nil
         } catch {
             // A failed save gets no echo; waiting for one would latch adoption shut.
             pendingSeq = nil
-            if !lastSaveFailed { notices.error("Couldn't sync your draft.") }
+            if !lastSaveFailed {
+                notices.error(local == nil ? "Couldn't sync your draft." : "Couldn't sync your draft. It's saved on this device.")
+            }
             lastSaveFailed = true
         }
+    }
+
+    private func persist() {
+        local?.saveDraft(storyId, LocalDraft(payload: payload, version: version, unsent: unsent))
     }
 
     private static func muteKey<S: Sequence>(_ ids: S) -> String where S.Element == String {

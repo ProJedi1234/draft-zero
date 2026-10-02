@@ -34,6 +34,7 @@ The target is iPhone and iPad only (iOS 27), Swift 5 mode with main-actor defaul
 | `Core/Models/` | Codable mirrors of `lib/types.ts` and the page payloads |
 | `Core/Networking/` | `APIClient`, one `API+<resource>.swift` per route family, `NDJSONReader` |
 | `Core/Sync/` | Wire events for the four NDJSON channels, `SyncChannel`, timing constants |
+| `Core/Storage/` | `LocalStore` (GRDB): the library, the last 20 workspaces and each composer draft, kept between launches |
 | `Core/Domain/` | Ports of pure web logic: `ActionVoice`, `LoreMatcher`, `ImageStyles`, `Format` |
 | `Core/Design/`, `Core/Images/` | The OKLCH story palette, shared constants, image loading (SVG from the mock provider is rasterized) |
 | `Features/Story/Model/` | `StoryWorkspace` and its run controllers, ports of `hooks/use-generation.ts`, `use-image-generation.ts` and `use-composer-draft-sync.ts` |
@@ -46,6 +47,7 @@ For a local test server, run the backend against a throwaway Postgres with `OPEN
 ## Backend and sync
 
 - The native app calls the existing HTTP API. Generation, provider calls, and canonical story persistence stay on the backend.
+- `LocalStore` is a copy of server truth that fills screens until the first read lands. Only an unsent composer draft is the device's own; it goes out after a fresh read finds no newer row, and a newer row wins over it.
 - Before adding an API call, read its route, the matching `lib/services/*.schema.ts`, and `lib/api/respond.ts` from the repo root. Match the actual response envelope and failure codes in Swift decoding.
 - Before implementing streaming, read `lib/sync/types.ts` and the relevant subscription route. Streams use NDJSON; buffer incomplete lines across arbitrary network chunks. A generation subscription returning HTTP 204 means there is no run to watch.
 - A subscriber disconnect leaves the server run running. Stop a server run only through an explicit user stop action. On reconnect, reconcile server state and reattach to the existing run before considering a new request.

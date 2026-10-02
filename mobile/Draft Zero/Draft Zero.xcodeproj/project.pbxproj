@@ -6,6 +6,10 @@
 	objectVersion = 90;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		D20C00000000000000000A03 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = D20C00000000000000000A02 /* GRDB */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		92D1F760306C8FC500F95075 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -39,6 +43,7 @@
 		000000000000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				D20C00000000000000000A03 /* GRDB in Frameworks */,
 			);
 		};
 		92D1F74A306C8FC500F95075 /* Frameworks */ = {
@@ -85,6 +90,9 @@
 				000000000000000000000010 /* Draft Zero */,
 			);
 			name = "Draft Zero";
+			packageProductDependencies = (
+				D20C00000000000000000A02 /* GRDB */,
+			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* Draft Zero.app */;
 			productType = "com.apple.product-type.application";
@@ -137,6 +145,9 @@
 			);
 			mainGroup = 000000000000000000000001;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D20C00000000000000000A01 /* XCRemoteSwiftPackageReference "GRDB" */,
+			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
 			projectDirPath = "";
@@ -481,6 +492,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D20C00000000000000000A01 /* XCRemoteSwiftPackageReference "GRDB" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.11.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D20C00000000000000000A02 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D20C00000000000000000A01 /* XCRemoteSwiftPackageReference "GRDB" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 000000000000000000000000 /* Project object */;
 }
