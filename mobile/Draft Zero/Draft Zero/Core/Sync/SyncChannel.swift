@@ -54,7 +54,7 @@ final class SyncChannel {
         return SyncSubscription { [weak self] in self?.eventHandlers[id] = nil }
     }
 
-    /// Called whenever the socket reopens after having been open before.
+    /// Called whenever the socket opens after an earlier open or a failed attempt.
     func onReconnect(_ handler: @escaping () -> Void) -> SyncSubscription {
         let id = UUID()
         reconnectHandlers[id] = handler
@@ -70,9 +70,12 @@ final class SyncChannel {
                 for try await event in events {
                     if Task.isCancelled { return }
                     if case .hello = event {
+                        // A launch with no server failed its first reads too, so a first
+                        // open after failed attempts re-probes like any reconnect.
+                        let missedSome = hasOpenedBefore || failures > 0
                         failures = 0
                         state = .open
-                        if hasOpenedBefore {
+                        if missedSome {
                             for handler in reconnectHandlers.values { handler() }
                         }
                         hasOpenedBefore = true
