@@ -1,4 +1,3 @@
-import Charts
 import SwiftUI
 
 /// The ledger's contents: totals, a per-passage sparkline, and model shares.
@@ -31,25 +30,16 @@ struct CostLedgerList: View {
                 }
             }
 
-            let spends = profile.perEntry.compactMap { spend in
-                Double(spend.costUsd ?? "").map { (spend.position, $0) }
-            }
-            if spends.count > 1 {
-                Section("Per passage") {
-                    Chart(spends, id: \.0) { position, cost in
-                        BarMark(x: .value("Passage", position), y: .value("Cost", cost))
-                            .foregroundStyle(.tint)
-                    }
-                    .chartXAxis(.hidden)
-                    .chartYAxis {
-                        AxisMarks { value in
-                            AxisValueLabel {
-                                if let cost = value.as(Double.self) { Text(Format.usd(cost)) }
-                            }
-                        }
-                    }
-                    .frame(height: 120)
-                    .accessibilityLabel("Cost per passage, \(spends.count) passages")
+            let bars = PassageSpendData.bars(profile.perEntry)
+            if bars.count > 1, bars.contains(where: { ($0.usd ?? 0) > 0 }) {
+                Section {
+                    PassageSpendChart(bars: bars)
+                        .padding(.vertical, 8)
+                        .accessibilityLabel("Cost per passage")
+                } header: {
+                    Text("Per passage")
+                } footer: {
+                    Text("^[\(profile.perEntry.count) passage](inflect: true), oldest first")
                 }
             }
 
