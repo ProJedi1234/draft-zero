@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { updateStoryMeta } from "@/lib/actions/stories"
-import { DEFAULT_SYSTEM_PROMPT } from "@/lib/generation/system-prompt"
+import { DEFAULT_NARRATOR_PROMPT } from "@/lib/generation/system-prompt"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -29,9 +29,13 @@ import { Textarea } from "@/components/ui/textarea"
  * against was illegible. Here it gets a measure wide enough to judge it by.
  *
  * Empty means "no override": the column stores NULL and the story keeps
- * following DEFAULT_SYSTEM_PROMPT as it changes, rather than freezing a copy
+ * following DEFAULT_NARRATOR_PROMPT as it changes, rather than freezing a copy
  * of today's text. updateStoryMeta is what enforces that; clearing the box and
  * saving is the way back.
+ *
+ * Only the narrator half is editable. NARRATOR_MECHANICS — how the context is
+ * laid out, what a `>` turn is, how long a passage runs — is sent after it
+ * whatever the box says, and the description says so.
  */
 export function NarratorDialog({
   storyId,
@@ -52,7 +56,8 @@ export function NarratorDialog({
           <DialogTitle>Narrator</DialogTitle>
           <DialogDescription>
             How the model is told to write. Leave it empty to use the built-in
-            prompt, shown greyed out below.
+            prompt, shown greyed out below. The rules for reading the story and
+            taking turns are always sent after it.
           </DialogDescription>
         </DialogHeader>
         {/* Keyed by story id: the field initializes from the server value once
@@ -112,7 +117,7 @@ function NarratorForm({
             className="min-h-64 font-mono text-base max-sm:min-h-full md:text-xs"
             // The built-in prompt as placeholder: it is what actually runs when
             // the field is empty, so it belongs in the box, greyed out.
-            placeholder={DEFAULT_SYSTEM_PROMPT}
+            placeholder={DEFAULT_NARRATOR_PROMPT}
             disabled={isPending}
             onChange={(event) => setValue(event.target.value)}
           />

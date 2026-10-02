@@ -118,7 +118,7 @@ export interface ParsedBackup {
   /**
    * The adventure's AI instructions, which REPLACE the built-in narrator
    * prompt. Empty when it carried none, in which case the story keeps
-   * following DEFAULT_SYSTEM_PROMPT as it changes.
+   * following DEFAULT_NARRATOR_PROMPT as it changes.
    */
   instructions: string
   /** Human-readable notes about what was dropped or coerced. */
@@ -332,15 +332,11 @@ function countMemories(raw: unknown): number {
  * story's own context blocks, where they read as facts about the world rather
  * than as instructions to the narrator.
  *
- * KNOWN AND ACCEPTED: `systemPrompt` is a whole-prompt override, so a backup
- * carrying instructions also drops DEFAULT_SYSTEM_PROMPT — including the two
- * rules that explain what a `>` player turn is, which is the one thing this
- * importer fills a manuscript with. The cost is deliberate: the Narrator dialog
- * shows exactly what was stored, with the built-in prompt as its placeholder,
- * so a writer can see it and edit or clear it. The fix is not a smarter merge
- * here but a split in the prompt itself — the creative direction an import may
- * replace, kept apart from the mechanics of this app that it never should — and
- * when that lands this reader should not have to change.
+ * What they replace is only the narrator half. The rules that explain what a
+ * `>` player turn is — the one thing this importer fills a manuscript with —
+ * live in NARRATOR_MECHANICS, which is sent after any override, so imported
+ * instructions change the voice without breaking the turn-taking. That split
+ * is in the prompt itself (lib/generation/system-prompt.ts), not a merge here.
  */
 function readInstructions(raw: unknown): string {
   if (typeof raw === "string") return toLoreText(raw)

@@ -302,12 +302,16 @@ export async function* streamCompletion(opts: {
       chatRequest: {
         model: settings.modelId,
         messages: [
-          // Re-resolved rather than trusted: the context arrives over the wire
-          // from the client, so a stale or hand-edited body must not be able to
-          // send an empty system turn.
+          // Already resolved by composeContext — narrator plus mechanics, the
+          // same text the meter counted — so it is sent as is: resolving it
+          // again would append the mechanics twice. Guarded all the same,
+          // because an empty system turn is the one shape it must never take.
           {
             role: "system",
-            content: resolveSystemPrompt(context.systemPrompt),
+            content:
+              context.systemPrompt.trim() === ""
+                ? resolveSystemPrompt(null)
+                : context.systemPrompt,
           },
           { role: "user", content: userContent(context) },
         ],
