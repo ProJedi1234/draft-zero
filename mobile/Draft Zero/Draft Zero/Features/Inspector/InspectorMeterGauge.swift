@@ -1,72 +1,48 @@
 import SwiftUI
 
-/// "Context ▓▓░░ ≈1.1k of 8k" in one row, stacked at large text sizes. The
-/// smallest stops can't hold the narrator alone, so the bar pins full while
-/// the readout shows the overflow.
+/// "◔ 1.1k / 8k": a ring filled to the share of the window in use, then the
+/// count. The smallest stops can't hold the narrator alone, so the ring pins
+/// full and turns orange while the count shows the overflow.
 struct InspectorMeterGauge: View {
     let used: Int
     let budget: Int
     let isUpdating: Bool
 
+    @ScaledMetric(relativeTo: .subheadline) private var ringSize = 15
+
     var body: some View {
-        let readout = "≈\(InspectorText.approxTokens(used)) of \(GenerationLimits.contextWindowLabel(budget))"
-
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                title
-                bar
-                    .frame(minWidth: 80)
-                figures(readout)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
-                    title
-                    Spacer(minLength: 0)
-                    figures(readout)
-                }
-                bar
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                title
-                figures(readout)
-                bar
-            }
-        }
-        .font(.subheadline)
-        .contentShape(.rect)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Context")
-        .accessibilityValue("About \(InspectorText.approxTokens(used)) of \(GenerationLimits.contextWindowLabel(budget)) tokens\(used > budget ? ", over the window" : "")")
-    }
-
-    private var title: some View {
         HStack(spacing: 6) {
-            Text("Context")
-                .fixedSize()
             if isUpdating {
                 ProgressView()
                     .controlSize(.mini)
+                    .frame(width: ringSize, height: ringSize)
+            } else {
+                ring
             }
-        }
-    }
-
-    private var bar: some View {
-        Gauge(value: Double(min(used, budget)), in: 0...Double(max(budget, 1))) {
-            EmptyView()
-        }
-        .gaugeStyle(.linearCapacity)
-        .tint(used > budget ? .orange : .accentColor)
-    }
-
-    private func figures(_ readout: String) -> some View {
-        HStack(spacing: 6) {
-            Text(readout)
+            Text("\(InspectorText.approxTokens(used)) / \(GenerationLimits.contextWindowLabel(budget))")
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .fixedSize()
-            Image(systemName: "chevron.forward")
-                .font(.caption.bold())
-                .foregroundStyle(.tertiary)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Context")
+        .accessibilityValue("About \(InspectorText.approxTokens(used)) of \(GenerationLimits.contextWindowLabel(budget)) tokens\(isOver ? ", over the window" : "")")
+    }
+
+    private var isOver: Bool { used > budget }
+
+    private var ring: some View {
+        let fraction = Double(min(used, budget)) / Double(max(budget, 1))
+        let lineWidth = ringSize / 5
+
+        return ZStack {
+            Circle()
+                .inset(by: lineWidth / 2)
+                .stroke(.quaternary, lineWidth: lineWidth)
+            Circle()
+                .inset(by: lineWidth / 2)
+                .trim(from: 0, to: fraction)
+                .stroke(isOver ? Color.orange : Color.accentColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: ringSize, height: ringSize)
     }
 }

@@ -19,22 +19,21 @@ struct InspectorContextMeter: View {
                     isUpdating: isStale
                 )
             } else if let failure = loader.failure {
-                Label(failure, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Label("Context", systemImage: "exclamationmark.triangle")
+                    .accessibilityLabel(failure)
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     ProgressView()
-                        .controlSize(.small)
-                    Text("Measuring the context…")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .controlSize(.mini)
+                    Text("Context")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Measuring the context")
             }
         }
-        .buttonStyle(.plain)
+        .font(.subheadline)
+        .buttonStyle(.glass)
+        .fixedSize()
         .disabled(loader.context == nil)
         .accessibilityHint("Shows the context for the next passage.")
         .sheet(isPresented: $isShowingBreakdown) {

@@ -16,13 +16,11 @@ struct InspectorStatusStrip: View {
             thinking: identity.thinking,
             models: model.workspace.models
         )
-        let profile = settings.followedProfile
 
-        VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 8) {
             Button(action: showModelSettings) {
                 InspectorModelLine(
-                    profileName: profile?.name ?? "Custom",
-                    isDefaultProfile: profile != nil && profile?.id == model.workspace.defaultProfileId,
+                    profileName: settings.followedProfile?.name ?? "Custom",
                     parts: parts,
                     zdr: settings.effectiveZdr || settings.accountEnforcesZdr
                 )
@@ -30,12 +28,8 @@ struct InspectorStatusStrip: View {
             .buttonStyle(.plain)
             .accessibilityHint("Shows the model settings.")
 
-            Divider()
-
             InspectorContextMeter(loader: model.nextContext, isStale: settings.isSwitchingProfile)
         }
-        .padding(12)
-        .background(.background.secondary, in: .rect(cornerRadius: Theme.cornerRadius))
     }
 
     private func showModelSettings() {
