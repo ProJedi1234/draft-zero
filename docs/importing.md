@@ -63,13 +63,12 @@ summary is adopted as the story's first recap version, so a long adventure
 arrives with its context already caught up.
 
 **AI instructions replace the narrator prompt.** That is what AI Dungeon writes
-them as, so that is where they land — `stories.system_prompt`, which is a
-whole-prompt override. A backup carrying instructions therefore also drops the
-built-in prompt, including the rules that explain what a `>` player turn is.
-That is deliberate for now: the Narrator dialog shows exactly what was stored,
-with the built-in prompt as its placeholder, so it can be edited or cleared. The
-real fix is a split in the prompt itself — the creative direction an import may
-replace, apart from the mechanics of this app that it never should.
+them as, so that is where they land — `stories.system_prompt`, the story's
+narrator override. It replaces only the creative direction: the rules that
+explain the context blocks, what a `>` player turn is and how long a passage
+runs are always sent after it, so an imported adventure keeps taking turns
+properly. The Narrator dialog shows exactly what was stored, with the built-in
+prompt as its placeholder, so it can be edited or cleared.
 
 `state.memories` is **not** imported. It is AI Dungeon's own recall store —
 entries it writes and retrieves as the adventure runs — and nothing here behaves

@@ -358,7 +358,7 @@ export const importAiDungeonBackup: Service<
       // replacing the built-in narrator prompt rather than being folded into
       // the story's context blocks. NULL when the adventure carried none, which
       // is what keeps a story that never had instructions following
-      // DEFAULT_SYSTEM_PROMPT as that text keeps changing; writing "" instead
+      // DEFAULT_NARRATOR_PROMPT as that text keeps changing; writing "" instead
       // would resolve to the same prompt today and freeze nothing, but it makes
       // "no override" and "an override that happens to be empty" the same row.
       systemPrompt: backup.instructions === "" ? null : backup.instructions,

@@ -377,7 +377,7 @@ describe("metadata", () => {
     )
 
     // Empty, so the action writes NULL and the story goes on following
-    // DEFAULT_SYSTEM_PROMPT as that text changes.
+    // DEFAULT_NARRATOR_PROMPT as that text changes.
     expect(backup.instructions).toBe("")
     expect(backup.warnings).toEqual([])
   })
