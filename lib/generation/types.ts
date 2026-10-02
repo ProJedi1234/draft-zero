@@ -199,11 +199,23 @@ export interface GenerationProvider {
 // (see parseChoice in atmosphere.ts) is the thing these types remove.
 
 /**
+ * What one choice option means, as the provider takes it.
+ *
+ * A sentence is enough when the options are easy to tell apart. When they are
+ * not, the provider's guidance is to send labelled fields — what the option
+ * covers, what belongs to its neighbours instead, and a few examples. The
+ * field names are ours; the provider reads them as labels, not as a schema.
+ */
+export type DecisionGuidance =
+  string | Readonly<Record<string, string | readonly string[]>>
+
+/**
  * What a question is allowed to say for itself.
  *
  * The provider accepts a string, an object or an array anywhere guidance is
- * taken; this app only ever sends strings, and the type says so rather than
- * widening to `unknown` for a flexibility nothing here wants.
+ * taken. This app sends strings everywhere except a choice option, which may
+ * need fields to separate it from its neighbours (see DecisionGuidance), and
+ * the type says exactly that rather than widening to `unknown`.
  */
 export type DecisionQuestion =
   | {
@@ -216,7 +228,7 @@ export type DecisionQuestion =
       type: "choice"
       instructions: string
       /** Option key → what that option means. The keys ARE the legal answers. */
-      criteria: Record<string, string>
+      criteria: Record<string, DecisionGuidance>
     }
   | {
       type: "score"
