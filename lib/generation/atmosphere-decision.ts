@@ -20,7 +20,11 @@
 import { STORY_TINTS } from "@/lib/story-tint"
 
 import { TINT_MOODS } from "./atmosphere-prompt"
-import type { DecisionAnswer, DecisionQuestion } from "./types"
+import type {
+  DecisionAnswer,
+  DecisionGuidance,
+  DecisionQuestion,
+} from "./types"
 
 /**
  * The decision model the atmosphere check uses.
@@ -39,6 +43,126 @@ export const ATMOSPHERE_DECISION_MODEL_ID = "typesafe/jev-1.13"
 export const STILL_FITS = "still_fits"
 export const TINT = "tint"
 
+type TintCriterion = {
+  /** The places, light and feelings the tint covers, named plainly. */
+  what: string
+  /** The neighbours it is confused with, and which tint each belongs to. */
+  not_for: string
+  /** Short passages that belong here, chosen to sit near a boundary. */
+  examples: readonly string[]
+}
+
+/**
+ * What each tint means, for Jev, which matches words literally. TINT_MOODS is
+ * imagery for an LLM, and its rose ("flesh ... a wound") reads like a fight
+ * scene to a literal reader. Keep the two in step.
+ */
+export const TINT_CRITERIA: Record<string, TintCriterion> = {
+  ember: {
+    what: "Fire and hostility. Flames, forges, burning buildings, battles, someone trying to hurt an enemy, blood spilled in a real fight, rage, revenge, a confrontation about to turn violent.",
+    not_for:
+      "A warm hearth or a candlelit room where nothing is threatened is amber. Fear of something unseen, or horror that creeps rather than strikes, is abyss. Bruises, sparring or rough play between people who like each other is not a fight, so judge that scene by its place and its mood instead.",
+    examples: [
+      "Smoke rolls over the walls as the gate gives way and the raiders pour in.",
+      "He slams the tankard down and reaches for the knife at his belt.",
+      "Steel rings across the sunlit market as the duel begins.",
+    ],
+  },
+  amber: {
+    what: "Warm, still and old. Lamplight and candlelight, a tavern or a study in the evening, dust in late-afternoon light, memories and nostalgia, old money, old houses, things slowly running down.",
+    not_for:
+      "Open daylight, cheer and relief are sun. Fire that burns or threatens is ember.",
+    examples: [
+      "The innkeeper trims the lamp and pours the last of the wine while the rain goes on outside.",
+      "Dust drifts through the long gallery where portraits of dead heirs line the walls.",
+      "She reads his old letters again by the candle, though she knows every word.",
+      "He winks at you over the ledger, then goes back to counting the day's takings by lamplight.",
+    ],
+  },
+  sun: {
+    what: "Bright, open and safe. Daylight outdoors, fields, markets, beaches and roads on a clear day, harvest and celebration, relief after danger, honest people and plain dealings.",
+    not_for:
+      "A bright place where something violent is happening is ember. A bright place where something frightening is happening is abyss. Lamplight and evenings indoors are amber.",
+    examples: [
+      "The caravan crosses the white dunes under a climbing morning sun.",
+      "The whole village turns out for the harvest fair, and children run between the stalls.",
+      "When the siege lifts, the survivors walk out through the gate into the sunlight.",
+      "She bumps your shoulder as you load the cart, grins, and goes back to haggling with the farmer.",
+    ],
+  },
+  verdant: {
+    what: "Living, growing places. Forests, jungles, gardens, moss and wet stone, rain on leaves, healing and new growth, wild nature that feels alive and aware of you.",
+    not_for:
+      "Open farmland or a sunny meadow where the feeling is ease is sun. A forest that feels enchanted or unreal is iris. A forest at night that frightens is abyss.",
+    examples: [
+      "Ferns brush your knees as the path narrows between trunks furred with moss.",
+      "Vines thick as rope have burst the greenhouse panes and crawled over everything.",
+      "Rain drips from the canopy onto the stones of the ruined shrine.",
+    ],
+  },
+  lagoon: {
+    what: "Cool water and open air. The sea, lakes and rivers, rain, snow and ice, cold wind, sailing, long distances, loneliness, a calm that may not last.",
+    not_for:
+      "Deep or dark water that frightens, the sea floor, drowning, or whatever lives beneath is abyss. A warm, sunny beach day is sun.",
+    examples: [
+      "The boat drifts across the grey lake while the mist closes in behind it.",
+      "Snow falls on the empty harbour, and the ships creak at their moorings.",
+      "Night on the lake is still and silver, and nobody speaks.",
+    ],
+  },
+  abyss: {
+    what: "Darkness and dread. Night, caves, the deep sea, empty space, horror, despair, grief with no bottom, a threat that cannot be seen or understood.",
+    not_for:
+      "A calm or peaceful night is lagoon or amber. An open fight or burning anger is ember. Magic or dreams that feel wondrous rather than frightening are iris.",
+    examples: [
+      "Your torch gutters, and something far down the tunnel breathes in the dark.",
+      "A shape moves under the ice, far too large to be a fish.",
+      "The sand heaves, and something vast rises out of the dunes and blots out the sun.",
+    ],
+  },
+  iris: {
+    what: "Magic and the unreal. Spells, rituals, visions, dreams, gods and spirits, portals, time going wrong, anything that should not be possible.",
+    not_for:
+      "A story where magic is ordinary background while the scene is about something else, such as a battle (ember) or a love scene (rose). Plain fear of the dark is abyss.",
+    examples: [
+      "The circle of candles flares violet as the last word of the rite is spoken.",
+      "The forest paths rearrange themselves whenever you look away.",
+      "You wake in your own bed, but the window opens onto a sea that was not there yesterday.",
+    ],
+  },
+  rose: {
+    what: "Love and closeness as the point of the scene. Romance, desire, a kiss, lovers alone together, tenderness between two people, family warmth, comfort after hurt, sweetness with sadness in it, a love that costs something.",
+    not_for:
+      "Flirting, teasing or attraction while the characters are busy with something else, such as travelling, working, eating or exploring, takes the tint of the place: sun for daylight and open air, amber for lamplight and evenings indoors. A fight between enemies is ember, however close the people are.",
+    examples: [
+      "By the dying fire she rests her head on his shoulder, and neither of them moves.",
+      "Still breathless from sparring, she pulls him down onto the mat and kisses him.",
+      "Her mother braids her hair one last time before the wedding.",
+    ],
+  },
+}
+
+/**
+ * A tint's criteria, falling back to the prose gloss and then the label.
+ *
+ * A tint added to the swatch row without criteria here should cost the model
+ * some judgement, not cost the writer a colour.
+ */
+function tintGuidance(id: string, label: string): DecisionGuidance {
+  return TINT_CRITERIA[id] ?? TINT_MOODS[id] ?? label
+}
+
+/**
+ * What a tint covers and where its boundaries are, for the fit question. The
+ * boundaries matter as much as the meaning: without them the fit question
+ * holds a tint the choice question has already ruled out.
+ */
+function tintDefinition(id: string): string {
+  const criterion = TINT_CRITERIA[id]
+  if (criterion === undefined) return TINT_MOODS[id] ?? id
+  return `${criterion.what} Not ${id}: ${criterion.not_for}`
+}
+
 /**
  * What the model is handed, and nothing more.
  *
@@ -46,7 +170,8 @@ export const TINT = "tint"
  * engine sends. The provider's own guidance is that instructions belong in the
  * questions and that accuracy falls as unrelated content grows in the state,
  * so there is no closing "answer with one word" line here — that instruction
- * is carried by the question type itself, which cannot be disobeyed.
+ * is carried by the question type itself, which cannot be disobeyed. The
+ * current tint lives in the fit question for the same reason.
  *
  * Memory rides along for the same reason it does in renderAtmosphereRequest:
  * it is the standing truth about a story's world, and "we are underground now"
@@ -55,22 +180,12 @@ export const TINT = "tint"
  * that says nothing.
  */
 export function renderAtmosphereState(input: {
-  /** The tint id the story wears now, or null when it has never had one. */
-  current: string | null
   tail: string
   memory: string
 }): Record<string, unknown> {
   const memory = input.memory.trim()
   return {
     ...(memory === "" ? {} : { memory }),
-    ...(input.current === null
-      ? {}
-      : {
-          current_tint: {
-            name: input.current,
-            means: TINT_MOODS[input.current] ?? input.current,
-          },
-        }),
     recent_passages: input.tail.trim(),
   }
 }
@@ -84,14 +199,22 @@ export function renderAtmosphereState(input: {
  * the prose engine ended up answering "keep" about a story it had been handed
  * no colour for, three checks running. Here the case cannot arise, because the
  * abstention is not in the question set at all.
+ *
+ * The fit question names the current tint and spells out its meaning and its
+ * boundaries in the instructions. Jev answers indirection ("the tint in
+ * current_tint") less reliably than a direct question, per TypeSafe's notes on
+ * Jev 1.13.
  */
 export function renderAtmosphereQuestions(
-  tinted: boolean
+  /** The tint id the story wears now, or null when it has never had one. */
+  current: string | null
 ): Record<string, DecisionQuestion> {
   const tint: DecisionQuestion = {
     type: "choice",
+    // Jev takes the question literally, so the rule for a place and a feeling
+    // that disagree has to be stated rather than left to judgement.
     instructions:
-      "Which of these best describes the light this story should be read in — the place it is in, the light it is under, and what it feels like to be there? Judge the story as a whole rather than only its final sentence.",
+      "Choose the tint for how this story feels to be in right now. Judge the feeling that runs through the recent passages as a whole, not a single line or exchange. When the place and the feeling point to different tints, choose by the feeling: a fight at noon is ember, not sun. When the feeling is mild, or is passing flirtation during something else, choose by the place and its light.",
     // Built from STORY_TINTS so the legal answers and the swatch row are the
     // same eight ids by construction. The prose engine gets the same guarantee
     // from a rendered list the model may ignore; here the keys ARE the answer
@@ -99,20 +222,18 @@ export function renderAtmosphereQuestions(
     criteria: Object.fromEntries(
       STORY_TINTS.map((candidate) => [
         candidate.id,
-        TINT_MOODS[candidate.id] ?? candidate.label,
+        tintGuidance(candidate.id, candidate.label),
       ])
     ),
   }
-  if (!tinted) return { [TINT]: tint }
+  if (current === null) return { [TINT]: tint }
   return {
     [STILL_FITS]: {
       type: "noul",
-      instructions:
-        "Does the tint the story is currently read in still fit the story as it now reads?",
+      instructions: `This story is tinted ${current}. ${current} means: ${tintDefinition(current)} Do the recent passages, taken as a whole, still feel like ${current}?`,
       criteria: {
-        true: "The current tint still describes where this story is, the light it is under, and what it feels like to be there. A single dark scene in a bright story, or one tense exchange, does not make the tint wrong.",
-        false:
-          "The current tint no longer describes this story — it was set for a place or a mood the story has since left.",
+        true: `Most of the recent passages still feel like ${current}, even if one scene or exchange feels different.`,
+        false: `The story has moved to a different place or feeling, and ${current} no longer describes most of the recent passages.`,
       },
     },
     [TINT]: tint,
