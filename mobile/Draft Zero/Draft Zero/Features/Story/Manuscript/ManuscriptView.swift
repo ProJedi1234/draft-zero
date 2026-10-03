@@ -61,6 +61,11 @@ struct ManuscriptView: View {
         } action: { _, nearBottom in
             pinned = nearBottom
         }
+        // Rotating with the status bar hidden (focus mode) leaves the lazy stack
+        // sized from stale estimates, so a pinned reader lands in blank space.
+        .onScrollGeometryChange(for: CGSize.self, of: \.containerSize) { _, _ in
+            followLiveEdge()
+        }
         .onChange(of: items.last?.id) {
             followLiveEdge()
         }

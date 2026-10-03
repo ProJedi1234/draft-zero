@@ -17,6 +17,8 @@ struct StoryWorkspaceView: View {
             .navigationTitle(workspace.story?.title ?? "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarVisibility(focusMode ? .hidden : .automatic, for: .navigationBar)
+            .onChange(of: focusMode) { _, on in app.hidesStatusBar = on }
+            .onDisappear { app.hidesStatusBar = false }
             .toolbar { toolbarContent }
             .toolbarTitleMenu {
                 StoryTitleMenu(sheet: $sheet, confirmingDelete: $confirmingDelete, duplicate: duplicate)
@@ -42,15 +44,9 @@ struct StoryWorkspaceView: View {
             } message: {
                 Text("The manuscript, its lorebook and its pictures are removed. This can't be undone.")
             }
-            .overlay(alignment: .topTrailing) {
+            .overlay {
                 if focusMode {
-                    Button("Exit Focus", systemImage: "arrow.down.right.and.arrow.up.left") {
-                        withAnimation { focusMode = false }
-                    }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.glass)
-                    .padding()
-                    .keyboardShortcut(".", modifiers: .command)
+                    FocusExitButton { withAnimation { focusMode = false } }
                 }
             }
     }

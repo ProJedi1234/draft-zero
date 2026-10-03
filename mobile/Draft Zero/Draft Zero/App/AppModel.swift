@@ -30,6 +30,9 @@ final class AppModel {
 
     var selectedTab: AppTab = .library
     var libraryPath: [AppRoute] = []
+    /// Set by a story in focus mode. The tab shell applies it, because
+    /// `statusBarHidden` on a pushed screen never reaches UIKit.
+    var hidesStatusBar = false
 
     @ObservationIgnored private var librarySubscription: SyncSubscription?
     @ObservationIgnored private var reconnectSubscription: SyncSubscription?

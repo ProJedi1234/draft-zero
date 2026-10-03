@@ -27,5 +27,6 @@ struct MainTabView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        .statusBarHidden(app.hidesStatusBar)
     }
 }
