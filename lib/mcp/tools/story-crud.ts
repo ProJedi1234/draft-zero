@@ -65,7 +65,7 @@ const metaFields = {
     .string()
     .optional()
     .describe(
-      "Overrides the app default for this story. Pass an empty string to go back to following it."
+      "Overrides the app's default narrator prompt for this story. The rules for reading the context and taking turns are always sent after it. Pass an empty string to go back to following the default."
     ),
 }
 
