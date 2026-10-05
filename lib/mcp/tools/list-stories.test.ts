@@ -1,6 +1,7 @@
 // lib/mcp/tools/list-stories.test.ts — handler shaping logic against mocked
 // queries. No live DB, no HTTP.
 import { beforeEach, describe, expect, mock, test } from "bun:test"
+import type { ZodType } from "zod"
 
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
 
@@ -99,6 +100,7 @@ describe("list_stories", () => {
       genre: "Fantasy",
       passages: 7,
       words: 100,
+      createdAt: "2026-01-01",
       updatedAt: "2026-01-02",
     })
     expect(result.structuredContent?.total).toBe(1)
@@ -152,5 +154,130 @@ describe("list_stories", () => {
     const second = await handler({ limit: 2, cursor })
     expect((second.structuredContent?.stories as unknown[]).length).toBe(1)
     expect(second.structuredContent?.nextCursor).toBeUndefined()
+  })
+
+  describe("sort and order", () => {
+    // Each key ranks a, b, c differently, so a test can only pass on its own key.
+    const fixture = () => [
+      story({
+        id: "a",
+        title: "beta",
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-04-01T00:00:00.000Z",
+        wordCount: 300,
+      }),
+      story({
+        id: "b",
+        title: "Alpha",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+        wordCount: 100,
+      }),
+      story({
+        id: "c",
+        title: "gamma",
+        createdAt: "2026-02-01T00:00:00.000Z",
+        updatedAt: "2026-05-01T00:00:00.000Z",
+        wordCount: 200,
+      }),
+    ]
+    const passages = new Map([
+      ["a", 2],
+      ["b", 9],
+      ["c", 5],
+    ])
+
+    beforeEach(() => {
+      listStoriesWithCountsMock.mockImplementation(async () => fixture())
+      countLivePassagesByStoryMock.mockImplementation(async () => passages)
+    })
+
+    async function ids(args: Record<string, unknown>) {
+      const result = await registeredHandler()(args)
+      const rows = result.structuredContent?.stories as Array<{ id: string }>
+      return rows.map((r) => r.id)
+    }
+
+    test.each([
+      ["updated", "desc", ["b", "c", "a"]],
+      ["updated", "asc", ["a", "c", "b"]],
+      ["created", "desc", ["a", "c", "b"]],
+      ["created", "asc", ["b", "c", "a"]],
+      ["title", "asc", ["b", "a", "c"]],
+      ["title", "desc", ["c", "a", "b"]],
+      ["words", "desc", ["a", "c", "b"]],
+      ["words", "asc", ["b", "c", "a"]],
+      ["passages", "desc", ["b", "c", "a"]],
+      ["passages", "asc", ["a", "c", "b"]],
+    ])("%s %s", async (sort, order, expected) => {
+      expect(await ids({ sort, order })).toEqual(expected)
+    })
+
+    test("defaults to newest updated first, ignoring the query's order", async () => {
+      expect(await ids({})).toEqual(["b", "c", "a"])
+    })
+
+    test("order defaults to asc for title and desc for everything else", async () => {
+      expect(await ids({ sort: "title" })).toEqual(["b", "a", "c"])
+      expect(await ids({ sort: "words" })).toEqual(["a", "c", "b"])
+      expect(await ids({ sort: "created" })).toEqual(["a", "c", "b"])
+    })
+
+    test("ties break on id in both directions", async () => {
+      listStoriesWithCountsMock.mockImplementation(async () => [
+        story({ id: "z", wordCount: 50 }),
+        story({ id: "m", wordCount: 50 }),
+        story({ id: "q", wordCount: 50 }),
+      ])
+      expect(await ids({ sort: "words" })).toEqual(["m", "q", "z"])
+      expect(await ids({ sort: "words", order: "asc" })).toEqual([
+        "m",
+        "q",
+        "z",
+      ])
+    })
+
+    test("a cursor pages through the sorted order", async () => {
+      const handler = registeredHandler()
+      const first = await handler({ sort: "words", limit: 2 })
+      const firstIds = (
+        first.structuredContent?.stories as { id: string }[]
+      ).map((r) => r.id)
+      const second = await handler({
+        sort: "words",
+        limit: 2,
+        cursor: first.structuredContent?.nextCursor,
+      })
+      const secondIds = (
+        second.structuredContent?.stories as { id: string }[]
+      ).map((r) => r.id)
+      expect([...firstIds, ...secondIds]).toEqual(["a", "c", "b"])
+    })
+
+    test("the summary names a non-default order and stays quiet on the default", async () => {
+      const handler = registeredHandler()
+      const sorted = await handler({ sort: "words" })
+      expect(sorted.content[0]?.text).toBe(
+        "3 stories · 3 returned · by words, desc"
+      )
+      const plain = await handler({})
+      expect(plain.content[0]?.text).toBe("3 stories · 3 returned")
+    })
+
+    test("rejects an unknown sort key at the schema", async () => {
+      let schema: ZodType | undefined
+      registerListStories(
+        {
+          registerTool: (_n: string, config: { inputSchema: ZodType }) => {
+            schema = config.inputSchema
+          },
+        } as never,
+        {} as never
+      )
+      expect(schema?.safeParse({ sort: "rating" }).success).toBe(false)
+      expect(schema?.safeParse({ sort: "words", order: "up" }).success).toBe(
+        false
+      )
+    })
   })
 })
