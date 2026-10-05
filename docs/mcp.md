@@ -88,7 +88,7 @@ writes, then the one destructive tool.
 
 | Tool | Does |
 |---|---|
-| `list_stories` | Compact index of every story: id, title, genre, passage and word counts, last updated. Paged. Start here when you do not know a story id. |
+| `list_stories` | Compact index of every story: id, title, genre, passage and word counts, created and last updated. Paged, newest-updated first; `sort` (`updated`, `created`, `title`, `words`, `passages`) and `order` change that. Start here when you do not know a story id. |
 | `story_map` | Everything about one story except its prose: recap, memory, author's note, lorebook index, position bounds, counts, and read-only generation settings. A few hundred tokens. Read this before any other story tool. |
 | `read` | A range of the manuscript by position. Defaults to the last 10 entries; pass `from`/`to` to page elsewhere. Active takes only; images come back as one-line stubs. |
 | `search` | Find text across passages and lorebook entries. Returns positions and short snippets, never full passages. |
