@@ -531,11 +531,10 @@ async function askDecisionEngine(
   const current = currentTintId(story)
   const result = await io.decide({
     state: renderAtmosphereState({
-      current,
       tail: manuscriptTail(story.entries, TAIL_WORDS),
       memory: story.memory,
     }),
-    questions: renderAtmosphereQuestions(current !== null),
+    questions: renderAtmosphereQuestions(current),
     modelId: ATMOSPHERE_DECISION_MODEL_ID,
     // ORed exactly as the prose engine's is, and for the same reason: the
     // manuscript tail is on the wire either way.

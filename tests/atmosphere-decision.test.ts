@@ -10,8 +10,9 @@
 //    is given one at any confidence, because the alternative is a feature that
 //    appears not to work — the same failure ATMOSPHERE_FIRST_RULE exists for
 //    on the prose side.
-// 2. DOUBT KEEPS. Either question falling short of the threshold leaves the
-//    room as it is. A decoration fails by not happening.
+// 2. A CONFIDENT FIT HOLDS, AND ONLY A CONFIDENT PICK REPAINTS. The fit
+//    question vetoes at STILL_FITS_VETO; otherwise the pick must clear the
+//    writer's threshold. Raising that threshold never makes a repaint likelier.
 // 3. AN UNREADABLE ANSWER IS NOT A "KEEP". It has to be distinguishable, or
 //    the breaker can never notice an engine that has stopped answering.
 
@@ -22,7 +23,9 @@ import {
   renderAtmosphereQuestions,
   renderAtmosphereState,
   STILL_FITS,
+  STILL_FITS_VETO,
   TINT,
+  TINT_CRITERIA,
 } from "@/lib/generation/atmosphere-decision"
 import type { DecisionAnswer } from "@/lib/generation/types"
 import { STORY_TINTS } from "@/lib/story-tint"
@@ -57,17 +60,17 @@ const THRESHOLD = { minConfidence: 0.6 }
 
 describe("what it asks", () => {
   test("an untinted story is not offered the abstention at all", () => {
-    const questions = renderAtmosphereQuestions(false)
+    const questions = renderAtmosphereQuestions(null)
     expect(Object.keys(questions)).toEqual([TINT])
   })
 
   test("a tinted story is asked both questions, for one round trip", () => {
-    const questions = renderAtmosphereQuestions(true)
+    const questions = renderAtmosphereQuestions("abyss")
     expect(Object.keys(questions).sort()).toEqual([STILL_FITS, TINT].sort())
   })
 
   test("the legal answers are exactly the swatch row", () => {
-    const tint = renderAtmosphereQuestions(true)[TINT]
+    const tint = renderAtmosphereQuestions("abyss")[TINT]
     // Not a list the model may ignore — these keys ARE the answer space, so an
     // off-palette reply is not expressible rather than merely discouraged.
     expect(tint?.type).toBe("choice")
@@ -75,18 +78,36 @@ describe("what it asks", () => {
     expect(Object.keys(tint.criteria).sort()).toEqual(
       STORY_TINTS.map((candidate) => candidate.id).sort()
     )
-    // Every option says what it means. A bare id tells a classifier nothing
-    // about when to pick it.
-    for (const description of Object.values(tint.criteria)) {
-      expect(description.length).toBeGreaterThan(0)
+  })
+
+  test("every tint says what it covers, what it does not, and shows examples", () => {
+    // Jev reads literally, so a one-line gloss leaves neighbouring tints to
+    // guesswork. TypeSafe's fix for confusable options is these three fields.
+    const tint = renderAtmosphereQuestions(null)[TINT]
+    if (tint?.type !== "choice") throw new Error("unreachable")
+    for (const candidate of STORY_TINTS) {
+      expect(tint.criteria[candidate.id]).toEqual(TINT_CRITERIA[candidate.id]!)
+      const criterion = TINT_CRITERIA[candidate.id]!
+      expect(criterion.what.length).toBeGreaterThan(0)
+      expect(criterion.not_for.length).toBeGreaterThan(0)
+      expect(criterion.examples.length).toBeGreaterThan(0)
     }
+  })
+
+  test("the fit question names the current tint and spells out its meaning", () => {
+    const fits = renderAtmosphereQuestions("abyss")[STILL_FITS]
+    expect(fits?.type).toBe("noul")
+    expect(fits?.instructions).toContain("abyss")
+    expect(fits?.instructions).toContain(TINT_CRITERIA.abyss!.what)
+    // Without the boundaries, the fit question held rose on scenes the choice
+    // question had already moved to sun or amber.
+    expect(fits?.instructions).toContain(TINT_CRITERIA.abyss!.not_for)
   })
 })
 
 describe("what it is handed", () => {
   test("an empty memory is left out rather than sent blank", () => {
     const state = renderAtmosphereState({
-      current: "abyss",
       tail: "The lamps went out.",
       memory: "   ",
     })
@@ -94,23 +115,11 @@ describe("what it is handed", () => {
     expect(state.recent_passages).toBe("The lamps went out.")
   })
 
-  test("the current tint travels with its meaning, not as a bare word", () => {
-    const state = renderAtmosphereState({
-      current: "abyss",
-      tail: "x",
-      memory: "",
-    })
-    expect(state.current_tint).toMatchObject({ name: "abyss" })
-    expect((state.current_tint as { means: string }).means).toContain("night")
-  })
-
-  test("an untinted story is handed no current tint to defend", () => {
-    const state = renderAtmosphereState({
-      current: null,
-      tail: "x",
-      memory: "",
-    })
-    expect(state).not.toHaveProperty("current_tint")
+  test("the state carries the story and nothing about the answer", () => {
+    // The current tint lives in the fit question. Anything in the state that
+    // argues for an answer skews it.
+    const state = renderAtmosphereState({ tail: "x", memory: "Underground." })
+    expect(Object.keys(state).sort()).toEqual(["memory", "recent_passages"])
   })
 })
 
@@ -168,14 +177,44 @@ describe("a story already wearing a colour", () => {
     expect(decided).toEqual({ kind: "keep" })
   })
 
-  test("keeps when the old tint is only mildly doubted", () => {
-    // 1 − 0.55 is below the 0.6 threshold, so this is a passing dark scene
-    // rather than a story that has moved.
+  test("a confident fit vetoes even a confident pick", () => {
+    // A passing moment: the pick chases the last passage, and the fit question
+    // is what holds the colour.
+    const decided = interpretAtmosphereDecision(
+      reply({ fits: STILL_FITS_VETO, confidence: 0.95 }),
+      { current: "abyss", ...THRESHOLD }
+    )
+    expect(decided).toEqual({ kind: "keep" })
+  })
+
+  test("repaints when the fit question only half believes the old tint", () => {
+    // Where moved-on scenes settle. Demanding certainty that the old tint was
+    // wrong kept these in their old colour indefinitely.
     const decided = interpretAtmosphereDecision(
       reply({ fits: 0.55, confidence: 0.95 }),
       { current: "abyss", ...THRESHOLD }
     )
-    expect(decided).toEqual({ kind: "keep" })
+    expect(decided).toMatchObject({ kind: "paint", id: "ember" })
+  })
+
+  test("raising the threshold never makes a repaint likelier", () => {
+    const floors = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
+    for (const fits of [0.1, 0.4, 0.55, 0.65, 0.9]) {
+      for (const confidence of [0.3, 0.55, 0.65, 0.85, 0.99]) {
+        const kinds = floors.map(
+          (minConfidence) =>
+            interpretAtmosphereDecision(reply({ fits, confidence }), {
+              current: "abyss",
+              minConfidence,
+            }).kind
+        )
+        const firstKeep = kinds.indexOf("keep")
+        if (firstKeep === -1) continue
+        expect(kinds.slice(firstKeep).every((kind) => kind === "keep")).toBe(
+          true
+        )
+      }
+    }
   })
 
   test("the threshold is the writer's, and moving it changes the answer", () => {
