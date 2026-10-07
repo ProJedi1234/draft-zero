@@ -53,7 +53,9 @@ export function layoutWaterfall(
 ): WaterfallLayout {
   const columns = columnCountFor(width, gap)
   const columnWidth = (width - gap * (columns - 1)) / columns
-  const bottoms = new Array<number>(columns).fill(0)
+  // A gap above the wall, so every tile, the first included, sits one gap
+  // below its column's bottom with no empty-column special case.
+  const bottoms = new Array<number>(columns).fill(-gap)
 
   const tiles = ratios.map((ratio) => {
     // Strict less-than, so a tie goes to the leftmost column and the first row
@@ -62,7 +64,7 @@ export function layoutWaterfall(
     for (let c = 1; c < columns; c++) {
       if (bottoms[c] < bottoms[column]) column = c
     }
-    const top = bottoms[column] === 0 ? 0 : bottoms[column] + gap
+    const top = bottoms[column] + gap
     const height = Math.round(columnWidth / ratio)
     bottoms[column] = top + height
     return {
@@ -73,5 +75,5 @@ export function layoutWaterfall(
     }
   })
 
-  return { columns, tiles, height: Math.max(...bottoms) }
+  return { columns, tiles, height: Math.max(0, ...bottoms) }
 }
