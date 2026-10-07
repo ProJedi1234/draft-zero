@@ -69,11 +69,11 @@ const FLIGHT_EASING = "cubic-bezier(0.22, 1, 0.36, 1)"
  * close.
  *
  * The flight is a rect morph (top/left/width/height under WAAPI), not a
- * transform — a square tile and a 16:9 rest frame have different shapes, and a
- * transform between them would smear the picture. Morphing the rect while the
- * img inside keeps object-cover gives the iOS-Photos uncropping instead: the
- * frame un-squares mid-flight and the crop falls away with it, meeting the
- * full picture exactly when the rect reaches the image's own ratio.
+ * transform. A tile wears its picture's own ratio, so most flights are a plain
+ * scale, but a take drawn at another ratio flies home into a tile of a
+ * different shape, and a transform between the two would smear the picture.
+ * Morphing the rect while the img inside keeps object-cover re-crops it
+ * smoothly instead.
  *
  * Navigation stays inside the one overlay: the rect transitions between
  * ratios via CSS, the img crossfades by key, and the wall underneath scrolls
