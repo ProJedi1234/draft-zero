@@ -4,8 +4,9 @@ import * as React from "react"
 import Link from "next/link"
 import { GalleryVerticalEnd, Images, LayoutGrid, Layers } from "lucide-react"
 
-import type { GalleryImage } from "@/lib/types"
+import { aspectRatioValue, type GalleryImage } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { layoutWaterfall, type TilePlacement } from "@/lib/waterfall"
 import { OfflineChip } from "@/components/offline/offline-chip"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,6 +24,9 @@ import {
 } from "@/components/ui/tooltip"
 import { GalleryLightbox } from "@/components/gallery/gallery-lightbox"
 
+/** Space between tiles, and around the wall's edge, in CSS pixels. */
+const GAP = 4
+
 /** One story's run of tiles, in the wall's own order. */
 interface StorySection {
   storyId: string
@@ -33,9 +37,9 @@ interface StorySection {
 }
 
 /**
- * The gallery: every illustration in the library as an edge-to-edge wall of
- * squares, with an optional group-by-story view and a lightbox that a tile
- * opens into.
+ * The gallery: every illustration in the library as a waterfall wall, each
+ * tile at its picture's own ratio (see lib/waterfall.ts), with an optional
+ * group-by-story view and a lightbox that a tile opens into.
  *
  * Grouping happens here rather than in SQL because it is presentation state —
  * the same rows serve both views, and the toggle must not cost a round trip.
@@ -51,6 +55,19 @@ export function PhotoWall({ images }: { images: GalleryImage[] }) {
   // than by row id: promoting a take from the lightbox changes which row a tile
   // shows, and a flight home must not be looking for the take it replaced.
   const cellRefs = React.useRef(new Map<string, HTMLButtonElement>())
+
+  // Null until measured, and nothing is placed until then: a guessed width
+  // would paint one column count and snap to another a frame later.
+  const [wallWidth, setWallWidth] = React.useState<number | null>(null)
+  const measureWall = React.useCallback((el: HTMLDivElement | null) => {
+    if (!el) return
+    setWallWidth(el.getBoundingClientRect().width)
+    const observer = new ResizeObserver(([entry]) =>
+      setWallWidth(entry.contentRect.width)
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const sections = React.useMemo<StorySection[]>(() => {
     const byStory = new Map<string, StorySection>()
@@ -107,7 +124,7 @@ export function PhotoWall({ images }: { images: GalleryImage[] }) {
     if (index >= 0) setViewerIndex(index)
   }
 
-  const renderCell = (image: GalleryImage) => {
+  const renderCell = (image: GalleryImage, placement: TilePlacement) => {
     // The tile is the slot, so it is out on the lightbox no matter which of its
     // takes the lightbox is currently showing.
     const isOut = viewerImage?.imageGroupId === image.imageGroupId
@@ -122,7 +139,8 @@ export function PhotoWall({ images }: { images: GalleryImage[] }) {
             : image.prompt
         }
         onClick={() => openViewer(image)}
-        className="group/cell relative aspect-square overflow-hidden bg-muted/40 outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring/60"
+        style={placement}
+        className="group/cell absolute overflow-hidden bg-muted/40 outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring/60"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -146,9 +164,9 @@ export function PhotoWall({ images }: { images: GalleryImage[] }) {
         {image.takes.length > 1 && !isOut && (
           <span
             aria-hidden
-            className="pointer-events-none absolute top-1 right-1 flex items-center gap-0.5 rounded-full bg-black/45 px-1.5 py-0.5 text-[0.625rem] leading-none font-medium text-white tabular-nums backdrop-blur-sm"
+            className="pointer-events-none absolute top-2 right-2 flex items-center gap-1 rounded-full bg-black/45 px-2 py-1 text-xs leading-none font-medium text-white tabular-nums backdrop-blur-sm"
           >
-            <Layers className="size-2.5" />
+            <Layers className="size-3" />
             {image.takes.length}
           </span>
         )}
@@ -156,11 +174,19 @@ export function PhotoWall({ images }: { images: GalleryImage[] }) {
     )
   }
 
-  const grid = (tiles: GalleryImage[]) => (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] gap-0.5">
-      {tiles.map(renderCell)}
-    </div>
-  )
+  const wall = (tiles: GalleryImage[]) => {
+    if (wallWidth === null) return null
+    const layout = layoutWaterfall(
+      tiles.map((image) => aspectRatioValue(image.aspectRatio)),
+      wallWidth,
+      GAP
+    )
+    return (
+      <div className="relative" style={{ height: layout.height }}>
+        {tiles.map((image, i) => renderCell(image, layout.tiles[i]))}
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-app flex-col">
@@ -213,44 +239,54 @@ export function PhotoWall({ images }: { images: GalleryImage[] }) {
       ) : (
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto",
+            // A stable gutter, because the wall's width sets its column count:
+            // a scrollbar appearing, or vanishing under the lock below, would
+            // otherwise reflow every tile.
+            "min-h-0 flex-1 [scrollbar-gutter:stable] overflow-y-auto",
             // The wall must hold still while the lightbox is up: the close
             // animation targets a tile's on-screen rectangle, and a wall that
             // scrolled underneath would make the picture land somewhere else.
             viewerIndex !== null && "overflow-hidden"
           )}
         >
-          <div className="pb-[env(safe-area-inset-bottom)]">
-            {grouped
-              ? sections.map((section) => (
-                  <section key={section.storyId}>
-                    <div className="flex items-baseline gap-2 px-4 pt-5 pb-2">
-                      {section.tintHue !== null && (
-                        <span
-                          aria-hidden
-                          className="tint-swatch size-2 shrink-0 self-center rounded-full"
-                          style={
-                            {
-                              "--swatch-h": section.tintHue,
-                              "--swatch-c": section.tintStrength,
-                            } as React.CSSProperties
-                          }
-                        />
-                      )}
-                      <Link
-                        href={`/story/${section.storyId}`}
-                        className="truncate text-sm font-medium hover:underline"
-                      >
-                        {section.storyTitle}
-                      </Link>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {section.images.length}
-                      </span>
-                    </div>
-                    {grid(section.images)}
-                  </section>
-                ))
-              : grid(images)}
+          <div
+            style={{
+              padding: GAP,
+              paddingBottom: `calc(${GAP}px + env(safe-area-inset-bottom))`,
+            }}
+          >
+            <div ref={measureWall}>
+              {grouped
+                ? sections.map((section) => (
+                    <section key={section.storyId}>
+                      <div className="flex items-baseline gap-2 px-3 pt-4 pb-2">
+                        {section.tintHue !== null && (
+                          <span
+                            aria-hidden
+                            className="tint-swatch size-2 shrink-0 self-center rounded-full"
+                            style={
+                              {
+                                "--swatch-h": section.tintHue,
+                                "--swatch-c": section.tintStrength,
+                              } as React.CSSProperties
+                            }
+                          />
+                        )}
+                        <Link
+                          href={`/story/${section.storyId}`}
+                          className="truncate text-sm font-medium hover:underline"
+                        >
+                          {section.storyTitle}
+                        </Link>
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {section.images.length}
+                        </span>
+                      </div>
+                      {wall(section.images)}
+                    </section>
+                  ))
+                : wall(images)}
+            </div>
           </div>
         </div>
       )}
