@@ -23,7 +23,7 @@ struct MissingPicturesButton: View {
             .tint(.orange)
             .popover(isPresented: $isPresented) {
                 list
-                    .frame(minWidth: 400, minHeight: 360)
+                    .frame(idealWidth: 400, minHeight: 360)
                     .presentationDetents([.medium, .large])
             }
         }
