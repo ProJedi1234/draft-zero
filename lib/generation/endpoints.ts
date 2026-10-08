@@ -40,7 +40,8 @@ function toDomainEndpoint(
     },
     // p50, not p90: the median is what a continuation will actually feel like.
     throughput: e.throughputLast30m?.p50 ?? null,
-    uptime: e.uptimeLast1d ?? null,
+    // OpenRouter sends uptime as a percentage (99.98); the contract is a fraction.
+    uptime: e.uptimeLast1d == null ? null : e.uptimeLast1d / 100,
     // OpenRouter says "unknown" when the provider hasn't declared its weights;
     // that is the same information as no answer, so it is not printed.
     quantization:

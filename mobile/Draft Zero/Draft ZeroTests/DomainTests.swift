@@ -62,6 +62,25 @@ struct FormatTests {
         #expect(Format.usd(input) == expected)
     }
 
+    @Test(arguments: [
+        ("google-vertex/europe", nil, "🇪🇺", "Europe"),
+        ("google-vertex/global/priority", nil, "🌐 priority", "Global, priority"),
+        ("amazon-bedrock/us-east-1", nil, "🇺🇸 east-1", "United States east-1"),
+        ("azure/swedencentral", nil, "🇸🇪", "Sweden"),
+        ("xai/zdr/us", nil, "zdr 🇺🇸", "zdr, United States"),
+        ("deepinfra/turbo", "fp8", "turbo", "turbo"),
+    ] as [(String, String?, String, String)])
+    func endpointVariant(tag: String, quantization: String?, text: String, label: String) {
+        let variant = Format.endpointVariant(tag, quantization: quantization)
+        #expect(variant?.text == text)
+        #expect(variant?.label == label)
+    }
+
+    @Test func bareOrQuantizationOnlyTagsHaveNoVariant() {
+        #expect(Format.endpointVariant("anthropic") == nil)
+        #expect(Format.endpointVariant("xiaomi/fp8", quantization: "fp8") == nil)
+    }
+
     @Test func unknownCostIsADash() {
         #expect(Format.usd(nil as String?) == "—")
         #expect(Format.usdFloor("0.42", unpriced: 1) == "$0.420+")

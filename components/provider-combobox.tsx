@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/popover"
 import {
   formatContextLength,
+  formatEndpointVariant,
   formatThroughput,
   formatUptime,
 } from "@/lib/format"
@@ -55,6 +56,21 @@ function ProviderGlyph({
       )}
     >
       {providerName.slice(0, 1)}
+    </span>
+  )
+}
+
+/** The region or variant that tells two rows from one provider apart. */
+function EndpointVariant({ endpoint }: { endpoint: ModelEndpoint }) {
+  const variant = formatEndpointVariant(endpoint.tag, endpoint.quantization)
+  if (!variant) return null
+  return (
+    <span
+      title={variant.label}
+      aria-label={variant.label}
+      className="shrink-0 font-mono text-[10px] text-muted-foreground"
+    >
+      {variant.text}
     </span>
   )
 }
@@ -148,6 +164,7 @@ export function ProviderCombobox({
             <SparklesIcon className="size-3.5 shrink-0 opacity-60" />
           )}
           <span className="truncate">{selected?.providerName ?? "Auto"}</span>
+          {selected ? <EndpointVariant endpoint={selected} /> : null}
           <ChevronsUpDownIcon className="size-3.5 shrink-0 opacity-50" />
         </span>
       </PopoverTrigger>
@@ -239,6 +256,7 @@ function EndpointRow({
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex items-baseline gap-1.5">
           <span className="truncate">{endpoint.providerName}</span>
+          <EndpointVariant endpoint={endpoint} />
           {endpoint.quantization ? (
             <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
               {endpoint.quantization}

@@ -9,7 +9,11 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test"
 
-import { formatThroughput, formatUptime } from "@/lib/format"
+import {
+  formatEndpointVariant,
+  formatThroughput,
+  formatUptime,
+} from "@/lib/format"
 import type { GenerationEvent } from "@/lib/generation/types"
 import {
   endpointForTag,
@@ -221,6 +225,25 @@ describe("formatUptime", () => {
     [null, "—"],
   ] as const)("%p -> %p", (input, expected) => {
     expect(formatUptime(input)).toBe(expected)
+  })
+})
+
+describe("formatEndpointVariant", () => {
+  test.each([
+    ["google-vertex/europe", null, "🇪🇺", "Europe"],
+    ["google-vertex/global/priority", null, "🌐 priority", "Global, priority"],
+    ["amazon-bedrock/us-east-1", null, "🇺🇸 east-1", "United States east-1"],
+    ["azure/swedencentral", null, "🇸🇪", "Sweden"],
+    ["xai/zdr/us", null, "zdr 🇺🇸", "zdr, United States"],
+    ["deepinfra/turbo", "fp8", "turbo", "turbo"],
+  ] as const)("%p -> %p", (tag, quantization, text, label) => {
+    expect(formatEndpointVariant(tag, quantization)).toEqual({ text, label })
+  })
+
+  test("nothing past the provider, or only the quantization, is null", () => {
+    expect(formatEndpointVariant("anthropic")).toBeNull()
+    // The row already prints the quantization; the suffix would say it twice.
+    expect(formatEndpointVariant("xiaomi/fp8", "fp8")).toBeNull()
   })
 })
 

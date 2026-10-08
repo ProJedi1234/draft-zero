@@ -44,6 +44,55 @@ export function formatUptime(fraction: number | null): string {
   return `${Math.floor(fraction * 100)}%`
 }
 
+/** Region segments of an endpoint tag, as OpenRouter shows them: a flag. */
+const ENDPOINT_REGIONS: Record<string, { flag: string; name: string }> = {
+  global: { flag: "🌐", name: "Global" },
+  us: { flag: "🇺🇸", name: "United States" },
+  eu: { flag: "🇪🇺", name: "Europe" },
+  europe: { flag: "🇪🇺", name: "Europe" },
+  swedencentral: { flag: "🇸🇪", name: "Sweden" },
+}
+
+function formatVariantSegment(segment: string): {
+  text: string
+  label: string
+} {
+  const exact = ENDPOINT_REGIONS[segment]
+  if (exact) return { text: exact.flag, label: exact.name }
+  // A datacenter code keeps its remainder, or two Bedrock US rows read alike.
+  const dash = segment.indexOf("-")
+  const region =
+    dash === -1 ? undefined : ENDPOINT_REGIONS[segment.slice(0, dash)]
+  if (region) {
+    const rest = segment.slice(dash + 1)
+    return { text: `${region.flag} ${rest}`, label: `${region.name} ${rest}` }
+  }
+  return { text: segment, label: segment }
+}
+
+/**
+ * What an endpoint tag adds after the provider, which tells apart rows from one
+ * provider: "google-vertex/europe" -> 🇪🇺; "amazon-bedrock/us-east-1" -> 🇺🇸
+ * east-1; "xai/zdr/priority" -> "zdr priority"; "anthropic" -> null. A segment
+ * repeating `quantization` is dropped, since the row prints that already.
+ * `label` spells the flags out for screen readers and tooltips.
+ */
+export function formatEndpointVariant(
+  tag: string,
+  quantization: string | null = null
+): { text: string; label: string } | null {
+  const segments = tag
+    .split("/")
+    .slice(1)
+    .filter((segment) => segment && segment !== quantization)
+    .map(formatVariantSegment)
+  if (segments.length === 0) return null
+  return {
+    text: segments.map((s) => s.text).join(" "),
+    label: segments.map((s) => s.label).join(", "),
+  }
+}
+
 /**
  * A USD figure, in the register the rest of the app prints numbers in: bare,
  * unrounded where rounding would lie, never a locale currency format and never

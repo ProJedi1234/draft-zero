@@ -56,6 +56,37 @@ nonisolated enum Format {
         return "\(Int((fraction * 100).rounded(.down)))%"
     }
 
+    /// What an endpoint tag adds after the provider, with regions as flags:
+    /// "amazon-bedrock/us-east-1" -> "🇺🇸 east-1"; "anthropic" -> nil. A segment
+    /// repeating `quantization` is dropped, since the row prints that already.
+    /// `label` spells the flags out for VoiceOver.
+    static func endpointVariant(_ tag: String, quantization: String? = nil) -> (text: String, label: String)? {
+        let segments = tag.split(separator: "/").dropFirst()
+            .map(String.init)
+            .filter { $0 != quantization }
+            .map(variantSegment)
+        guard !segments.isEmpty else { return nil }
+        return (segments.map(\.text).joined(separator: " "), segments.map(\.label).joined(separator: ", "))
+    }
+
+    private static let endpointRegions: [String: (flag: String, name: String)] = [
+        "global": ("🌐", "Global"),
+        "us": ("🇺🇸", "United States"),
+        "eu": ("🇪🇺", "Europe"),
+        "europe": ("🇪🇺", "Europe"),
+        "swedencentral": ("🇸🇪", "Sweden"),
+    ]
+
+    private static func variantSegment(_ segment: String) -> (text: String, label: String) {
+        if let region = endpointRegions[segment] { return (region.flag, region.name) }
+        // A datacenter code keeps its remainder, or two Bedrock US rows read alike.
+        if let dash = segment.firstIndex(of: "-"), let region = endpointRegions[String(segment[..<dash])] {
+            let rest = segment[segment.index(after: dash)...]
+            return ("\(region.flag) \(rest)", "\(region.name) \(rest)")
+        }
+        return (segment, segment)
+    }
+
     static func wordCount(_ count: Int) -> String {
         "\(count.formatted()) \(count == 1 ? "word" : "words")"
     }
