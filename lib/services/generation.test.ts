@@ -53,6 +53,11 @@ describe("startGeneration", () => {
 
   test("rejects a malformed call before reserving anything", async () => {
     const cases: Array<[Record<string, unknown>, string]> = [
+      [{ storyId: STORY, modelId: "" }, "Choose a model."],
+      [
+        { storyId: STORY, profileId: "profile", modelId: "model" },
+        "Choose a profile or a model, not both.",
+      ],
       [{ storyId: "not an id" }, "Invalid story id."],
       [
         { storyId: STORY, kind: "shout", userText: "x" },

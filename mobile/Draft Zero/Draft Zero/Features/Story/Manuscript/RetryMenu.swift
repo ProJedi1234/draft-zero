@@ -1,32 +1,31 @@
 import SwiftUI
 
-/// Retry, with a menu of profiles to retry under instead. Trying another
-/// model on one passage changes nothing about what the story follows.
+/// The alternate-model action opens a searchable catalog rather than a long menu.
 struct RetryMenu: View {
     let workspace: StoryWorkspace
     let disabled: Bool
 
+    @State private var showsModels = false
+
     var body: some View {
         Menu {
-            Section("Retry With Profile") {
-                ForEach(workspace.profiles) { profile in
-                    Button {
-                        workspace.generation.retryLast(profileId: profile.id)
-                    } label: {
-                        if profile.id == workspace.story?.profileId {
-                            Label(profile.name, systemImage: "checkmark")
-                        } else {
-                            Text(profile.name)
-                        }
-                    }
-                }
+            Button("Retry", systemImage: "arrow.clockwise", action: retry)
+
+            Button("Retry with Other Model", systemImage: "sparkles") {
+                showsModels = true
             }
         } label: {
             Label("Retry", systemImage: "arrow.clockwise")
-        } primaryAction: {
-            workspace.generation.retryLast()
         }
+        .menuOrder(.fixed)
         .disabled(disabled || !workspace.generation.canRetry)
-        .accessibilityHint("Writes another take of the last passage. Hold for other profiles.")
+        .accessibilityHint("Retry using the story's settings, a preset, or another model. This take only.")
+        .sheet(isPresented: $showsModels) {
+            RetryModelSheet(workspace: workspace)
+        }
+    }
+
+    private func retry() {
+        workspace.generation.retryLast()
     }
 }

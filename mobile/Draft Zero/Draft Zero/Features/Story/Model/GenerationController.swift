@@ -143,14 +143,15 @@ final class GenerationController {
         start(requestKind: .continue)
     }
 
-    /// Regenerates the last passage as a new take of its slot, optionally under another profile.
-    func retryLast(profileId: String? = nil) {
-        guard let last = workspace?.story?.entries.last, last.isGenerated else { return }
+    /// Regenerates the last passage as a new take, optionally with another profile or model.
+    func retryLast(profileId: String? = nil, modelId: String? = nil) {
+        guard canRetry, let last = workspace?.story?.entries.last else { return }
         start(
             requestKind: .retry,
             variantGroupId: last.variantGroupId,
             removing: [last.id],
-            profileId: profileId
+            profileId: profileId,
+            modelId: modelId
         )
     }
 
@@ -235,6 +236,7 @@ final class GenerationController {
         variantGroupId: String? = nil,
         removing: [String] = [],
         profileId: String? = nil,
+        modelId: String? = nil,
         restoreOnFailure: String? = nil
     ) -> Bool {
         guard !active else { return false }
@@ -268,7 +270,8 @@ final class GenerationController {
                     variantGroupId: variantGroupId,
                     removingEntryIds: removing,
                     requestKind: requestKind,
-                    profileId: profileId
+                    profileId: profileId,
+                    modelId: modelId
                 )
                 unownedText = nil
                 runId = started.runId

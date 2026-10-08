@@ -17,7 +17,10 @@ const { isRunActive, releaseRun, reserveRun } =
 const { NO_ORIGIN } = await import("@/lib/services/context")
 const { startGeneration, stopGeneration } =
   await import("@/lib/services/generation")
-const { createStory } = await import("@/lib/services/stories")
+const { createStory, updateGenerationSettings } =
+  await import("@/lib/services/stories")
+const { setStoryProfile } = await import("@/lib/services/profiles")
+const { getStory } = await import("@/lib/db/queries")
 
 let storyId: string
 
@@ -58,6 +61,80 @@ describe("startGeneration", () => {
     releaseRun(storyId)
   })
 
+  test("an unknown model releases the reservation without changing the story", async () => {
+    const before = await getStory(storyId)
+    const result = await startGeneration(
+      { storyId, modelId: "missing/model" },
+      NO_ORIGIN
+    )
+    expect(result).toEqual({
+      ok: false,
+      code: "not_found",
+      error: "That model is no longer available.",
+    })
+    expect(isRunActive(storyId)).toBe(false)
+    expect(await getStory(storyId)).toEqual(before)
+  })
+
+  test("a model override cannot bypass the story's retention policy", async () => {
+    await setStoryProfile({ storyId, profileId: null }, NO_ORIGIN)
+    await updateGenerationSettings(
+      { id: storyId, patch: { zdr: true } },
+      NO_ORIGIN
+    )
+    const result = await startGeneration(
+      { storyId, modelId: "~moonshotai/kimi-latest" },
+      NO_ORIGIN
+    )
+    expect(result).toEqual({
+      ok: false,
+      code: "invalid",
+      error: "That model has no zero-retention provider.",
+    })
+    expect(isRunActive(storyId)).toBe(false)
+  })
+
+  test("a custom-model retry keeps the old take and the story's settings", async () => {
+    await setStoryProfile({ storyId, profileId: null }, NO_ORIGIN)
+    await updateGenerationSettings(
+      { id: storyId, patch: { thinking: "medium", temperature: 0.7 } },
+      NO_ORIGIN
+    )
+    const first = await startGeneration(
+      { storyId, requestKind: "continue" },
+      NO_ORIGIN
+    )
+    if (!first.ok) throw new Error(first.error)
+    await waitForRun()
+    const before = (await getStory(storyId))!
+    const oldTake = before.entries.at(-1)!
+    const retried = await startGeneration(
+      {
+        storyId,
+        requestKind: "retry",
+        modelId: "~moonshotai/kimi-latest",
+        variantGroupId: oldTake.variantGroupId,
+        removingEntryIds: [oldTake.id],
+      },
+      NO_ORIGIN
+    )
+    if (!retried.ok) throw new Error(retried.error)
+    await waitForRun()
+    const after = (await getStory(storyId))!
+    const take = after.entries.at(-1)!
+    expect(take.id).not.toBe(oldTake.id)
+    expect(take.variantGroupId).toBe(oldTake.variantGroupId)
+    expect(take.variantCount).toBe(2)
+    expect(take.generation).toMatchObject({
+      modelId: "~moonshotai/kimi-latest",
+      thinking: "off",
+      temperature: 0.7,
+      profileName: null,
+    })
+    expect(after.settings).toEqual(before.settings)
+    expect(after.profileId).toBe(before.profileId)
+  }, 15000)
+
   test("a turn appends the user's entry and launches a run", async () => {
     const result = await startGeneration(
       { storyId, kind: "do", userText: "open the door" },
@@ -74,3 +151,10 @@ describe("startGeneration", () => {
     expect(isRunActive(storyId)).toBe(false)
   })
 })
+
+async function waitForRun() {
+  for (let i = 0; i < 500 && isRunActive(storyId); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  expect(isRunActive(storyId)).toBe(false)
+}
