@@ -5,7 +5,6 @@ import SwiftUI
 struct LibraryList: View {
     let listing: LibraryListing
 
-    @Environment(AppModel.self) private var app
     @Environment(LibraryStore.self) private var library
 
     var body: some View {
@@ -24,7 +23,7 @@ struct LibraryList: View {
             }
             if !listing.isSearching, !library.railImages.isEmpty {
                 Section {
-                    PictureRail(images: library.railImages, onOpenStory: openStory)
+                    PictureRail(images: library.railImages)
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                 } header: {
@@ -51,9 +50,5 @@ struct LibraryList: View {
             }
         }
         .listStyle(.insetGrouped)
-    }
-
-    private func openStory(_ storyId: String) {
-        app.libraryPath.append(.story(storyId))
     }
 }
