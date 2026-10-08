@@ -1,0 +1,4 @@
+{"type":"hello"}
+{"type":"draft","storyId":"7cc03b17-7698-4d8c-bd11-29d4d6881123","text":"I trim the wick","mode":"do","imagePrompt":null,"imageAssisted":true,"imageStyle":null,"imageExcludedLoreIds":[],"version":"2026-09-30T00:32:16.812Z","origin":"fixture"}
+{"type":"entity","op":"upsert","entity":"story","id":"7cc03b17-7698-4d8c-bd11-29d4d6881123","storyId":"7cc03b17-7698-4d8c-bd11-29d4d6881123","version":"2026-09-30T00:32:17.916Z","origin":null,"data":{"id":"7cc03b17-7698-4d8c-bd11-29d4d6881123","title":"The Lantern Keeper","description":"A keeper tends the last lantern on a drowned coast.","genre":"Fantasy","createdAt":"2026-09-30T00:29:33.840Z","updatedAt":"2026-09-30T00:32:17.916Z","wordCount":249,"tintHue":200,"tintStrength":0.85,"tintAuto":true}}
+{"type":"change","storyId":"7cc03b17-7698-4d8c-bd11-29d4d6881123","covered":true}
