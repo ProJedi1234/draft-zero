@@ -84,7 +84,10 @@ export function MissingPictures({ images }: { images: GalleryImage[] }) {
       >
         <TriangleAlert />
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 gap-3 p-0">
+      <PopoverContent
+        align="end"
+        className="w-80 max-w-(--available-width) gap-3 p-0"
+      >
         <p className="px-4 pt-4 text-sm font-medium">{label}</p>
         <ul className="max-h-80 overflow-y-auto px-2">
           {images.map((image) => (
