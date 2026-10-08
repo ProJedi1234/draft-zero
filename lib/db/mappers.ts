@@ -361,6 +361,35 @@ export function markMissingImages(
 }
 
 /**
+ * The first `limit` slots whose active take still has bytes.
+ *
+ * Checks a page of `limit` slots at a time and stops once enough are present,
+ * so the library rail costs a few blob checks instead of one per take in the
+ * library.
+ *
+ * @param findMissing The ids among `takes` whose bytes are gone.
+ */
+export async function firstPresentImages(
+  images: GalleryImage[],
+  limit: number,
+  findMissing: (takes: ImageTake[]) => Promise<ReadonlySet<string>>
+): Promise<GalleryImage[]> {
+  const present: GalleryImage[] = []
+  for (
+    let start = 0;
+    start < images.length && present.length < limit;
+    start += limit
+  ) {
+    const page = images.slice(start, start + limit)
+    const missing = await findMissing(page.flatMap((image) => image.takes))
+    for (const image of markMissingImages(page, missing)) {
+      if (!image.missing) present.push(image)
+    }
+  }
+  return present.slice(0, limit)
+}
+
+/**
  * How much of a passage's tail the library reads. Long enough for the front
  * door's three-line block at a phone's width, and short enough that asking for
  * every story's costs less than one manuscript window.

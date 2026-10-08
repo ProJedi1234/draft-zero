@@ -8,6 +8,7 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  firstPresentImages,
   markMissingImages,
   toGalleryImages,
   type GalleryImageRow,
@@ -136,5 +137,50 @@ describe("markMissingImages", () => {
     expect(image.missing).toBeUndefined()
     expect(image.takes.map((t) => t.id)).toEqual(["img-2", "img-3"])
     expect(image.imageIndex).toBe(0)
+  })
+})
+
+describe("firstPresentImages", () => {
+  // Five single-take slots, newest first: s5 … s1.
+  const slots = () =>
+    toGalleryImages(
+      [1, 2, 3, 4, 5].map((n) =>
+        row({
+          id: `img-${n}`,
+          imageGroupId: `s${n}`,
+          createdAt: `2026-08-2${n}T10:00:00Z`,
+        })
+      )
+    )
+
+  function checker(missing: string[]) {
+    const pages: string[][] = []
+    const find = async (takes: { id: string }[]) => {
+      pages.push(takes.map((t) => t.id))
+      return new Set(
+        takes.map((t) => t.id).filter((id) => missing.includes(id))
+      )
+    }
+    return { pages, find }
+  }
+
+  test("stops checking once the first page fills the limit", async () => {
+    const { pages, find } = checker([])
+    const images = await firstPresentImages(slots(), 2, find)
+    expect(images.map((i) => i.id)).toEqual(["img-5", "img-4"])
+    expect(pages).toEqual([["img-5", "img-4"]])
+  })
+
+  test("pages past missing slots until the limit is met", async () => {
+    const { pages, find } = checker(["img-5", "img-3"])
+    const images = await firstPresentImages(slots(), 2, find)
+    expect(images.map((i) => i.id)).toEqual(["img-4", "img-2"])
+    expect(pages).toHaveLength(2)
+  })
+
+  test("returns what exists when the library runs out", async () => {
+    const { find } = checker(["img-1", "img-2", "img-3", "img-4"])
+    const images = await firstPresentImages(slots(), 3, find)
+    expect(images.map((i) => i.id)).toEqual(["img-5"])
   })
 })
