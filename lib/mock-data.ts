@@ -322,6 +322,26 @@ const MOCK_ENDPOINT_POOL: ReadonlyArray<{
     priceFactor: 0.95,
     zdr: true,
   },
+  // One provider under two regional tags, which the real list does for Vertex,
+  // Bedrock and Azure: the rows differ only by the tag's suffix.
+  {
+    tag: "google-vertex/global",
+    providerName: "Google",
+    throughput: 161,
+    uptime: 0.9999,
+    quantization: null,
+    priceFactor: 1,
+    zdr: true,
+  },
+  {
+    tag: "google-vertex/europe",
+    providerName: "Google",
+    throughput: 90,
+    uptime: 0.9982,
+    quantization: null,
+    priceFactor: 1.1,
+    zdr: true,
+  },
   {
     tag: "deepinfra/turbo",
     providerName: "DeepInfra",

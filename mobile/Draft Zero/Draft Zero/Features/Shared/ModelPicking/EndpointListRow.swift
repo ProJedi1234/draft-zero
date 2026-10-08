@@ -14,6 +14,12 @@ struct EndpointListRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(endpoint.providerName)
+                        if let variant = Format.endpointVariant(endpoint.tag, quantization: endpoint.quantization) {
+                            Text(variant.text)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel(variant.label)
+                        }
                         if let quantization = endpoint.quantization {
                             Text(quantization)
                                 .font(.caption.monospaced())
