@@ -26,16 +26,22 @@ function subscribe(onChange: () => void) {
   }
 }
 
+// Reading storage throws where the browser blocks it, such as Safari with site
+// data blocked. Nothing dismissed is the safe answer there.
+function readStored(): string {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) ?? "[]"
+  } catch {
+    return "[]"
+  }
+}
+
 /**
  * The ids the reader has already dismissed, or null on the server. Null hides
  * the alert, so it does not flash on during hydration.
  */
 function useDismissedMissing(): [Set<string> | null, (ids: string[]) => void] {
-  const stored = React.useSyncExternalStore(
-    subscribe,
-    () => window.localStorage.getItem(STORAGE_KEY) ?? "[]",
-    () => null
-  )
+  const stored = React.useSyncExternalStore(subscribe, readStored, () => null)
 
   const dismissed = React.useMemo(() => {
     if (stored === null) return null
@@ -48,7 +54,11 @@ function useDismissedMissing(): [Set<string> | null, (ids: string[]) => void] {
   }, [stored])
 
   const dismiss = React.useCallback((ids: string[]) => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ids))
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ids))
+    } catch {
+      // Blocked or full storage: the popover still closes, but the alert stays.
+    }
     listeners.forEach((notify) => notify())
   }, [])
 
