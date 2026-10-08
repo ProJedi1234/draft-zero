@@ -9,7 +9,7 @@
 // back would write pictures into a container layer that the next recreate
 // deletes, and nobody would notice until they were gone.
 
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { access, mkdir, readFile, writeFile } from "node:fs/promises"
 
 import { AwsClient } from "aws4fetch"
 
@@ -140,4 +140,63 @@ export async function readBlob(
     throw new Error(`S3 GET ${key} failed: ${res.status} ${res.statusText}`)
   }
   return Buffer.from(await res.arrayBuffer())
+}
+
+/**
+ * Whether an image's bytes exist, without reading them.
+ *
+ * @throws Error on any S3 failure other than a missing object, for the same
+ *   reason readBlob does: unreachable is not the same answer as gone.
+ */
+export async function blobExists(
+  backend: ImageBackend,
+  id: string,
+  mediaType: string
+): Promise<boolean> {
+  if (backend.kind === "disk") {
+    try {
+      await access(imageFilePath(id, mediaType))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const key = imageObjectKey(id, mediaType)
+  const res = await s3Client(backend).fetch(s3ObjectUrl(backend, key), {
+    method: "HEAD",
+  })
+  if (res.status === 404) return false
+  if (!res.ok) {
+    throw new Error(`S3 HEAD ${key} failed: ${res.status} ${res.statusText}`)
+  }
+  return true
+}
+
+/** How many existence checks findMissingBlobs runs at once. */
+const EXISTS_BATCH = 16
+
+/**
+ * The ids among `images` whose bytes are gone.
+ *
+ * A check that cannot get an answer counts as present, so a bucket outage
+ * leaves the gallery showing broken tiles rather than filing every picture as
+ * missing. Batched to keep a large library from opening hundreds of HEADs.
+ */
+export async function findMissingBlobs(
+  backend: ImageBackend,
+  images: { id: string; mediaType: string }[]
+): Promise<Set<string>> {
+  const missing = new Set<string>()
+  for (let i = 0; i < images.length; i += EXISTS_BATCH) {
+    await Promise.all(
+      images.slice(i, i + EXISTS_BATCH).map(async ({ id, mediaType }) => {
+        const exists = await blobExists(backend, id, mediaType).catch(
+          () => true
+        )
+        if (!exists) missing.add(id)
+      })
+    )
+  }
+  return missing
 }

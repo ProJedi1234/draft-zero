@@ -23,6 +23,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { GalleryLightbox } from "@/components/gallery/gallery-lightbox"
+import { MissingPictures } from "@/components/gallery/missing-pictures"
 
 /** Space between tiles, and around the wall's edge, in CSS pixels. */
 const GAP = 4
@@ -46,7 +47,16 @@ interface StorySection {
  * Sections come out in first-appearance order, which over a newest-first list
  * means "stories with the newest pictures first" without a second sort key.
  */
-export function PhotoWall({ images }: { images: GalleryImage[] }) {
+export function PhotoWall({ images: all }: { images: GalleryImage[] }) {
+  // A picture whose file is gone stays off the wall, out of the count, and out
+  // of the lightbox's paging; the header alert lists it instead.
+  const [images, missing] = React.useMemo(() => {
+    const visible: GalleryImage[] = []
+    const gone: GalleryImage[] = []
+    for (const image of all) (image.missing ? gone : visible).push(image)
+    return [visible, gone]
+  }, [all])
+
   const [grouped, setGrouped] = React.useState(false)
   const [viewerIndex, setViewerIndex] = React.useState<number | null>(null)
 
@@ -195,6 +205,7 @@ export function PhotoWall({ images }: { images: GalleryImage[] }) {
         <h1 className="text-sm font-medium">Gallery</h1>
         <div className="flex-1" />
         <OfflineChip />
+        <MissingPictures images={missing} />
         {images.length > 0 && (
           <span className="text-xs text-muted-foreground tabular-nums">
             {images.length} {images.length === 1 ? "image" : "images"}

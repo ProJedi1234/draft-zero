@@ -1086,6 +1086,8 @@ export interface GalleryImage {
   imageIndex: number
   /** Every take of the slot, oldest first. Length 1 for a picture never retried. */
   takes: ImageTake[]
+  /** The active take's bytes are gone. Absent when they exist. */
+  missing?: boolean
 }
 
 /**

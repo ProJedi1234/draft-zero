@@ -126,3 +126,40 @@ struct RefreshCoalescerTests {
         #expect(reloads == 2)
     }
 }
+
+struct MissingPicturesTests {
+    private func image(_ id: String) -> GalleryImage {
+        let take = ImageTake(id: id, prompt: "prompt", aspectRatio: .landscape, mediaType: "image/png", modelId: "m/x", seed: 1, createdAt: "2026-09-01T00:00:00.000Z")
+        return GalleryImage(
+            id: id, prompt: "prompt", aspectRatio: .landscape, mediaType: "image/png", modelId: "m/x",
+            createdAt: "2026-09-01T00:00:00.000Z", storyId: "A", storyTitle: "Story A",
+            tintHue: nil, tintStrength: 0, imageGroupId: id, imageIndex: 0, takes: [take], missing: true
+        )
+    }
+
+    @Test func missingFlagDecodes() throws {
+        let take = #"{"id":"t","prompt":"p","aspectRatio":"16:9","mediaType":"image/png","modelId":"m/x","seed":1,"createdAt":"2026-09-01T00:00:00.000Z"}"#
+        let json = #"{"id":"t","prompt":"p","aspectRatio":"16:9","mediaType":"image/png","modelId":"m/x","createdAt":"2026-09-01T00:00:00.000Z","storyId":"A","storyTitle":"A","tintHue":null,"tintStrength":0,"imageGroupId":"t","imageIndex":0,"takes":[\#(take)],"missing":true}"#
+        let image = try JSONDecoder().decode(GalleryImage.self, from: Data(json.utf8))
+        #expect(image.missing == true)
+    }
+
+    @Test func nothingDismissedAlerts() {
+        #expect(MissingPicturesDismissal.shouldAlert(missing: [image("a")], dismissed: ""))
+    }
+
+    @Test func noMissingPicturesNeverAlerts() {
+        #expect(!MissingPicturesDismissal.shouldAlert(missing: [], dismissed: ""))
+    }
+
+    @Test func dismissingSilencesTheSameSet() {
+        let stored = MissingPicturesDismissal.encode(["a", "b"])
+        #expect(!MissingPicturesDismissal.shouldAlert(missing: [image("a"), image("b")], dismissed: stored))
+        #expect(!MissingPicturesDismissal.shouldAlert(missing: [image("a")], dismissed: stored))
+    }
+
+    @Test func aNewlyMissingPictureAlertsAgain() {
+        let stored = MissingPicturesDismissal.encode(["a"])
+        #expect(MissingPicturesDismissal.shouldAlert(missing: [image("a"), image("c")], dismissed: stored))
+    }
+}

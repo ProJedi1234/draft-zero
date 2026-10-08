@@ -11,6 +11,8 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import { imageFilePath, imageObjectKey } from "@/lib/images/blob-path"
 import {
+  blobExists,
+  findMissingBlobs,
   ImageStorageConfigError,
   readBlob,
   resolveImageBackend,
@@ -86,6 +88,14 @@ describe("object key layout", () => {
   })
 })
 
+describe("disk existence check", () => {
+  test("a file that was never written checks as absent", async () => {
+    expect(
+      await blobExists({ kind: "disk" }, crypto.randomUUID(), "image/png")
+    ).toBe(false)
+  })
+})
+
 describe("S3 read and write", () => {
   const realFetch = globalThis.fetch
   const backend: ImageBackend = resolveImageBackend(FULL_ENV)
@@ -151,5 +161,38 @@ describe("S3 read and write", () => {
     await expect(readBlob(backend, ID, "image/png")).rejects.toThrow("500")
     // One attempt plus the two bounded retries, not aws4fetch's default ten.
     expect(requests).toHaveLength(3)
+  })
+
+  test("an existence check HEADs the object", async () => {
+    stubFetch(() => new Response(null, { status: 200 }))
+    expect(await blobExists(backend, ID, "image/png")).toBe(true)
+    expect(requests[0].method).toBe("HEAD")
+    expect(requests[0].url).toBe(
+      `https://s3.example.com/draft-zero-images/${ID}.png`
+    )
+  })
+
+  test("a missing object checks as absent", async () => {
+    stubFetch(() => new Response(null, { status: 404 }))
+    expect(await blobExists(backend, ID, "image/png")).toBe(false)
+  })
+
+  test("a failed existence check throws", async () => {
+    stubFetch(() => new Response(null, { status: 500 }))
+    await expect(blobExists(backend, ID, "image/png")).rejects.toThrow("500")
+  })
+
+  test("the batch check reports only what is gone, never what is unreachable", async () => {
+    stubFetch((req) => {
+      if (req.url.includes("gone")) return new Response(null, { status: 404 })
+      if (req.url.includes("down")) return new Response(null, { status: 503 })
+      return new Response(null, { status: 200 })
+    })
+    const missing = await findMissingBlobs(backend, [
+      { id: "here", mediaType: "image/png" },
+      { id: "gone", mediaType: "image/png" },
+      { id: "down", mediaType: "image/png" },
+    ])
+    expect([...missing]).toEqual(["gone"])
   })
 })

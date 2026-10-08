@@ -9,7 +9,12 @@
 
 import { describe, expect, test } from "bun:test"
 
-import { readBlob, writeBlob, type ImageBackend } from "@/lib/images/blob-store"
+import {
+  blobExists,
+  readBlob,
+  writeBlob,
+  type ImageBackend,
+} from "@/lib/images/blob-store"
 
 const endpoint = process.env.DRAFT_ZERO_TEST_GARAGE_ENDPOINT
 
@@ -39,6 +44,15 @@ describe.skipIf(!endpoint)("S3 backend against Garage", () => {
 
   test("a missing picture is null", async () => {
     expect(await readBlob(GARAGE, crypto.randomUUID(), "image/png")).toBeNull()
+  })
+
+  test("a HEAD tells a written picture from a missing one", async () => {
+    const id = crypto.randomUUID()
+    await writeBlob(GARAGE, id, "image/png", new Uint8Array([1]))
+    expect(await blobExists(GARAGE, id, "image/png")).toBe(true)
+    expect(await blobExists(GARAGE, crypto.randomUUID(), "image/png")).toBe(
+      false
+    )
   })
 
   test("a rejected signature throws instead of reading as missing", async () => {
