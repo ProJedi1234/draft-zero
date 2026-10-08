@@ -5,6 +5,9 @@ import SwiftUI
 struct DevelopedPromptLane: View {
     @Bindable var composer: ComposerModel
     let deriving: Bool
+    let returnSends: Bool
+    let lineBreakRequest: Int
+    let onFocus: () -> Void
     let send: () -> Void
 
     var body: some View {
@@ -14,18 +17,17 @@ struct DevelopedPromptLane: View {
                 .textCase(.uppercase)
                 .foregroundStyle(composer.laneStale ? .orange : .secondary)
                 .accessibilityAddTraits(.updatesFrequently)
-            TextField("Developed prompt", text: $composer.imagePromptText, axis: .vertical)
-                .font(Theme.machineFont)
-                .foregroundStyle(.secondary)
-                .lineLimit(1...6)
-                .disabled(deriving)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .onKeyPress(.return, phases: .down) { press in
-                    if press.modifiers.contains(.shift) { return .ignored }
-                    send()
-                    return .handled
-                }
+            ComposerTextInput(
+                text: $composer.imagePromptText,
+                placeholder: "Developed prompt",
+                accessibilityLabel: "Developed prompt",
+                machineText: true,
+                disabled: deriving,
+                returnSends: returnSends,
+                lineBreakRequest: lineBreakRequest,
+                onFocus: onFocus,
+                send: send
+            )
         }
         .padding(.top, 8)
         .overlay(alignment: .top) { Divider() }

@@ -4,6 +4,8 @@ import SwiftUI
 /// (or re-develop for a picture), and the one send slot.
 struct ComposerActionBar: View {
     let workspace: StoryWorkspace
+    let insertLineBreak: () -> Void
+    @AppStorage("composerReturnSends") private var returnSends = true
 
     var body: some View {
         let generation = workspace.generation
@@ -12,6 +14,16 @@ struct ComposerActionBar: View {
 
         HStack(spacing: 2) {
             ComposerModePicker(composer: composer)
+
+            Menu("Composer keyboard options", systemImage: "keyboard") {
+                Button("Insert line break", systemImage: "return", action: insertLineBreak)
+                    .disabled(isImage && workspace.derivation.deriving)
+                Picker("Mobile Return key", selection: $returnSends) {
+                    Text("Send").tag(true)
+                    Text("Insert new line").tag(false)
+                }
+                Text("Saved on this device")
+            }
 
             Spacer(minLength: 4)
 
