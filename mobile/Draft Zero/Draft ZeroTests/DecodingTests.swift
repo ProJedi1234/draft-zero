@@ -28,7 +28,10 @@ struct DecodingTests {
 
     @Test func galleryAndLibrary() throws {
         struct Gallery: Decodable { var images: [GalleryImage] }
-        #expect(try !FixtureLoader.decode(Gallery.self, from: "gallery.json").images.isEmpty)
+        let gallery = try FixtureLoader.decode(Gallery.self, from: "gallery.json")
+        #expect(!gallery.images.isEmpty)
+        // The server omits `missing` for a picture whose file exists.
+        #expect(gallery.images.allSatisfy { $0.missing == nil })
         let library = try FixtureLoader.decode(LibraryPayload.self, from: "library.json")
         #expect(!library.excerpts.isEmpty)
     }

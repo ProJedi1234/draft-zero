@@ -14,7 +14,12 @@ struct GalleryScreen: View {
             .navigationTitle("Gallery")
             .navigationSubtitle(subtitle)
             .toolbar {
-                if !model.images.isEmpty {
+                if !model.missingImages.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        MissingPicturesButton(images: model.missingImages, onOpenStory: app.openStory)
+                    }
+                }
+                if !model.visible.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
                         GalleryOrderMenu(order: $order)
                     }
@@ -37,9 +42,9 @@ struct GalleryScreen: View {
 
     @ViewBuilder
     private var content: some View {
-        if let api = app.api, !model.images.isEmpty {
+        if let api = app.api, !model.visible.isEmpty {
             GalleryWall(
-                images: model.images,
+                images: model.visible,
                 order: order,
                 imageURL: api.imageURL,
                 namespace: zoomNamespace,
@@ -68,7 +73,7 @@ struct GalleryScreen: View {
     }
 
     private var subtitle: Text {
-        model.images.isEmpty ? Text("") : Text("^[\(model.images.count) picture](inflect: true)")
+        model.visible.isEmpty ? Text("") : Text("^[\(model.visible.count) picture](inflect: true)")
     }
 
     private func openStory(from slot: LightboxSlot) {
@@ -79,7 +84,7 @@ struct GalleryScreen: View {
     private func lightbox(startingAt slotID: String) -> some View {
         if let api = app.api {
             ImageLightbox(
-                slots: GalleryGrouping.displayed(model.images, by: order).map(\.lightboxSlot),
+                slots: GalleryGrouping.displayed(model.visible, by: order).map(\.lightboxSlot),
                 startingAt: slotID,
                 imageURL: api.imageURL,
                 zoomNamespace: zoomNamespace,

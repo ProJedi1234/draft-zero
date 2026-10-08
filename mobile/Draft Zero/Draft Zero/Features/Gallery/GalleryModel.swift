@@ -9,6 +9,12 @@ final class GalleryModel {
     private(set) var isLoaded = false
     private(set) var loadError: APIError?
 
+    /// The pictures the wall shows: every one whose file still exists.
+    var visible: [GalleryImage] { images.filter { $0.missing != true } }
+
+    /// Pictures whose file is gone, which the toolbar alert lists instead.
+    var missingImages: [GalleryImage] { images.filter { $0.missing == true } }
+
     @ObservationIgnored private var api: APIClient?
     @ObservationIgnored private var subscriptions: [SyncSubscription] = []
     @ObservationIgnored private lazy var coalescer = RefreshCoalescer { [weak self] in
