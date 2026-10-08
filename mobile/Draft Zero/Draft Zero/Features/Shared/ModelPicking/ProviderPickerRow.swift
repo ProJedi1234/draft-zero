@@ -29,7 +29,8 @@ struct ProviderPickerRow: View {
                 Button(action: present) {
                     PickerRowLabel(
                         title: "Provider",
-                        value: routed.map(Self.label) ?? "Auto",
+                        value: routed.map { Self.label($0).text } ?? "Auto",
+                        spokenValue: routed.map { Self.label($0).spoken },
                         detail: pricing,
                         isLoading: !loaded
                     )
@@ -56,12 +57,12 @@ struct ProviderPickerRow: View {
         return SettingsSummary.pricing(prices, contextLength: window, maxCompletionTokens: model?.maxCompletionTokens)
     }
 
-    /// "Google 🇪🇺", so two pins on one provider read differently.
-    nonisolated private static func label(_ endpoint: ModelEndpoint) -> String {
+    /// "Google 🇪🇺", spoken "Google, Europe", so two pins on one provider read differently.
+    nonisolated private static func label(_ endpoint: ModelEndpoint) -> (text: String, spoken: String) {
         guard let variant = Format.endpointVariant(endpoint.tag, quantization: endpoint.quantization) else {
-            return endpoint.providerName
+            return (endpoint.providerName, endpoint.providerName)
         }
-        return "\(endpoint.providerName) \(variant.text)"
+        return ("\(endpoint.providerName) \(variant.text)", "\(endpoint.providerName), \(variant.label)")
     }
 
     private func present() {

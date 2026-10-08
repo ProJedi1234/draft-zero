@@ -6,6 +6,8 @@ import SwiftUI
 struct PickerRowLabel: View {
     let title: String
     let value: String
+    /// What VoiceOver reads for `value` when the text alone would not say it, such as a flag.
+    var spokenValue: String?
     var detail: String?
     var isLoading = false
     var showsChevron = true
@@ -32,6 +34,7 @@ struct PickerRowLabel: View {
                     Text(value)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(dynamicTypeSize.isAccessibilitySize ? .leading : .trailing)
+                        .accessibilityLabel(spokenValue ?? value)
                     if showsChevron {
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.footnote)
