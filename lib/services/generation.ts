@@ -139,9 +139,27 @@ export const startGeneration: Service<
     // base for every request except one made under a picked profile, which is
     // resolved here against the same global defaults getStory would have used.
     // Either way the story's own columns are only ever READ.
-    const effective = picked
+    let effective = picked
       ? resolveProfileSettings(picked.settings, await getGenerationBaseline())
       : story.settings
+
+    if (opts.modelId !== undefined) {
+      const model = models.find((model) => model.id === opts.modelId)
+      if (!model) return fail("not_found", "That model is no longer available.")
+      if (effective.zdr && !model.zdr) {
+        return fail("invalid", "That model has no zero-retention provider.")
+      }
+      effective = {
+        ...effective,
+        modelId: model.id,
+        providerTag: null,
+        thinking:
+          effective.thinking !== "off" &&
+          model.reasoning?.efforts.includes(effective.thinking)
+            ? effective.thinking
+            : "off",
+      }
+    }
 
     // Only fetched when the request pins a provider, and cached five minutes
     // per model when it does — see endpoints.ts. Against the EFFECTIVE model:
@@ -177,9 +195,11 @@ export const startGeneration: Service<
     // came from even when nobody ever picks one; null is a Custom story, whose
     // settings have no name to give.
     const profileName =
-      picked?.name ??
-      profiles.find((profile) => profile.id === story.profileId)?.name ??
-      null
+      opts.modelId !== undefined
+        ? null
+        : (picked?.name ??
+          profiles.find((profile) => profile.id === story.profileId)?.name ??
+          null)
 
     // A Retry is an ALTERNATIVE to a passage, not a continuation of it, so the
     // slot being retried is dropped before the context is composed. Leave it in

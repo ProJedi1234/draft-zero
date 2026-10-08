@@ -29,7 +29,8 @@ extension APIClient {
         variantGroupId: String? = nil,
         removingEntryIds: [String] = [],
         requestKind: GenerationRequestKind,
-        profileId: String? = nil
+        profileId: String? = nil,
+        modelId: String? = nil
     ) async throws -> StartedRun {
         var body: JSONObject = [
             "turnId": .string(turnId),
@@ -40,6 +41,7 @@ extension APIClient {
         if let variantGroupId { body["variantGroupId"] = .string(variantGroupId) }
         if !removingEntryIds.isEmpty { body["removingEntryIds"] = .strings(removingEntryIds) }
         if let profileId { body["profileId"] = .string(profileId) }
+        if let modelId { body["modelId"] = .string(modelId) }
         return try await service(.post, "api/stories/\(storyId)/generation", body: body)
     }
 
