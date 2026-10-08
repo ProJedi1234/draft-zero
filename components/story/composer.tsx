@@ -31,6 +31,12 @@ import type { GenerationStatus } from "@/hooks/use-generation"
 import { cn } from "@/lib/utils"
 import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import { useIsOffline } from "@/hooks/use-connection"
+import {
+  softwareKeyboardOpen,
+  useMobileReturn,
+  useSoftwareReturn,
+} from "@/hooks/use-composer-return"
+import { ComposerKeyboardMenu } from "@/components/story/composer-keyboard-menu"
 import { OfflineComposerAction } from "@/components/offline/offline-composer-action"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -258,6 +264,9 @@ export function Composer({
   onStop: () => void
 }) {
   const isOffline = useIsOffline()
+  const [mobileReturn, setMobileReturn] = useMobileReturn()
+  const laneRef = React.useRef<HTMLTextAreaElement>(null)
+  const lastInput = React.useRef<"brief" | "lane">("brief")
 
   const active = MODES.find((m) => m.value === mode) ?? MODES[0]
   const isImage = mode === "image"
@@ -479,6 +488,18 @@ export function Composer({
     value,
   ])
 
+  const insertBriefLineBreak = useSoftwareReturn(
+    textareaRef,
+    mobileReturn,
+    handleSend
+  )
+  const insertLaneLineBreak = useSoftwareReturn(
+    laneRef,
+    mobileReturn,
+    handleSend,
+    isImage && laneVisible
+  )
+
   // Autofocus only where a hardware keyboard is likely: on touch devices it
   // would pop the software keyboard over the prose on every story open.
   React.useEffect(() => {
@@ -517,6 +538,7 @@ export function Composer({
   // field of machine text and the markdown shortcuts have no business in it.
   const onLaneKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== "Enter") return
+    if (softwareKeyboardOpen()) return
     if (event.nativeEvent.isComposing) return
     if (event.shiftKey || event.altKey) return
     event.preventDefault()
@@ -526,6 +548,7 @@ export function Composer({
   const onTextareaKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>
   ) => {
+    if (event.key === "Enter" && softwareKeyboardOpen()) return
     if (markdownShortcuts(event)) return
 
     if (event.key === "Enter") {
@@ -601,12 +624,27 @@ export function Composer({
       className="pointer-events-none absolute inset-x-0 bottom-0 z-10"
     >
       <div className="mx-auto w-full max-w-2xl px-6 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <div className="pointer-events-auto border bg-surface-glass shadow-lg backdrop-blur-md transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
+        <div className="pointer-events-auto relative border bg-surface-glass shadow-lg backdrop-blur-md transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
+          <div className="absolute top-1 right-1">
+            <ComposerKeyboardMenu
+              preference={mobileReturn}
+              onPreferenceChange={setMobileReturn}
+              disabled={isImage && deriving}
+              insertLineBreak={() => {
+                if (lastInput.current === "lane" && isImage && laneVisible)
+                  insertLaneLineBreak()
+                else insertBriefLineBreak()
+              }}
+            />
+          </div>
           <Textarea
             ref={textareaRef}
             value={value}
             onChange={(event) => onValueChange(event.target.value)}
             onKeyDown={onTextareaKeyDown}
+            onFocus={() => {
+              lastInput.current = "brief"
+            }}
             // Locked while the develop call streams, like the lane below it:
             // the call is answering THIS brief, and an edit mid-stream would
             // land the answer already stale — the writer watches one thing
@@ -636,11 +674,10 @@ export function Composer({
             autoComplete="off"
             autoCorrect="on"
             autoCapitalize="sentences"
-            // Software keyboards label their return key from this, so the
-            // touch case advertises what Enter now does instead of hiding it.
-            enterKeyHint="send"
+            // Match the software keyboard label to this device's preference.
+            enterKeyHint={mobileReturn === "send" ? "send" : "enter"}
             spellCheck
-            className="max-h-52 min-h-14 resize-none overflow-y-auto border-0 bg-transparent px-3 font-serif text-base leading-7 shadow-none focus-visible:ring-0"
+            className="max-h-52 min-h-14 resize-none overflow-y-auto border-0 bg-transparent pr-12 pl-3 font-serif text-base leading-7 shadow-none focus-visible:ring-0"
           />
           {/* The lore the brief summoned, between the words that summoned it
               and the prompt it will shape. Nothing renders when nothing
@@ -755,13 +792,17 @@ export function Composer({
                   there. */}
               <form className="contents" onSubmit={(e) => e.preventDefault()}>
                 <textarea
+                  ref={laneRef}
+                  onFocus={() => {
+                    lastInput.current = "lane"
+                  }}
                   value={imagePrompt ?? ""}
                   onChange={(event) => onImagePromptChange(event.target.value)}
                   onKeyDown={onLaneKeyDown}
                   aria-labelledby="developed-prompt-label"
                   readOnly={deriving}
                   spellCheck={false}
-                  enterKeyHint="send"
+                  enterKeyHint={mobileReturn === "send" ? "send" : "enter"}
                   className="field-sizing-content max-h-40 w-full resize-none overflow-y-auto bg-transparent font-mono text-[0.76rem] leading-5 text-muted-foreground outline-none"
                 />
               </form>

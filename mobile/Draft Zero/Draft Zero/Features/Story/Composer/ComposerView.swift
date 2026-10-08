@@ -5,7 +5,10 @@ import SwiftUI
 struct ComposerView: View {
     let workspace: StoryWorkspace
 
-    @FocusState private var focused: Bool
+    @AppStorage("composerReturnSends") private var returnSends = true
+    @State private var lastInputIsLane = false
+    @State private var briefLineBreakRequest = 0
+    @State private var laneLineBreakRequest = 0
 
     var body: some View {
         @Bindable var composer = workspace.composer
@@ -22,30 +25,46 @@ struct ComposerView: View {
                 )
             }
 
-            TextField(composer.placeholder, text: $composer.text, axis: .vertical)
-                .font(Theme.proseFont)
-                .lineLimit(1...6)
-                .focused($focused)
-                .disabled(isImage && deriving)
-                .textInputAutocapitalization(.sentences)
-                .submitLabel(.send)
-                .onKeyPress(.return, phases: .down, action: handleReturn)
-                .onKeyPress(.tab, phases: .down) { _ in
-                    guard !isImage else { return .ignored }
-                    composer.swapWritingMode()
-                    return .handled
+            ComposerTextInput(
+                text: $composer.text,
+                placeholder: composer.placeholder,
+                accessibilityLabel: fieldLabel(for: composer),
+                disabled: isImage && deriving,
+                returnSends: returnSends,
+                focusRequest: composer.focusRequest,
+                lineBreakRequest: briefLineBreakRequest,
+                onFocus: { lastInputIsLane = false },
+                onTab: { if !isImage { composer.swapWritingMode() } },
+                onContinue: {
+                    if !isImage { workspace.generation.continueStory() }
+                    else { workspace.sendFromComposer() }
+                },
+                send: workspace.sendFromComposer
+            )
+            .overlay(alignment: .topLeading) {
+                if composer.text.isEmpty {
+                    Text(composer.placeholder)
+                        .font(Theme.proseFont)
+                        .foregroundStyle(.tertiary)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                 }
-                .accessibilityLabel(fieldLabel(for: composer))
+            }
 
             if isImage && composer.laneVisible {
-                DevelopedPromptLane(composer: composer, deriving: deriving, send: workspace.sendFromComposer)
+                DevelopedPromptLane(composer: composer, deriving: deriving, returnSends: returnSends,
+                                    lineBreakRequest: laneLineBreakRequest, onFocus: { lastInputIsLane = true },
+                                    send: workspace.sendFromComposer)
             }
 
             if isImage {
                 ImageOptionsRow(composer: composer, disabled: deriving || workspace.illustration.isBusy)
             }
 
-            ComposerActionBar(workspace: workspace)
+            ComposerActionBar(workspace: workspace, insertLineBreak: {
+                if lastInputIsLane && isImage && composer.laneVisible { laneLineBreakRequest += 1 }
+                else { briefLineBreakRequest += 1 }
+            })
         }
         .padding(12)
         .glassEffect(.regular, in: .rect(cornerRadius: 26))
@@ -53,22 +72,9 @@ struct ComposerView: View {
         .padding(.bottom, 8)
         .frame(maxWidth: Theme.readingWidth + 40)
         .frame(maxWidth: .infinity)
-        .onChange(of: composer.focusRequest) { focused = true }
         .onChange(of: composer.laneReadyAnnouncement) {
             AccessibilityNotification.Announcement("Image prompt ready. Send to draw.").post()
         }
-    }
-
-    /// A hardware Return sends; Shift-Return is a newline. The on-screen
-    /// keyboard's return always types a newline, and Send is the button.
-    private func handleReturn(_ press: KeyPress) -> KeyPress.Result {
-        if press.modifiers.contains(.shift) || press.modifiers.contains(.option) { return .ignored }
-        if press.modifiers.contains(.command) && !workspace.composer.hasText && workspace.composer.mode != .image {
-            workspace.generation.continueStory()
-            return .handled
-        }
-        workspace.sendFromComposer()
-        return .handled
     }
 
     private func fieldLabel(for composer: ComposerModel) -> String {
