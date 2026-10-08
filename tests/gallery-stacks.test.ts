@@ -7,7 +7,11 @@
 
 import { describe, expect, test } from "bun:test"
 
-import { toGalleryImages, type GalleryImageRow } from "@/lib/db/mappers"
+import {
+  markMissingImages,
+  toGalleryImages,
+  type GalleryImageRow,
+} from "@/lib/db/mappers"
 
 function row(over: Partial<GalleryImageRow> = {}): GalleryImageRow {
   return {
@@ -105,5 +109,32 @@ describe("toGalleryImages", () => {
         row({ id: "img-2", isActive: false }),
       ])
     ).toEqual([])
+  })
+})
+
+describe("markMissingImages", () => {
+  const slot = () =>
+    toGalleryImages([
+      row({ id: "img-1", isActive: false }),
+      row({ id: "img-2", isActive: true }),
+      row({ id: "img-3", isActive: false }),
+    ])
+
+  test("nothing missing leaves the tiles untouched", () => {
+    const images = slot()
+    expect(markMissingImages(images, new Set())).toBe(images)
+  })
+
+  test("a missing active take flags the whole slot", () => {
+    const [image] = markMissingImages(slot(), new Set(["img-2"]))
+    expect(image.missing).toBe(true)
+    expect(image.id).toBe("img-2")
+  })
+
+  test("a missing retry drops out of the takes and the index follows", () => {
+    const [image] = markMissingImages(slot(), new Set(["img-1"]))
+    expect(image.missing).toBeUndefined()
+    expect(image.takes.map((t) => t.id)).toEqual(["img-2", "img-3"])
+    expect(image.imageIndex).toBe(0)
   })
 })

@@ -37,6 +37,7 @@ import type {
 
 import { CHARS_PER_TOKEN } from "@/lib/generation/context"
 import { resolveGenerationSettings } from "@/lib/generation/resolve"
+import { findMissingBlobs, resolveImageBackend } from "@/lib/images/blob-store"
 
 import type { StoryRecord } from "@/lib/store/records"
 import { toStoryRecord } from "@/lib/store/records"
@@ -53,6 +54,7 @@ import {
   deriveSlotMeta,
   parseLoreIdsJson,
   toAppSettings,
+  markMissingImages,
   toGalleryImages,
   toGenerationDefaults,
   toGenerationSettings,
@@ -279,6 +281,10 @@ export async function listStoryExcerpts(): Promise<Record<string, string>> {
  * SQL cannot do it here without a window function over a set small enough that
  * one is not worth writing. The ORDER BY below is the in-slot one the mapper
  * depends on for `takes` to come out oldest-first.
+ *
+ * Every take's blob is checked, and a slot whose active take has no bytes comes
+ * back flagged `missing` (see markMissingImages). The rail never shows those,
+ * so a limited read drops them before counting.
  */
 export async function listGalleryImages(
   options: { limit?: number } = {}
@@ -304,14 +310,16 @@ export async function listGalleryImages(
     .innerJoin(stories, eq(storyImages.storyId, stories.id))
     .where(isNull(storyImages.deletedAt))
     .orderBy(asc(storyImages.imageIndex))
-  const images = toGalleryImages(rows)
+  const missing = await findMissingBlobs(resolveImageBackend(), rows)
+  const images = markMissingImages(toGalleryImages(rows), missing)
   // Sliced after folding rather than with a SQL LIMIT: a slot's takes have to
   // arrive together or the newest picture comes back missing its retries, and
   // "the newest N slots" is not a window SQL can take without ordering by
   // something this query deliberately leaves to the mapper. The rows carry no
   // image bytes — the media is a separate route — so the read this trims is a
   // metadata scan either way.
-  return options.limit === undefined ? images : images.slice(0, options.limit)
+  if (options.limit === undefined) return images
+  return images.filter((image) => !image.missing).slice(0, options.limit)
 }
 
 /**

@@ -337,6 +337,30 @@ export function toGalleryImages(rows: GalleryImageRow[]): GalleryImage[] {
 }
 
 /**
+ * Folds a blob check into the wall's tiles.
+ *
+ * A slot is `missing` when its active take has no bytes; the clients hide it
+ * from the wall and list it behind the alert instead. A missing retry behind a
+ * live active take is dropped from `takes`, so no filmstrip offers a dead draw.
+ */
+export function markMissingImages(
+  images: GalleryImage[],
+  missingIds: ReadonlySet<string>
+): GalleryImage[] {
+  if (missingIds.size === 0) return images
+  return images.map((image) => {
+    if (missingIds.has(image.id)) return { ...image, missing: true }
+    const takes = image.takes.filter((take) => !missingIds.has(take.id))
+    if (takes.length === image.takes.length) return image
+    return {
+      ...image,
+      takes,
+      imageIndex: takes.findIndex((take) => take.id === image.id),
+    }
+  })
+}
+
+/**
  * How much of a passage's tail the library reads. Long enough for the front
  * door's three-line block at a phone's width, and short enough that asking for
  * every story's costs less than one manuscript window.
