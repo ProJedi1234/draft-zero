@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// One recent picture; tapping it opens the story it belongs to.
+/// One recent picture; tapping it opens the full-screen viewer.
 struct PictureRailTile: View {
     let image: GalleryImage
     let url: URL
@@ -17,6 +17,6 @@ struct PictureRailTile: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Picture from \(image.storyTitle)")
         .accessibilityValue(image.prompt)
-        .accessibilityHint("Opens the story")
+        .accessibilityHint("Opens the picture")
     }
 }

@@ -5,7 +5,6 @@ import SwiftUI
 struct LibraryGrid: View {
     let listing: LibraryListing
 
-    @Environment(AppModel.self) private var app
     @Environment(LibraryStore.self) private var library
     @ScaledMetric(relativeTo: .body) private var minimumColumn = 300.0
 
@@ -33,7 +32,7 @@ struct LibraryGrid: View {
                             GalleryLinkButton()
                         }
                         .font(.title3.bold())
-                        PictureRail(images: library.railImages, onOpenStory: openStory)
+                        PictureRail(images: library.railImages)
                     }
                 }
                 if !listing.stories.isEmpty {
@@ -61,9 +60,5 @@ struct LibraryGrid: View {
             .frame(maxWidth: Self.contentWidth)
             .frame(maxWidth: .infinity)
         }
-    }
-
-    private func openStory(_ storyId: String) {
-        app.libraryPath.append(.story(storyId))
     }
 }

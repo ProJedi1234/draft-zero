@@ -203,6 +203,17 @@ final class LibraryStore {
 
     // MARK: - Local writes
 
+    func useTake(_ take: ImageTake, in slot: LightboxSlot) async throws {
+        guard let api, let storyId = slot.storyId else { throw APIError.notConfigured }
+        try await api.selectImage(storyId: storyId, imageGroupId: slot.id, imageId: take.id)
+        if let index = railImages.firstIndex(where: { $0.imageGroupId == slot.id }),
+           let updated = railImages[index].selecting(take) {
+            railImages[index] = updated
+            local?.saveLibraryExtras(excerpts: excerpts, railImages: railImages)
+        }
+        scheduleRefresh()
+    }
+
     /// Folds a row in if it is at least as new as the one held, and keeps it on the device.
     func upsert(_ record: StoryRecord) {
         if fold(record) { local?.upsertStory(record) }
