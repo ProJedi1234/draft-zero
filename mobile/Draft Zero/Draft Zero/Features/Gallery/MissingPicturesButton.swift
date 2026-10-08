@@ -23,7 +23,7 @@ struct MissingPicturesButton: View {
             .tint(.orange)
             .popover(isPresented: $isPresented) {
                 list
-                    .frame(minWidth: 320, minHeight: 360)
+                    .frame(minWidth: 400, minHeight: 360)
                     .presentationDetents([.medium, .large])
             }
         }
@@ -62,20 +62,33 @@ private struct MissingPictureRow: View {
     let image: GalleryImage
 
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .headline) private var swatchSize = 10.0
 
     var body: some View {
+        // At accessibility sizes the date drops under the title, which would otherwise truncate to a word.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(spacing: 8))
+
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                if image.tint.hue != nil {
-                    Circle()
-                        .fill(StoryPalette(tint: image.tint, scheme: scheme).swatch)
-                        .frame(width: 10, height: 10)
-                        .accessibilityHidden(true)
+            layout {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    if image.tint.hue != nil {
+                        Circle()
+                            .fill(StoryPalette(tint: image.tint, scheme: scheme).swatch)
+                            .frame(width: swatchSize, height: swatchSize)
+                            // Sits on the first line's baseline, so it stays beside the first word when the title wraps.
+                            .alignmentGuide(.firstTextBaseline) { $0[.bottom] }
+                            .accessibilityHidden(true)
+                    }
+                    Text(image.storyTitle)
+                        .font(.headline)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                 }
-                Text(image.storyTitle)
-                    .font(.headline)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: 8)
+                }
                 Text(Format.relativeDate(image.createdAt))
                     .font(.caption)
                     .foregroundStyle(.secondary)
