@@ -11,6 +11,8 @@ export default async function SettingsPage() {
   const {
     settings,
     models,
+    decisionModels,
+    localModels,
     imageModels,
     defaultImagePrice,
     profiles,
@@ -21,6 +23,8 @@ export default async function SettingsPage() {
     <SettingsView
       settings={settings}
       models={models}
+      decisionModels={decisionModels}
+      localModels={localModels}
       imageModels={imageModels}
       defaultImagePrice={defaultImagePrice}
       profiles={profiles}

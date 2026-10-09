@@ -35,7 +35,8 @@ export function settingsSummaryParts(
   const model = models.find((m) => m.id === modelId)
   return {
     model: model?.name ?? modelId,
-    provider: providerTag ?? "Auto",
+    // A local model has one host and no routing, so the host is the provider.
+    provider: model?.local ? model.local.host : (providerTag ?? "Auto"),
     thinking:
       thinking === "off"
         ? "off"
@@ -63,7 +64,7 @@ export function settingsSummaryWithPrice(
 ): string {
   const summary = settingsSummary(settings, models)
   const model = models.find((m) => m.id === settings.modelId)
-  return model
-    ? `${summary} · ${model.pricing.prompt}/${model.pricing.completion}`
-    : summary
+  if (!model) return summary
+  if (model.local) return `${summary} · free`
+  return `${summary} · ${model.pricing.prompt}/${model.pricing.completion}`
 }
