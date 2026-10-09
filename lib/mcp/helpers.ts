@@ -2,7 +2,7 @@
 //
 // The efficiency rules in MCP_PLAN.md are only rules if they are cheaper to
 // follow than to break, so each one has a function here: `structured` makes
-// "summary line + structuredContent" the shortest way to return anything,
+// "summary + JSON text + structuredContent" the shortest way to return anything,
 // `snippet` makes truncation the default, `paginate` and `resolveRange` make
 // the tail the default read. A tool that reaches past these is usually about
 // to echo prose back at the model.
@@ -72,17 +72,18 @@ export type RegisterTool = (server: McpServer, deps: ToolDeps) => void
 /**
  * The only way a tool should return success.
  *
- * `summary` is one line of prose for a client that renders content blocks;
- * `data` is the machine-readable answer and MUST match the tool's
- * `outputSchema`. Never put the payload in both — the summary states the
- * delta ("wrote position 214"), the structured content carries the facts.
+ * `data` must match the output schema. Mirror it as JSON text so clients
+ * that only forward `content` to the model still receive the full answer.
  */
 export function structured<T extends Record<string, unknown>>(
   summary: string,
   data: T
 ): CallToolResult {
   return {
-    content: [{ type: "text", text: summary }],
+    content: [
+      { type: "text", text: summary },
+      { type: "text", text: JSON.stringify(data) },
+    ],
     structuredContent: data,
   }
 }

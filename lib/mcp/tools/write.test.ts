@@ -6,6 +6,8 @@
 // patches its specifier for the whole run, so a dynamic `await import(...)`
 // inside a test body would resolve against whatever the LAST file to touch
 // these shared specifiers left behind, not this file's own doubles.
+import { withContentParity } from "@/lib/mcp/tools/test-results"
+
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 
 import type { RegisterTool } from "@/lib/mcp/helpers"
@@ -20,8 +22,8 @@ const { releaseRun, reserveRun } = await import("@/lib/generation/live")
 function capture(register: RegisterTool) {
   let handler: (args: unknown) => Promise<unknown>
   const fakeServer = {
-    registerTool: (_name: string, _config: unknown, h: typeof handler) => {
-      handler = h
+    registerTool: (name: string, _config: unknown, h: typeof handler) => {
+      handler = withContentParity(name, h)
     },
   }
   register(fakeServer as never, {} as never)

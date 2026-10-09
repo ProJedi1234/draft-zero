@@ -1,5 +1,7 @@
 // lib/mcp/tools/lore.test.ts — handler shaping logic against mocked queries
 // and the real lorebook service over a scripted drizzle chain. No live DB.
+import { withContentParity } from "@/lib/mcp/tools/test-results"
+
 import { beforeEach, describe, expect, mock, test } from "bun:test"
 import { z } from "zod"
 
@@ -84,7 +86,7 @@ function makeFakeServer() {
       config: { inputSchema: z.ZodTypeAny },
       handler: ToolHandler
     ) => {
-      handlers.set(name, handler)
+      handlers.set(name, withContentParity(name, handler))
       configs.set(name, config)
     },
   }
