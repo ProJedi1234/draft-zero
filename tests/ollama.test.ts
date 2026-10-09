@@ -167,6 +167,22 @@ describe("the local catalog", () => {
     )
     expect(ollama.displayName("hf.co/someone/gemma4:latest")).toBe("Gemma 4")
   })
+
+  test("labels a host by its first name, but keeps an IP address whole", () => {
+    expect(ollama.hostLabel("http://metis.olympus.lan:11434")).toBe("metis")
+    expect(ollama.hostLabel("http://192.168.1.5:11434")).toBe("192.168.1.5")
+    expect(ollama.hostLabel("http://[::1]:11434")).toBe("[::1]")
+  })
+
+  test("callers arriving together share one round of requests to the host", async () => {
+    stubHost()
+    await Promise.all([
+      ollama.listOllamaChatModels(),
+      ollama.listOllamaDecisionModels(),
+      ollama.getLocalModelsStatus(),
+    ])
+    expect(calls.filter((c) => c.url.endsWith("/api/tags"))).toHaveLength(1)
+  })
 })
 
 test("the status lists only loaded models a picker offers", async () => {

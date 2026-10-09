@@ -19,6 +19,7 @@ struct SettingsForm: View {
                     LocalModelsSection(
                         status: status,
                         models: payload.models,
+                        decisionModels: payload.decisionModels ?? [],
                         summarizer: editors.summarizer.value,
                         atmosphere: editors.atmosphere.value
                     )

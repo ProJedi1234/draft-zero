@@ -14,6 +14,8 @@ import { zdrModelSlugs } from "./zdr"
 const ENDPOINT =
   "https://openrouter.ai/api/v1/models?output_modalities=decisions"
 const TTL_MS = 60 * 60 * 1000
+/** Settings waits on this list, so a stalled OpenRouter falls back instead. */
+const FETCH_TIMEOUT_MS = 5_000
 
 /** What the picker offers when OpenRouter can't be asked: the default alone. */
 const FALLBACK: DecisionModel[] = [
@@ -72,7 +74,10 @@ async function listOpenRouterDecisionModels(): Promise<DecisionModel[]> {
   if (!key) return FALLBACK
   try {
     const [res, zdrSlugs] = await Promise.all([
-      fetch(ENDPOINT, { headers: { Authorization: `Bearer ${key}` } }),
+      fetch(ENDPOINT, {
+        headers: { Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      }),
       zdrModelSlugs(),
     ])
     if (!res.ok) return FALLBACK

@@ -38,10 +38,14 @@ export function resolveOllamaContextWindow(): number {
   return Number.isInteger(n) && n >= 2048 ? n : DEFAULT_CONTEXT_WINDOW
 }
 
-/** "http://metis.olympus.lan:11434" → "metis". */
+/** "http://metis.olympus.lan:11434" → "metis"; an IP address stays whole. */
 export function hostLabel(baseUrl: string): string {
   try {
-    return new URL(baseUrl).hostname.split(".")[0] || baseUrl
+    const { hostname } = new URL(baseUrl)
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.startsWith("[")) {
+      return hostname
+    }
+    return hostname.split(".")[0] || baseUrl
   } catch {
     return baseUrl
   }
@@ -97,6 +101,8 @@ interface Snapshot {
 }
 
 let cache: { at: number; baseUrl: string; data: Snapshot | null } | null = null
+let pending: { baseUrl: string; promise: Promise<Snapshot | null> } | null =
+  null
 /** Capabilities never change for a digest, so /api/show is asked once per model. */
 const showCache = new Map<string, ShowResponse>()
 
@@ -185,14 +191,18 @@ async function snapshot(): Promise<Snapshot | null> {
   if (cache && cache.baseUrl === baseUrl && Date.now() - cache.at < TTL_MS) {
     return cache.data
   }
-  let data: Snapshot | null
-  try {
-    data = await fetchSnapshot(baseUrl)
-  } catch {
-    data = null
-  }
-  cache = { at: Date.now(), baseUrl, data }
-  return data
+  // Settings asks for chat models, decision models and status at once, and
+  // they should share one round of requests to the host.
+  if (pending?.baseUrl === baseUrl) return pending.promise
+  const promise = fetchSnapshot(baseUrl)
+    .catch(() => null)
+    .then((data) => {
+      cache = { at: Date.now(), baseUrl, data }
+      pending = null
+      return data
+    })
+  pending = { baseUrl, promise }
+  return promise
 }
 
 /**
@@ -335,4 +345,5 @@ export async function getLocalModelsStatus(): Promise<LocalModelsStatus | null> 
 /** Drops the cached snapshot, for tests and for a request that just found a model gone. */
 export function invalidateOllamaCatalog(): void {
   cache = null
+  pending = null
 }

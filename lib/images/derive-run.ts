@@ -245,7 +245,8 @@ async function deriveRunLoop(run: LiveDeriveRun): Promise<void> {
   }
 
   try {
-    if (!key) {
+    // A local model's key is "", so only null means offline.
+    if (key === null) {
       // Offline: the same run, the same frames, the same settle. The composer
       // cannot tell the two apart and nothing downstream has a second code
       // path. It costs nothing and so opens no ledger row — see the note in

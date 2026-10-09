@@ -10,11 +10,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { DEFAULT_ATMOSPHERE_DECISION_MODEL_ID } from "@/lib/generation/atmosphere-decision"
 import { DEFAULT_ATMOSPHERE_MODEL_ID } from "@/lib/generation/atmosphere-prompt"
 import { DEFAULT_SUMMARIZER_MODEL_ID } from "@/lib/generation/summary-prompt"
 import {
   isLocalModelId,
   type AtmosphereSettings,
+  type DecisionModel,
   type LocalModelsStatus,
   type OpenRouterModel,
   type SummarizerSettings,
@@ -59,11 +61,13 @@ function unloadsIn(
 export function LocalModelsCard({
   status,
   models,
+  decisionModels,
   summarizer,
   atmosphere,
 }: {
   status: LocalModelsStatus
   models: OpenRouterModel[]
+  decisionModels: DecisionModel[]
   summarizer: SummarizerSettings
   atmosphere: AtmosphereSettings
 }) {
@@ -75,17 +79,18 @@ export function LocalModelsCard({
       job: "summarizer",
       modelId: summarizer.modelId ?? DEFAULT_SUMMARIZER_MODEL_ID,
     },
-    ...(atmosphere.engine === "llm"
-      ? [
-          {
-            job: "atmosphere check",
-            modelId: atmosphere.modelId ?? DEFAULT_ATMOSPHERE_MODEL_ID,
-          },
-        ]
-      : []),
+    {
+      job: "atmosphere check",
+      modelId:
+        atmosphere.engine === "llm"
+          ? (atmosphere.modelId ?? DEFAULT_ATMOSPHERE_MODEL_ID)
+          : (atmosphere.decisionModelId ??
+            DEFAULT_ATMOSPHERE_DECISION_MODEL_ID),
+    },
   ].filter(({ modelId }) => isLocalModelId(modelId))
   const nameOf = (modelId: string) =>
-    models.find((m) => m.id === modelId)?.name ?? modelId
+    [...models, ...decisionModels].find((m) => m.id === modelId)?.name ??
+    modelId
 
   return (
     <Card size="sm">

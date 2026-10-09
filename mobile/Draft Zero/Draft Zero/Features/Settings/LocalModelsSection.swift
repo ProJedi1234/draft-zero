@@ -6,6 +6,7 @@ import SwiftUI
 struct LocalModelsSection: View {
     let status: LocalModelsStatus
     let models: [OpenRouterModel]
+    let decisionModels: [DecisionModel]
     let summarizer: AppSettings.Summarizer
     let atmosphere: AppSettings.Atmosphere
 
@@ -53,13 +54,18 @@ struct LocalModelsSection: View {
     /// each one evicts the story's cached prompt.
     private var backgroundWarning: String? {
         var jobs: [(job: String, modelId: String)] = [("summarizer", summarizer.modelId ?? BuiltInModels.summarizer)]
-        if atmosphere.engine == .llm {
-            jobs.append(("atmosphere check", atmosphere.modelId ?? BuiltInModels.atmosphere))
+        switch atmosphere.engine {
+        case .llm: jobs.append(("atmosphere check", atmosphere.modelId ?? BuiltInModels.atmosphere))
+        case .decision: jobs.append(("atmosphere check", atmosphere.decisionModelId ?? BuiltInModels.atmosphereDecision))
         }
         let local = jobs.filter { $0.modelId.hasPrefix(LocalModels.idPrefix) }
         guard !local.isEmpty else { return nil }
-        let names = Array(Set(local.map { ModelCatalog.displayName($0.modelId, in: models) })).sorted()
+        let names = Array(Set(local.map { name(of: $0.modelId) })).sorted()
         let verb = local.count == 1 ? "runs" : "run"
         return "Your \(local.map(\.job).joined(separator: " and ")) \(verb) on \(names.joined(separator: " and ")). \(status.host) answers one request at a time, so each of these pushes a story out of the model's cache and the next passage re-reads it."
+    }
+
+    private func name(of modelId: String) -> String {
+        decisionModels.first { $0.id == modelId }?.name ?? ModelCatalog.displayName(modelId, in: models)
     }
 }

@@ -201,6 +201,7 @@ function SettingsView({
               <LocalModelsCard
                 status={localModels}
                 models={models}
+                decisionModels={decisionModels}
                 summarizer={settings.summarizer}
                 atmosphere={settings.atmosphere}
               />
