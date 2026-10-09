@@ -98,6 +98,8 @@ export const atmosphereSettingsInput = z.object({
     50,
     "Passages between checks must be a whole number between 1 and 50."
   ),
+  // Absent (an older client) leaves the stored choice alone.
+  decisionModelId: optionalModelId,
   modelId: optionalModelId,
   providerTag,
   zdr,

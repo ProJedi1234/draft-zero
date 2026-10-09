@@ -7,6 +7,9 @@ import SwiftUI
 struct AtmosphereSection: View {
     @Bindable var editor: AutosavedValue<AppSettings.Atmosphere>
     let models: [OpenRouterModel]
+    let decisionModels: [DecisionModel]
+    /// The local Ollama host's label, or nil when the server has none.
+    let localHost: String?
     let requireZdr: Bool
     let policies: AccountZdrPolicies
 
@@ -52,7 +55,13 @@ struct AtmosphereSection: View {
                     hint: "A ceiling, not a spend: the answer is one word, and the rest is room for a model that thinks first."
                 )
             case .decision:
-                Text("Answers with a probability instead of a sentence, in about a tenth of the time and for a fraction of the price. There is nothing to sample, so there is no model, temperature or output cap to set.")
+                DecisionModelPickerRow(
+                    models: decisionModels,
+                    selection: editor.value.decisionModelId,
+                    zdr: editor.value.zdr || requireZdr,
+                    localHost: localHost
+                ) { editor.value.decisionModelId = $0 }
+                Text("Answers with a probability instead of a sentence, in about a tenth of the time and for a fraction of the price. There is nothing to sample, so there is no temperature or output cap to set.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 SettingSlider(
@@ -65,10 +74,9 @@ struct AtmosphereSection: View {
                 )
                 ZdrToggle(
                     isOn: $editor.value.zdr,
-                    lock: ZdrLock.resolve(
-                        accountEnforced: policies.enforces(modelId: BuiltInModels.atmosphereDecision),
-                        requireZdr: requireZdr
-                    ),
+                    lock: decisionModelId.hasPrefix(LocalModels.idPrefix)
+                        ? .local
+                        : ZdrLock.resolve(accountEnforced: policies.enforces(modelId: decisionModelId), requireZdr: requireZdr),
                     hint: "The manuscript tail goes on the wire either way."
                 )
             }
@@ -88,6 +96,10 @@ struct AtmosphereSection: View {
                 SaveErrorLabel(message: editor.error)
             }
         }
+    }
+
+    private var decisionModelId: String {
+        editor.value.decisionModelId ?? BuiltInModels.atmosphereDecision
     }
 
     private func chooseModel(_ modelId: String?) {

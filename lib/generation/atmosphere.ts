@@ -42,13 +42,15 @@ import {
   renderAtmosphereSystemPrompt,
 } from "@/lib/generation/atmosphere-prompt"
 import {
-  ATMOSPHERE_DECISION_MODEL_ID,
+  DEFAULT_ATMOSPHERE_DECISION_MODEL_ID,
+  fitAtmosphereState,
   interpretAtmosphereDecision,
   renderAtmosphereQuestions,
   renderAtmosphereState,
 } from "@/lib/generation/atmosphere-decision"
 import { decideOnce, DecisionError } from "@/lib/generation/decide"
-import { resolveOpenRouterKey } from "@/lib/generation/key"
+import { resolveKeyForModel } from "@/lib/generation/key"
+import { listOllamaDecisionModels } from "@/lib/generation/ollama"
 import { completeOnce, mapOpenRouterError } from "@/lib/generation/openrouter"
 import type {
   DecisionQuestion,
@@ -58,13 +60,14 @@ import type {
 import { STORY_TINTS } from "@/lib/story-tint"
 import { publishBus } from "@/lib/sync/bus"
 import type { AtmospherePhase } from "@/lib/sync/types"
-import type {
-  AtmosphereSettings,
-  GenerationRequestKind,
-  SettledCallStatus,
-  Story,
-  StoryEntry,
-  ThinkingLevel,
+import {
+  isLocalModelId,
+  type AtmosphereSettings,
+  type GenerationRequestKind,
+  type SettledCallStatus,
+  type Story,
+  type StoryEntry,
+  type ThinkingLevel,
 } from "@/lib/types"
 
 /**
@@ -81,8 +84,8 @@ export interface AtmosphereIo {
   getStory(storyId: string): Promise<Story | null>
   /** App-wide settings — read for the atmosphere bundle and nothing else. */
   settings(): Promise<{ atmosphere: AtmosphereSettings }>
-  /** Null when OpenRouter is unconfigured — the offline mock path. */
-  apiKey(): string | null
+  /** Null when the model's backend is unconfigured — the offline mock path. */
+  apiKey(modelId: string): string | null
   complete(opts: {
     system: string
     user: string
@@ -106,6 +109,11 @@ export interface AtmosphereIo {
    * probabilities, and collapsing them would mean a union at every call site
    * to save one method here.
    */
+  /**
+   * The per-prompt token window a decision model refuses to exceed, or null
+   * when it is roomy enough not to matter (every OpenRouter one).
+   */
+  decisionWindow(modelId: string): Promise<number | null>
   decide(opts: {
     state: Record<string, unknown>
     questions: Record<string, DecisionQuestion>
@@ -153,9 +161,16 @@ export const liveIo: AtmosphereIo = {
   // Only the summarizer pays for `full`, because only it wants what fell out.
   getStory: (storyId) => getStory(storyId),
   settings: getAppSettings,
-  apiKey: resolveOpenRouterKey,
+  apiKey: resolveKeyForModel,
   complete: completeOnce,
   decide: decideOnce,
+  async decisionWindow(modelId) {
+    if (!isLocalModelId(modelId)) return null
+    const model = (await listOllamaDecisionModels()).find(
+      (m) => m.id === modelId
+    )
+    return model && model.contextLength > 0 ? model.contextLength : null
+  },
   openCall: recordCallStarted,
   settle: settleCall,
   async writeTint(storyId, tint) {
@@ -318,13 +333,6 @@ export async function runAtmosphereForStory(
 }
 
 async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
-  const key = io.apiKey()
-  // No key means the app is running on the offline mock. A fabricated summary
-  // is at least visibly a fabrication; a fabricated colour is indistinguishable
-  // from taste, and the writer would spend the evening wondering why their
-  // comedy went abyssal. Nothing is written and nothing is a failure.
-  if (key === null) return
-
   const story = await io.getStory(storyId)
   if (story === null) return
 
@@ -335,13 +343,18 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
   if (!shouldCheck(story, atmosphere.passagesBetweenChecks)) return
 
   // Which engine answers is the writer's choice, and it decides the model as
-  // well as the route. The decision model is pinned rather than drawn from
-  // atmosphere.modelId: that column holds a LANGUAGE model the writer picked
-  // from the catalog, and sending it down this route would 404.
+  // well as the route. Each engine keeps its own model column: modelId holds a
+  // LANGUAGE model, and sending it down the decision route would 404.
   const useDecision = atmosphere.engine === "decision"
   const modelId = useDecision
-    ? ATMOSPHERE_DECISION_MODEL_ID
+    ? (atmosphere.decisionModelId ?? DEFAULT_ATMOSPHERE_DECISION_MODEL_ID)
     : (atmosphere.modelId ?? DEFAULT_ATMOSPHERE_MODEL_ID)
+  const key = io.apiKey(modelId)
+  // No key means the app is running on the offline mock. A fabricated summary
+  // is at least visibly a fabrication; a fabricated colour is indistinguishable
+  // from taste, and the writer would spend the evening wondering why their
+  // comedy went abyssal. Nothing is written and nothing is a failure.
+  if (key === null) return
   // Announced here rather than at the top of the function: everything above is
   // the gate, and the gate declining is not work — a spinner for it would
   // blink after every turn and mean nothing.
@@ -374,7 +387,14 @@ async function checkOnce(storyId: string, io: AtmosphereIo): Promise<void> {
     // so everything from here down — the write, the settle, the watermark, the
     // phase — is shared and neither engine gets its own copy of it.
     const verdict = useDecision
-      ? await askDecisionEngine(io, story, atmosphere, key, abort.signal)
+      ? await askDecisionEngine(
+          io,
+          story,
+          atmosphere,
+          modelId,
+          key,
+          abort.signal
+        )
       : await askLanguageModel(
           io,
           story,
@@ -525,17 +545,26 @@ async function askDecisionEngine(
   io: AtmosphereIo,
   story: Story,
   atmosphere: AtmosphereSettings,
+  modelId: string,
   key: string,
   signal: AbortSignal
 ): Promise<Verdict> {
   const current = currentTintId(story)
+  const questions = renderAtmosphereQuestions(current)
+  const tail = manuscriptTail(story.entries, TAIL_WORDS)
+  const window = await io.decisionWindow(modelId)
   const result = await io.decide({
-    state: renderAtmosphereState({
-      tail: manuscriptTail(story.entries, TAIL_WORDS),
-      memory: story.memory,
-    }),
-    questions: renderAtmosphereQuestions(current),
-    modelId: ATMOSPHERE_DECISION_MODEL_ID,
+    state:
+      window === null
+        ? renderAtmosphereState({ tail, memory: story.memory })
+        : fitAtmosphereState({
+            tail,
+            memory: story.memory,
+            questions,
+            windowTokens: window,
+          }),
+    questions,
+    modelId,
     // ORed exactly as the prose engine's is, and for the same reason: the
     // manuscript tail is on the wire either way.
     zdr: atmosphere.zdr || story.settings.zdr,

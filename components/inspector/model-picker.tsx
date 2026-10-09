@@ -22,6 +22,7 @@ import { formatContextLength } from "@/lib/format"
 import { settingsSummary } from "@/lib/settings-summary"
 import {
   routableEndpointForTag,
+  type LocalModelInfo,
   type ModelEndpoint,
   type ModelProfile,
   type OpenRouterModel,
@@ -119,6 +120,7 @@ export function ModelPicker({
   // account's for this model's group, whichever is set. The account's is not in
   // `zdr` because it is not the writer's setting and does not travel with the
   // bundle to another model.
+  const local = selected?.local
   const providerZdr = zdr || accountEnforced
   // Routable, not merely pinned: under a retention policy a pin naming an
   // endpoint that retains is dropped on the way out, and pricing the request
@@ -137,13 +139,38 @@ export function ModelPicker({
         zdr={zdr}
         onOpenChange={(next) => report("model", next)}
       />
-      <ProviderCombobox
-        endpoints={endpoints}
-        value={providerTag}
-        onValueChange={onProviderTagChange}
-        zdr={providerZdr}
-        onOpenChange={(next) => report("provider", next)}
-      />
+      {local ? (
+        // One place to run, so nothing to pick: no Auto and no pins.
+        <div className="flex h-9 w-full items-center justify-between border bg-muted/40 px-4 text-sm">
+          <span className="text-muted-foreground">Provider</span>
+          <span
+            className="flex min-w-0 items-center gap-1.5"
+            title={local.loaded ? "Loaded in memory" : "Not loaded yet"}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                local.loaded ? "bg-emerald-500" : "bg-muted-foreground/40"
+              )}
+            />
+            <span className="truncate">{local.host}</span>
+            {local.quantization ? (
+              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                {local.quantization}
+              </span>
+            ) : null}
+          </span>
+        </div>
+      ) : (
+        <ProviderCombobox
+          endpoints={endpoints}
+          value={providerTag}
+          onValueChange={onProviderTagChange}
+          zdr={providerZdr}
+          onOpenChange={(next) => report("provider", next)}
+        />
+      )}
       <ThinkingSelect
         reasoning={selected?.reasoning ?? null}
         value={thinking}
@@ -151,6 +178,7 @@ export function ModelPicker({
         onOpenChange={(next) => report("thinking", next)}
       />
       <PricingLine
+        local={local}
         pricing={pricing}
         contextLength={contextLength}
         maxCompletionTokens={selected?.maxCompletionTokens}
@@ -159,7 +187,7 @@ export function ModelPicker({
         <ZdrSwitch
           checked={zdr}
           onCheckedChange={onZdrChange}
-          lock={zdrLock}
+          lock={local ? "local" : zdrLock}
           hint="Only providers that keep nothing."
         />
       </div>
@@ -175,8 +203,11 @@ function PricingLine({
   pricing,
   contextLength,
   maxCompletionTokens,
+  local,
   className,
 }: {
+  /** Set for a local model, which has a host instead of a price. */
+  local?: LocalModelInfo
   pricing: OpenRouterModel["pricing"] | undefined
   contextLength: number | undefined
   /** The model's own output ceiling. Null when the catalog does not publish one. */
@@ -184,6 +215,14 @@ function PricingLine({
   className?: string
 }) {
   if (!pricing || contextLength === undefined) return null
+  if (local) {
+    return (
+      <p className={cn("text-xs text-muted-foreground", className)}>
+        Free · runs on {local.host} · {formatContextLength(contextLength)}{" "}
+        context
+      </p>
+    )
+  }
   return (
     <p className={cn("text-xs text-muted-foreground", className)}>
       In {pricing.prompt} · Out {pricing.completion} per 1M ·{" "}
@@ -323,6 +362,7 @@ export function ProfileCard({
                 </span>
                 <PricingLine
                   className="truncate"
+                  local={model?.local}
                   pricing={endpoint?.pricing ?? model?.pricing}
                   maxCompletionTokens={model?.maxCompletionTokens}
                   contextLength={

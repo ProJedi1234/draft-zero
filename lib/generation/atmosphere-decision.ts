@@ -27,17 +27,14 @@ import type {
 } from "./types"
 
 /**
- * The decision model the atmosphere check uses.
+ * The decision model the atmosphere check uses until the writer picks one.
  *
- * Pinned to a version rather than to `~typesafe/jev-latest`, and not a
- * setting. There is one decision model in the catalog today, so a picker would
- * be a control with a single entry — and a calibrated classifier is exactly
- * the kind of thing whose thresholds stop meaning what they meant when the
- * weights move underneath them. minConfidence is a number the writer tuned
- * against a specific model, and a story quietly changing colour the morning a
- * new version ships is what a pinned id prevents.
+ * Pinned to a version rather than to `~typesafe/jev-latest`: a calibrated
+ * classifier's thresholds stop meaning what they meant when the weights move
+ * underneath them, and minConfidence is a number the writer tuned against a
+ * specific model.
  */
-export const ATMOSPHERE_DECISION_MODEL_ID = "typesafe/jev-1.13"
+export const DEFAULT_ATMOSPHERE_DECISION_MODEL_ID = "typesafe/jev-1.13"
 
 /** The two question keys. Named constants so the ask and the read cannot drift. */
 export const STILL_FITS = "still_fits"
@@ -188,6 +185,45 @@ export function renderAtmosphereState(input: {
     ...(memory === "" ? {} : { memory }),
     recent_passages: input.tail.trim(),
   }
+}
+
+/** Conservative characters per token, so an estimate errs toward fitting. */
+const CHARS_PER_TOKEN = 3.5
+/** Room for the provider's own framing around the state and the question. */
+const PROMPT_OVERHEAD_TOKENS = 64
+
+const estimateTokens = (value: unknown) =>
+  Math.ceil(JSON.stringify(value).length / CHARS_PER_TOKEN)
+
+/**
+ * The state, cut down until the state plus its largest question fits a
+ * per-prompt window. A local decision model scores every question as its own
+ * prompt and refuses one over its num_ctx outright, so the oldest prose goes
+ * first, then the memory. With room to spare the state comes back whole.
+ */
+export function fitAtmosphereState(input: {
+  tail: string
+  memory: string
+  questions: Record<string, DecisionQuestion>
+  windowTokens: number
+}): Record<string, unknown> {
+  const largestQuestion = Math.max(
+    0,
+    ...Object.values(input.questions).map(estimateTokens)
+  )
+  const budget = input.windowTokens - largestQuestion - PROMPT_OVERHEAD_TOKENS
+  let tail = input.tail.trim()
+  let memory = input.memory.trim()
+  const fits = () =>
+    estimateTokens(renderAtmosphereState({ tail, memory })) <= budget
+  while (!fits() && tail.length > 0) {
+    const words = tail.split(/\s+/)
+    tail = words.slice(Math.ceil(words.length / 10)).join(" ")
+  }
+  while (!fits() && memory.length > 0) {
+    memory = memory.slice(0, Math.floor(memory.length * 0.9)).trim()
+  }
+  return renderAtmosphereState({ tail, memory })
 }
 
 /**

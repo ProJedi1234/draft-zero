@@ -65,6 +65,7 @@ export const updateAppSettings: Service<UpdateAppSettingsInput> = async (
     const {
       engine,
       minConfidence,
+      decisionModelId,
       modelId,
       thinking,
       providerTag,
@@ -75,6 +76,9 @@ export const updateAppSettings: Service<UpdateAppSettingsInput> = async (
     } = patch.atmosphere
     const trimmed = modelId?.trim() ?? ""
     values.atmosphereModelId = trimmed === "" ? null : trimmed
+    if (decisionModelId !== undefined) {
+      values.atmosphereDecisionModelId = decisionModelId?.trim() || null
+    }
     values.atmosphereEngine = engine
     values.atmosphereMinConfidence = minConfidence
     values.atmosphereThinking = thinking

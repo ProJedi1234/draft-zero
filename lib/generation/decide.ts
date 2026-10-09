@@ -17,11 +17,18 @@ import "server-only"
 
 import { z } from "zod"
 
+import {
+  hostLabel,
+  invalidateOllamaCatalog,
+  ollamaModelName,
+  resolveOllamaBaseUrl,
+} from "@/lib/generation/ollama"
 import type {
   DecisionQuestion,
   DecisionResult,
   GenerationUsage,
 } from "@/lib/generation/types"
+import { isLocalModelId } from "@/lib/types"
 
 /**
  * The stable route. OpenRouter serves the identical protocol at
@@ -33,6 +40,9 @@ import type {
  * which reaches a JSON parser as a syntax error rather than as a 404.
  */
 const SYSTEM_ONE_URL = "https://openrouter.ai/api/v1/systemone"
+
+/** Ollama refuses a System One request body larger than this. */
+const LOCAL_BODY_LIMIT = 64 * 1024
 
 /** How long one decision may take. Far under a completion's — p95 is ~230ms. */
 const DECISION_TIMEOUT_MS = 15_000
@@ -154,34 +164,22 @@ export async function decideOnce(opts: {
 }): Promise<DecisionResult> {
   const timeout = AbortSignal.timeout(DECISION_TIMEOUT_MS)
   const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout
+  const route = decisionRoute(opts)
 
   let res: Response
   try {
-    res = await fetch(SYSTEM_ONE_URL, {
+    res = await fetch(route.url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${opts.key}`,
-        "Content-Type": "application/json",
-        "X-Title": "draft-zero",
-      },
-      body: JSON.stringify({
-        model: opts.modelId,
-        state: opts.state,
-        questions: opts.questions,
-        // The provider block carries retention policy and nothing else here.
-        // Jev is served by exactly one provider, so there is no routing to
-        // express — but the ZDR flag still has to be sent, because a request
-        // that omits it is a request that permits retention.
-        ...(opts.zdr ? { provider: { zdr: true } } : {}),
-      }),
+      headers: route.headers,
+      body: route.body,
       signal,
     })
   } catch (err) {
-    throw asDecisionError(err, opts.signal, timeout, UNAVAILABLE)
+    throw asDecisionError(err, opts.signal, timeout, route.unavailable)
   }
 
   if (!res.ok) {
-    throw new DecisionError(describeFailure(res, opts.zdr), res.status)
+    throw new DecisionError(await route.describeFailure(res), res.status)
   }
 
   // Reading the body can fail on its own, and on this route it is the likely
@@ -209,11 +207,133 @@ export async function decideOnce(opts: {
     )
   }
 
+  const usage = toUsage(parsed.data.usage)
   return {
     answers: parsed.data.answers,
     generationId: parsed.data.id ?? null,
-    usage: toUsage(parsed.data.usage),
+    // Ollama reports tokens but no cost, and a local call really is free.
+    usage:
+      usage && isLocalModelId(opts.modelId) ? { ...usage, costUsd: 0 } : usage,
   }
+}
+
+interface DecisionRoute {
+  url: string
+  headers: Record<string, string>
+  body: string
+  /** Said when the connection itself fails. */
+  unavailable: string
+  describeFailure(res: Response): string | Promise<string>
+}
+
+/**
+ * Where a decision call goes. OpenRouter and Ollama serve the same System One
+ * contract, so only the address, the credentials and the failure wording
+ * differ.
+ */
+function decisionRoute(opts: {
+  state: Record<string, unknown>
+  questions: Record<string, DecisionQuestion>
+  modelId: string
+  zdr: boolean
+  key: string
+}): DecisionRoute {
+  if (!isLocalModelId(opts.modelId)) {
+    return {
+      url: SYSTEM_ONE_URL,
+      headers: {
+        Authorization: `Bearer ${opts.key}`,
+        "Content-Type": "application/json",
+        "X-Title": "draft-zero",
+      },
+      body: JSON.stringify({
+        model: opts.modelId,
+        state: opts.state,
+        questions: opts.questions,
+        // The provider block carries retention policy and nothing else here.
+        // Decision models are served by one provider each, so there is no
+        // routing to express — but the ZDR flag still has to be sent, because
+        // a request that omits it is a request that permits retention.
+        ...(opts.zdr ? { provider: { zdr: true } } : {}),
+      }),
+      unavailable: UNAVAILABLE,
+      describeFailure: (res) => describeFailure(res, opts.zdr),
+    }
+  }
+
+  const baseUrl = resolveOllamaBaseUrl()
+  if (!baseUrl) {
+    throw new DecisionError(
+      "Local models aren't set up on this server. Pick another decision model."
+    )
+  }
+  const host = hostLabel(baseUrl)
+  const name = ollamaModelName(opts.modelId)
+  // No provider block: a local call retains nothing by construction.
+  const body = JSON.stringify({
+    model: name,
+    state: opts.state,
+    questions: flattenChoiceGuidance(opts.questions),
+  })
+  if (new TextEncoder().encode(body).length > LOCAL_BODY_LIMIT) {
+    throw new DecisionError(
+      "This story's memory is too long for a local decision model. Shorten it, or pick another model."
+    )
+  }
+  return {
+    url: `${baseUrl}/v1/systemone`,
+    headers: { "Content-Type": "application/json" },
+    body,
+    unavailable: `${host} isn't answering. Check that Ollama is running, or pick another decision model.`,
+    describeFailure: async (res) => {
+      if (res.status === 404) {
+        invalidateOllamaCatalog()
+        return `${name} isn't installed on ${host}. Pull it, or pick another decision model.`
+      }
+      // Unlike OpenRouter's, Ollama's error is one plain sentence about the
+      // request, and the only clue to a contract mismatch.
+      const detail = await res
+        .json()
+        .then((body: { error?: unknown }) =>
+          typeof body.error === "string" ? body.error : ""
+        )
+        .catch(() => "")
+      return detail
+        ? `${host} couldn't run the decision model: ${detail}`
+        : `${host} couldn't run the decision model. Try again.`
+    },
+  }
+}
+
+/**
+ * Ollama's System One takes a choice option's guidance as a string or null,
+ * where OpenRouter also takes labelled fields. Fields are folded into labelled
+ * lines so the local model reads the same guidance.
+ */
+export function flattenChoiceGuidance(
+  questions: Record<string, DecisionQuestion>
+): Record<string, DecisionQuestion> {
+  return Object.fromEntries(
+    Object.entries(questions).map(([key, question]) => {
+      if (question.type !== "choice") return [key, question]
+      const criteria = Object.fromEntries(
+        Object.entries(question.criteria).map(([option, guidance]) => [
+          option,
+          typeof guidance === "string"
+            ? guidance
+            : Object.entries(guidance)
+                .map(
+                  ([label, value]) =>
+                    `${label.replaceAll("_", " ")}: ${
+                      typeof value === "string" ? value : value.join(" / ")
+                    }`
+                )
+                .join("\n"),
+        ])
+      )
+      return [key, { ...question, criteria }]
+    })
+  )
 }
 
 /**

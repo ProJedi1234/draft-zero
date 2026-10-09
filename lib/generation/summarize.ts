@@ -27,7 +27,7 @@ import {
   type CallStart,
 } from "@/lib/generation/calls"
 import { composeContext } from "@/lib/generation/context"
-import { resolveOpenRouterKey } from "@/lib/generation/key"
+import { resolveKeyForModel } from "@/lib/generation/key"
 import { completeOnce, mapOpenRouterError } from "@/lib/generation/openrouter"
 import { planSummary, summaryWordTarget } from "@/lib/generation/summary-plan"
 import {
@@ -65,8 +65,8 @@ export interface SummaryIo {
   resolveRecap(storyId: string): Promise<StoryRecap | null>
   /** App-wide settings — read for the summarizer's bundle and nothing else. */
   settings(): Promise<{ summarizer: SummarizerSettings }>
-  /** Null when OpenRouter is unconfigured — the offline mock path. */
-  apiKey(): string | null
+  /** Null when the model's backend is unconfigured — the offline mock path. */
+  apiKey(modelId: string): string | null
   complete(opts: {
     system: string
     user: string
@@ -113,7 +113,7 @@ export const liveIo: SummaryIo = {
   listLore: listLorebookEntries,
   resolveRecap: resolveStoryRecap,
   settings: getAppSettings,
-  apiKey: resolveOpenRouterKey,
+  apiKey: resolveKeyForModel,
   complete: completeOnce,
   openCall: recordCallStarted,
   settle: settleCall,
@@ -217,12 +217,6 @@ export async function runSummaryForStory(
 }
 
 async function summarizeOnce(storyId: string, io: SummaryIo): Promise<void> {
-  const key = io.apiKey()
-  // No key means the app is running on the offline mock, where a fabricated
-  // summary would be indistinguishable from a real one the next time anybody
-  // read the story. Nothing is written and nothing is a failure.
-  if (key === null) return
-
   const story = await io.getStory(storyId)
   if (story === null) return
   // The writer switched writing off. Whatever version already exists keeps
@@ -245,6 +239,11 @@ async function summarizeOnce(storyId: string, io: SummaryIo): Promise<void> {
 
   const { summarizer } = await io.settings()
   const modelId = summarizer.modelId ?? DEFAULT_SUMMARIZER_MODEL_ID
+  const key = io.apiKey(modelId)
+  // No key means the app is running on the offline mock, where a fabricated
+  // summary would be indistinguishable from a real one the next time anybody
+  // read the story. Nothing is written and nothing is a failure.
+  if (key === null) return
   const targetWords = summaryWordTarget(
     story.settings.contextWindow,
     summarizer.targetWords

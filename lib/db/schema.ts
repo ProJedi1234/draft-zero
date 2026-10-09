@@ -672,6 +672,8 @@ export const appSettings = pgTable("app_settings", {
   atmosphereMinConfidence: doublePrecision("atmosphere_min_confidence")
     .notNull()
     .default(0.6),
+  // Null follows the built-in default. Read only under the decision engine.
+  atmosphereDecisionModelId: text("atmosphere_decision_model_id"),
   atmosphereModelId: text("atmosphere_model_id"),
   atmosphereThinking: text("atmosphere_thinking")
     .notNull()

@@ -6,11 +6,14 @@ nonisolated enum ZdrLock: Equatable, Sendable {
     case account
     /// The writer's app-wide floor, lowered only in Settings.
     case app
+    /// Not a policy: a local model's request never leaves the network.
+    case local
 
     var note: String {
         switch self {
         case .account: "Required by your OpenRouter account."
         case .app: "Required by the app-wide policy in Settings."
+        case .local: "Always on for a local model, which runs on your own hardware."
         }
     }
 

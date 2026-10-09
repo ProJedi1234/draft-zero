@@ -245,4 +245,19 @@ struct SettingsTests {
         #expect(activity.status == .saved)
         #expect(activity.settledWrites == 2)
     }
+
+    // MARK: - Decision model
+
+    /// Sent as null when following the default, so the server stores the choice
+    /// rather than leaving an older one in place.
+    @Test func atmosphereEncodesItsDecisionModel() throws {
+        var atmosphere = try payload().settings.atmosphere
+        atmosphere.decisionModelId = "ollama:tev1"
+        let chosen = try JSONSerialization.jsonObject(with: JSONEncoder().encode(atmosphere)) as? [String: Any]
+        #expect(chosen?["decisionModelId"] as? String == "ollama:tev1")
+        atmosphere.decisionModelId = nil
+        let followed = try JSONSerialization.jsonObject(with: JSONEncoder().encode(atmosphere)) as? [String: Any]
+        #expect(followed?.keys.contains("decisionModelId") == true)
+        #expect(followed?["decisionModelId"] is NSNull)
+    }
 }

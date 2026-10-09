@@ -13,9 +13,12 @@ struct ModelPickerSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @AppStorage(ModelSource.storageKey) private var source: ModelSource = .all
 
     var body: some View {
-        let visible = ModelCatalog.filter(models, query: query)
+        let hasLocal = models.contains { $0.local != nil }
+        let shown = ModelCatalog.filter(models, source: hasLocal ? source : .all)
+        let visible = ModelCatalog.filter(shown, query: query)
         let split = ModelCatalog.partition(visible, zdr: zdr)
         let groups = ModelCatalog.groupByProvider(split.allowed)
         let showsDefault = defaultOption != nil && (query.isEmpty || "default".localizedStandardContains(query))
@@ -23,6 +26,9 @@ struct ModelPickerSheet: View {
         NavigationStack {
             ScrollViewReader { proxy in
                 List {
+                    if hasLocal {
+                        ModelSourcePicker(source: $source)
+                    }
                     if showsDefault, let defaultOption {
                         Section {
                             DefaultChoiceRow(
@@ -34,12 +40,14 @@ struct ModelPickerSheet: View {
                         }
                     }
                     ForEach(groups) { group in
-                        Section(group.provider) {
+                        Section {
                             ForEach(group.entries) { model in
                                 ModelListRow(model: model, isSelected: model.id == selection, isBlocked: false) {
                                     choose(model.id)
                                 }
                             }
+                        } header: {
+                            Text(group.provider)
                         }
                     }
                     if !split.blocked.isEmpty {

@@ -4,6 +4,7 @@ import Foundation
 enum SettingsSectionID: String, CaseIterable {
     case server
     case openRouter
+    case localModels
     case profiles
     case defaults
     case privacy

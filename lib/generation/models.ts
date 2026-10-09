@@ -15,6 +15,7 @@ import {
 } from "@/lib/types"
 
 import { resolveOpenRouterKey } from "./key"
+import { listOllamaChatModels } from "./ollama"
 import { zdrModelSlugs } from "./zdr"
 
 const TTL_MS = 60 * 60 * 1000
@@ -85,11 +86,24 @@ function toDomainModel(m: Model, zdrSlugs: Set<string>): OpenRouterModel {
 }
 
 /**
+ * Every chat model this app can call: the local Ollama host's first, then
+ * OpenRouter's. The two halves are cached separately because local models
+ * change with every `ollama pull` and OpenRouter's barely change in an hour.
+ */
+export async function listModels(): Promise<OpenRouterModel[]> {
+  const [local, remote] = await Promise.all([
+    listOllamaChatModels(),
+    listOpenRouterModels(),
+  ])
+  return local.length === 0 ? remote : [...local, ...remote]
+}
+
+/**
  * Live OpenRouter catalog mapped to the domain OpenRouterModel, cached 1h
  * per server process. Falls back to MOCK_MODELS when unconfigured or the
  * fetch fails — the picker must never be empty.
  */
-export async function listModels(): Promise<OpenRouterModel[]> {
+export async function listOpenRouterModels(): Promise<OpenRouterModel[]> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.data
   const key = resolveOpenRouterKey()
   if (!key) return MOCK_MODELS

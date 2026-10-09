@@ -21,9 +21,15 @@ const db = installFakeDb()
 installQueryMocks()
 
 // Restores the real env read over any other spec's double of this module.
-mock.module("@/lib/generation/key", () => ({
-  resolveOpenRouterKey: () => process.env.OPENROUTER_API_KEY?.trim() || null,
-}))
+mock.module("@/lib/generation/key", () => {
+  const resolveOpenRouterKey = () =>
+    process.env.OPENROUTER_API_KEY?.trim() || null
+  return {
+    resolveOpenRouterKey,
+    resolveKeyForModel: (modelId: string) =>
+      modelId.startsWith("ollama:") ? "" : resolveOpenRouterKey(),
+  }
+})
 let keyCheck: (key: string) => Promise<void> = async () => {}
 mock.module("@/lib/generation/key-check", () => ({
   fetchKeyMetadata: (key: string) => keyCheck(key),

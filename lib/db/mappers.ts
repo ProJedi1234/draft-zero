@@ -701,6 +701,7 @@ export function toAppSettings(row: AppSettingsRow): AppSettings {
     atmosphere: {
       engine: row.atmosphereEngine,
       minConfidence: row.atmosphereMinConfidence,
+      decisionModelId: row.atmosphereDecisionModelId,
       modelId: row.atmosphereModelId,
       thinking: row.atmosphereThinking,
       providerTag: row.atmosphereProviderTag,

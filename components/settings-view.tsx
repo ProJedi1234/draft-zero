@@ -9,6 +9,7 @@ import { OfflineChip } from "@/components/offline/offline-chip"
 import { OfflineInert } from "@/components/offline/offline-inert"
 import { AtmosphereCard } from "@/components/settings/atmosphere-card"
 import { DeveloperCard } from "@/components/settings/developer-card"
+import { LocalModelsCard } from "@/components/settings/local-models-card"
 import { GenerationDefaultsCard } from "@/components/settings/generation-defaults-card"
 import { ImageGenerationCard } from "@/components/settings/image-generation-card"
 import { ModelProfilesCard } from "@/components/settings/model-profiles-card"
@@ -33,6 +34,8 @@ import {
   ZDR_GROUP_LABELS,
   type AccountZdrPolicies,
   type AppSettings,
+  type DecisionModel,
+  type LocalModelsStatus,
   type ModelProfile,
   type OpenRouterImageModel,
   type OpenRouterModel,
@@ -55,6 +58,8 @@ function enforcedGroupList(policies: AccountZdrPolicies): string {
 function SettingsView({
   settings,
   models,
+  decisionModels,
+  localModels,
   imageModels,
   defaultImagePrice,
   profiles,
@@ -62,6 +67,9 @@ function SettingsView({
 }: {
   settings: AppSettings
   models: OpenRouterModel[]
+  decisionModels: DecisionModel[]
+  /** The local Ollama host, or null when the server has none configured. */
+  localModels: LocalModelsStatus | null
   imageModels: OpenRouterImageModel[]
   /** What the resolved default image model costs per image, or null. */
   defaultImagePrice: string | null
@@ -189,6 +197,16 @@ function SettingsView({
               </CardContent>
             </Card>
 
+            {localModels ? (
+              <LocalModelsCard
+                status={localModels}
+                models={models}
+                decisionModels={decisionModels}
+                summarizer={settings.summarizer}
+                atmosphere={settings.atmosphere}
+              />
+            ) : null}
+
             <GenerationDefaultsCard defaults={settings.defaultGeneration} />
 
             <ImageGenerationCard
@@ -218,6 +236,8 @@ function SettingsView({
 
             <AtmosphereCard
               models={models}
+              decisionModels={decisionModels}
+              localHost={localModels?.host ?? null}
               atmosphere={settings.atmosphere}
               requireZdr={requireZdr}
             />

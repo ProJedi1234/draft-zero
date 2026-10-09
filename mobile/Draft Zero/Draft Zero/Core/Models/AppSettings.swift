@@ -43,6 +43,9 @@ nonisolated struct AppSettings: Codable, Sendable, Hashable {
         var engine: Engine
         /// How sure the decision engine must be before repainting, 0.5–0.95.
         var minConfidence: Double
+        /// The decision model, or nil for `BuiltInModels.atmosphereDecision`.
+        /// Absent from a server older than the decision picker.
+        var decisionModelId: String?
         var modelId: String?
         var thinking: ThinkingLevel
         var providerTag: String?
@@ -55,6 +58,7 @@ nonisolated struct AppSettings: Codable, Sendable, Hashable {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(engine, forKey: .engine)
             try container.encode(minConfidence, forKey: .minConfidence)
+            try container.encode(decisionModelId, forKey: .decisionModelId)
             try container.encode(modelId, forKey: .modelId)
             try container.encode(thinking, forKey: .thinking)
             try container.encode(providerTag, forKey: .providerTag)

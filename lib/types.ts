@@ -543,6 +543,12 @@ export type AtmosphereSettings = Omit<GenerationIdentity, "modelId"> & {
    * interpretAtmosphereAnswers. Ignored entirely under "llm".
    */
   minConfidence: number
+  /**
+   * The decision model, or null for DEFAULT_ATMOSPHERE_DECISION_MODEL_ID.
+   * Its own column so switching engines never sends a language model down
+   * the decision route.
+   */
+  decisionModelId: string | null
   modelId: string | null
   temperature: number
   /**
@@ -1172,6 +1178,67 @@ export interface OpenRouterModel {
    * the alias will actually be routed through.
    */
   aliasTarget?: string
+  /** Present only on a model served by the local Ollama host. */
+  local?: LocalModelInfo
+}
+
+/**
+ * Prefix of every model id served by the local Ollama host. No OpenRouter id
+ * starts this way, so a stored model_id says which backend answers it.
+ */
+export const LOCAL_MODEL_PREFIX = "ollama:"
+
+export function isLocalModelId(modelId: string): boolean {
+  return modelId.startsWith(LOCAL_MODEL_PREFIX)
+}
+
+/** What the picker shows about a model running on the local Ollama host. */
+export interface LocalModelInfo {
+  /** Short host label for display, e.g. "metis". */
+  host: string
+  /** Resident in memory right now, so the first token comes without a load. */
+  loaded: boolean
+  /** e.g. "Q4_K_M" or "nvfp4"; null when Ollama doesn't say. */
+  quantization: string | null
+}
+
+/**
+ * One System One decision model: handed state and typed questions, answers
+ * with probabilities. Its own type because it shares almost nothing with a
+ * chat model: no sampling, no reasoning, no completion price.
+ */
+export interface DecisionModel {
+  /** e.g. "typesafe/jev-1.13", or "ollama:tev1" for a local one. */
+  id: string
+  name: string
+  /** Lab display name, e.g. "TypeSafe". */
+  provider: string
+  /** 0 when the catalog doesn't publish one. */
+  contextLength: number
+  /** Display string, USD per 1M input tokens. Output is not billed. */
+  promptPrice: string
+  /** e.g. ["text", "image"]. */
+  inputModalities: string[]
+  /** Usable under a zero-data-retention policy. Always true for a local model. */
+  zdr: boolean
+  local?: LocalModelInfo
+}
+
+/** The local Ollama host as the Settings page reports it. */
+export interface LocalModelsStatus {
+  /** Short host label, e.g. "metis". */
+  host: string
+  /** OLLAMA_BASE_URL as configured. */
+  baseUrl: string
+  reachable: boolean
+  /** Ollama's version string, or null when unreachable. */
+  version: string | null
+  chatModels: number
+  decisionModels: number
+  /** The context window sent with every local request. */
+  contextWindow: number
+  /** Models resident in memory, with when Ollama will unload each. */
+  loaded: { modelId: string; name: string; expiresAt: string | null }[]
 }
 
 /**

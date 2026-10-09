@@ -85,9 +85,14 @@ mock.module("@/lib/generation/atmosphere", () => ({
 }))
 
 let currentKey: string | null = "sk-or-test"
-mock.module("@/lib/generation/key", () => ({
-  resolveOpenRouterKey: () => currentKey,
-}))
+mock.module("@/lib/generation/key", () => {
+  const resolveOpenRouterKey = () => currentKey
+  return {
+    resolveOpenRouterKey,
+    resolveKeyForModel: (modelId: string) =>
+      modelId.startsWith("ollama:") ? "" : resolveOpenRouterKey(),
+  }
+})
 
 // The ledger runs for real against this recording fake — the loop's contract
 // with it is the old route's: row before first byte, one settle per run,

@@ -77,3 +77,30 @@ describe("settingsSummaryWithPrice", () => {
     )
   })
 })
+
+describe("a local model", () => {
+  const LOCAL: OpenRouterModel = {
+    id: "ollama:qwen3.8:27b-mlx",
+    name: "Qwen 3.8 27B",
+    provider: "Ollama · metis",
+    contextLength: 65_536,
+    maxCompletionTokens: null,
+    pricing: { prompt: "$0.00", completion: "$0.00" },
+    reasoning: { efforts: ["medium"], mandatory: false },
+    zdr: true,
+    local: { host: "metis", loaded: false, quantization: "nvfp4" },
+  }
+  const settings = { ...SETTINGS, modelId: LOCAL.id }
+
+  test("names its host where a routed model says Auto", () => {
+    expect(settingsSummary(settings, [LOCAL])).toBe(
+      "Qwen 3.8 27B · metis · think medium"
+    )
+  })
+
+  test("is priced as free rather than as two zeros", () => {
+    expect(settingsSummaryWithPrice(settings, [LOCAL])).toBe(
+      "Qwen 3.8 27B · metis · think medium · free"
+    )
+  })
+})

@@ -9,7 +9,9 @@ import {
   getAppSettings,
   listModelProfiles,
 } from "@/lib/db/queries"
+import { listDecisionModels } from "@/lib/generation/decision-models"
 import { listModels } from "@/lib/generation/models"
+import { getLocalModelsStatus } from "@/lib/generation/ollama"
 import {
   getImageModelPrice,
   listImageModels,
@@ -17,6 +19,8 @@ import {
 } from "@/lib/images/models"
 import type {
   AppSettings,
+  DecisionModel,
+  LocalModelsStatus,
   ModelProfile,
   OpenRouterImageModel,
   OpenRouterModel,
@@ -25,6 +29,10 @@ import type {
 export interface SettingsPayload {
   settings: AppSettings
   models: OpenRouterModel[]
+  /** Every System One model the atmosphere check can be pointed at. */
+  decisionModels: DecisionModel[]
+  /** The local Ollama host, or null when the server has none configured. */
+  localModels: LocalModelsStatus | null
   imageModels: OpenRouterImageModel[]
   /** What the resolved default image model costs per image, or null when unknown. */
   defaultImagePrice: string | null
@@ -38,8 +46,17 @@ export async function buildSettingsPayload(): Promise<SettingsPayload> {
   // listing profiles beside it would race the seed and render an empty card on
   // the very first load.
   const settings = await getAppSettings()
-  const [models, imageModels, profiles, followerCounts] = await Promise.all([
+  const [
+    models,
+    decisionModels,
+    localModels,
+    imageModels,
+    profiles,
+    followerCounts,
+  ] = await Promise.all([
     listModels(),
+    listDecisionModels(),
+    getLocalModelsStatus(),
     listImageModels(),
     listModelProfiles(),
     countProfileFollowers(),
@@ -53,6 +70,8 @@ export async function buildSettingsPayload(): Promise<SettingsPayload> {
   return {
     settings,
     models,
+    decisionModels,
+    localModels,
     imageModels,
     defaultImagePrice,
     profiles,

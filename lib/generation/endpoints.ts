@@ -10,7 +10,7 @@ import { endpointsList } from "@openrouter/sdk/funcs/endpointsList.js"
 import type { PublicEndpoint } from "@openrouter/sdk/models"
 
 import { mockEndpoints } from "@/lib/mock-data"
-import type { ModelEndpoint } from "@/lib/types"
+import { isLocalModelId, type ModelEndpoint } from "@/lib/types"
 
 import { resolveOpenRouterKey } from "./key"
 import { listModels } from "./models"
@@ -95,6 +95,8 @@ async function fallbackEndpoints(modelId: string): Promise<ModelEndpoint[]> {
 export async function listModelEndpoints(
   modelId: string
 ): Promise<ModelEndpoint[]> {
+  // A local model runs in one place, so there is nothing to route between.
+  if (isLocalModelId(modelId)) return []
   const hit = cache.get(modelId)
   if (hit && Date.now() - hit.at < TTL_MS) return hit.data
 

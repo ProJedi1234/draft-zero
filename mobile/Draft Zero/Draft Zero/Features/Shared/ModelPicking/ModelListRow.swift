@@ -27,10 +27,14 @@ struct ModelListRow: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    Text("\(Format.contextLength(model.contextLength)) context · \(model.pricing.prompt) in · \(model.pricing.completion) out per 1M")
-                        .font(.footnote)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                    if let local = model.local {
+                        LocalModelDetail(local: local, extra: ["\(Format.contextLength(model.contextLength)) context", "free"])
+                    } else {
+                        Text("\(Format.contextLength(model.contextLength)) context · \(model.pricing.prompt) in · \(model.pricing.completion) out per 1M")
+                            .font(.footnote)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer(minLength: 8)
                 SelectionCheckmark(isSelected: isSelected)

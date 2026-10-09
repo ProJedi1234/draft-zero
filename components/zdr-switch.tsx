@@ -17,11 +17,13 @@ import { OPENROUTER_PRIVACY_URL } from "@/lib/types"
  * just not from here: a per-story escape hatch on a global policy is how a
  * policy stops being one.
  */
-export type ZdrLock = null | "account" | "app"
+export type ZdrLock = null | "account" | "app" | "local"
 
 const LOCK_NOTE: Record<NonNullable<ZdrLock>, string> = {
   account: "Required by your OpenRouter account.",
   app: "Required by the app-wide policy.",
+  // Not a policy at all: the request never leaves the local network.
+  local: "Always on for a local model, which runs on your own hardware.",
 }
 
 /**

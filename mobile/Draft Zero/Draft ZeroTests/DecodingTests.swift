@@ -21,6 +21,24 @@ struct DecodingTests {
         #expect(payload.settings.defaultProfileId != nil)
     }
 
+    @Test func settingsPayloadWithLocalModels() throws {
+        let payload = try FixtureLoader.decode(SettingsPayload.self, from: "settings.json")
+        let local = payload.models.filter { $0.local != nil }
+        #expect(!local.isEmpty)
+        #expect(local.allSatisfy { $0.id.hasPrefix(LocalModels.idPrefix) && $0.zdr })
+        #expect(payload.localModels?.host == "metis")
+        #expect(payload.decisionModels?.contains { $0.id == BuiltInModels.atmosphereDecision } == true)
+    }
+
+    /// A server from before local models omits every new field, and still decodes.
+    @Test func settingsPayloadFromAnOlderServer() throws {
+        let payload = try FixtureLoader.decode(SettingsPayload.self, from: "settings-before-local-models.json")
+        #expect(payload.decisionModels == nil)
+        #expect(payload.localModels == nil)
+        #expect(payload.settings.atmosphere.decisionModelId == nil)
+        #expect(payload.models.allSatisfy { $0.local == nil })
+    }
+
     @Test func usagePayload() throws {
         let payload = try FixtureLoader.decode(UsagePayload.self, from: "usage.json")
         #expect(payload.bars.count == payload.windowDays)

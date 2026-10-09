@@ -1362,6 +1362,7 @@ export async function getAppSettings(): Promise<AppSettings> {
       summaryMaxTokens: null,
       // Null for the same reason the summarizer's is.
       atmosphereModelId: null,
+      atmosphereDecisionModelId: null,
       atmosphereThinking: "off" as const,
       atmosphereProviderTag: null,
       atmosphereZdr: false,

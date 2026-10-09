@@ -26,9 +26,14 @@ import {
 mock.module("server-only", () => ({}))
 
 let currentKey: string | null = null
-mock.module("@/lib/generation/key", () => ({
-  resolveOpenRouterKey: () => currentKey,
-}))
+mock.module("@/lib/generation/key", () => {
+  const resolveOpenRouterKey = () => currentKey
+  return {
+    resolveOpenRouterKey,
+    resolveKeyForModel: (modelId: string) =>
+      modelId.startsWith("ollama:") ? "" : resolveOpenRouterKey(),
+  }
+})
 
 const streamCalls: Array<{ key: string }> = []
 const realOpenRouter = await import("@/lib/generation/openrouter")

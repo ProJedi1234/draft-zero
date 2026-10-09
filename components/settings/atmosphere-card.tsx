@@ -4,6 +4,7 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { ModelPicker } from "@/components/inspector/model-picker"
+import { DecisionModelCombobox } from "@/components/model-combobox"
 import { SliderField } from "@/components/slider-field"
 import { levelForModel } from "@/components/thinking-select"
 import { ZdrSwitch, type ZdrLock } from "@/components/zdr-switch"
@@ -14,17 +15,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAccountZdrForModel } from "@/hooks/use-account-zdr"
 import { useModelEndpoints } from "@/hooks/use-model-endpoints"
 import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { updateAppSettings } from "@/lib/actions/settings"
-import { ATMOSPHERE_DECISION_MODEL_ID } from "@/lib/generation/atmosphere-decision"
+import { DEFAULT_ATMOSPHERE_DECISION_MODEL_ID } from "@/lib/generation/atmosphere-decision"
 import { DEFAULT_ATMOSPHERE_MODEL_ID } from "@/lib/generation/atmosphere-prompt"
-import type {
-  AtmosphereEngine,
-  AtmosphereSettings,
-  OpenRouterModel,
+import {
+  isLocalModelId,
+  type AtmosphereEngine,
+  type AtmosphereSettings,
+  type DecisionModel,
+  type OpenRouterModel,
 } from "@/lib/types"
 
 const FALLBACK_ERROR = "Couldn't save the atmosphere model."
@@ -35,11 +39,11 @@ const FALLBACK_ERROR = "Couldn't save the atmosphere model."
  * Two engines, and the tabs are not decoration. A language model is told the
  * question in prose and answers in prose, so it needs a model, a temperature
  * and an output cap; a decision model is handed typed questions and answers
- * with probabilities, and accepts none of the three. Four of the six controls
+ * with probabilities, and accepts none of the three. Most of the controls
  * here are meaningless under the second engine, which is why the body swaps
- * rather than the model picker gaining an entry — and why the decision model
- * is NOT in that picker, since choosing it there would send a story's
- * generation down a route that has no messages array to put it in.
+ * rather than one picker listing both — and why decision models get a picker
+ * of their own, since choosing one in the chat picker would send a request
+ * down a route that has no messages array to put it in.
  *
  * The LANGUAGE model's settings survive a visit to the other tab, because they
  * are their own columns rather than one polymorphic bundle. A writer who tuned
@@ -56,10 +60,15 @@ const FALLBACK_ERROR = "Couldn't save the atmosphere model."
  */
 export function AtmosphereCard({
   models,
+  decisionModels,
+  localHost,
   atmosphere,
   requireZdr,
 }: {
   models: OpenRouterModel[]
+  decisionModels: DecisionModel[]
+  /** The local Ollama host's label, or null when the server has none. */
+  localHost: string | null
   atmosphere: AtmosphereSettings
   /** The app-wide retention floor, which this bundle can add to but not escape. */
   requireZdr: boolean
@@ -79,11 +88,18 @@ export function AtmosphereCard({
   // toggles, not one — so the two engines can genuinely differ, and both
   // questions are asked unconditionally rather than behind the active tab.
   const accountZdr = useAccountZdrForModel(modelId)
-  const decisionAccountZdr = useAccountZdrForModel(ATMOSPHERE_DECISION_MODEL_ID)
+  const decisionModelId =
+    draft.decisionModelId ?? DEFAULT_ATMOSPHERE_DECISION_MODEL_ID
+  const decisionAccountZdr = useAccountZdrForModel(decisionModelId)
   const zdrLock: ZdrLock =
     accountZdr === "enforced" ? "account" : requireZdr ? "app" : null
-  const decisionZdrLock: ZdrLock =
-    decisionAccountZdr === "enforced" ? "account" : requireZdr ? "app" : null
+  const decisionZdrLock: ZdrLock = isLocalModelId(decisionModelId)
+    ? "local"
+    : decisionAccountZdr === "enforced"
+      ? "account"
+      : requireZdr
+        ? "app"
+        : null
   const zdr = draft.zdr || requireZdr
 
   function save(next: AtmosphereSettings) {
@@ -205,11 +221,24 @@ export function AtmosphereCard({
           </TabsContent>
 
           <TabsContent value="decision" className="mt-4">
-            <p className="text-sm text-muted-foreground">
+            <div className="space-y-2">
+              <Label htmlFor="atmosphere-decision-model">Decision model</Label>
+              <DecisionModelCombobox
+                id="atmosphere-decision-model"
+                models={decisionModels}
+                value={decisionModelId}
+                onValueChange={(next) =>
+                  save({ ...draft, decisionModelId: next })
+                }
+                zdr={zdr}
+                localHost={localHost}
+              />
+            </div>
+            <p className="mt-3 text-sm text-muted-foreground">
               Answers with a probability instead of a sentence, in about a tenth
               of the time and for a fraction of the price. It is asked two
               questions at once — whether the tint still fits, and which one
-              fits best — and there is nothing to sample, so there is no model,
+              fits best — and there is nothing to sample, so there is no
               temperature or output cap to set.
             </p>
             <p className="mt-3 text-sm text-muted-foreground">
