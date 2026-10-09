@@ -1,6 +1,8 @@
 // lib/mcp/tools/story-crud.test.ts — handler shaping logic against mocked
 // queries and the real stories service over a scripted drizzle chain. No live
 // DB, no HTTP.
+import { withContentParity } from "@/lib/mcp/tools/test-results"
+
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
@@ -56,7 +58,7 @@ function makeFakeServer() {
   const handlers = new Map<string, ToolHandler>()
   const server = {
     registerTool: (name: string, _config: unknown, handler: ToolHandler) => {
-      handlers.set(name, handler)
+      handlers.set(name, withContentParity(name, handler))
     },
   }
   return { server, handlers }

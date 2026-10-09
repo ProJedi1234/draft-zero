@@ -1,5 +1,7 @@
 // lib/mcp/tools/list-stories.test.ts — handler shaping logic against mocked
 // queries. No live DB, no HTTP.
+import { withContentParity } from "@/lib/mcp/tools/test-results"
+
 import { beforeEach, describe, expect, mock, test } from "bun:test"
 import type { ZodType } from "zod"
 
@@ -44,8 +46,8 @@ type ToolHandler = (
 function registeredHandler(): ToolHandler {
   let handler: ToolHandler | undefined
   const server = {
-    registerTool: (_name: string, _config: unknown, h: ToolHandler) => {
-      handler = h
+    registerTool: (name: string, _config: unknown, h: ToolHandler) => {
+      handler = withContentParity(name, h)
     },
   }
   registerListStories(server as never, {} as never)
@@ -104,6 +106,10 @@ describe("list_stories", () => {
       updatedAt: "2026-01-02",
     })
     expect(result.structuredContent?.total).toBe(1)
+    expect(result.content[0]?.text).toBe("1 story · 1 returned")
+    const json = result.content[1]
+    expect(json?.type).toBe("text")
+    expect(JSON.parse(json!.text)).toEqual(result.structuredContent)
   })
 
   test("a story with no live passages counts as zero, not missing", async () => {

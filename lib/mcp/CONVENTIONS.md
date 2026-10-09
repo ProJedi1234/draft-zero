@@ -95,8 +95,10 @@ content was provided"`. A shape mismatch is caught the same way. Since every too
 return structured("wrote position 214 · 180 words", { storyId, position: 214, kind: "narration", words: 180 })
 ```
 
-`content` is the one-line summary; `structuredContent` is the answer. Do not put the payload in
-both, and **never echo prose back** — a write returns its delta, not the passage.
+`content` contains the one-line summary followed by a text block with the serialized JSON
+answer. `structuredContent` contains the same answer as an object. Keep both representations
+so clients that only forward `content` to the model receive the full result. **Never echo
+written prose back** — a write returns its delta, not the passage.
 
 The output schema's root must be an object. A non-object root gets wrapped as `{result: …}` on
 the wire (SEP-2106), which nothing downstream expects.
@@ -271,6 +273,8 @@ Shared types: `RegisterTool`, `ToolDeps`, `RequestStatePayload`, `PositionArg`, 
 
 Colocate as `lib/mcp/**/*.test.ts`, run with `bun test`. Prefer testing the handler's logic
 against mocked queries; a DB is not needed to prove a range resolved or a summary read right.
+Wrap captured handlers with `withContentParity` from `tools/test-results.ts` so every exercised
+structured result also verifies that a content-only client receives every field and value.
 
 ### ⚠️ `mock.module` is process-wide
 

@@ -1,6 +1,8 @@
 // lib/mcp/tools/context-breakdown.test.ts — handler shaping logic against
 // mocked queries, with the real loadEntryContext service and the real
 // describeContext composing what the tool reshapes. No live DB, no network.
+import { withContentParity } from "@/lib/mcp/tools/test-results"
+
 import { beforeEach, describe, expect, mock, test } from "bun:test"
 
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
@@ -142,8 +144,8 @@ type ToolHandler = (
 function registeredHandler(): ToolHandler {
   let handler: ToolHandler | undefined
   const server = {
-    registerTool: (_name: string, _config: unknown, h: ToolHandler) => {
-      handler = h
+    registerTool: (name: string, _config: unknown, h: ToolHandler) => {
+      handler = withContentParity(name, h)
     },
   }
   registerContextBreakdown(server as never, undefined as never)

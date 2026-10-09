@@ -4,6 +4,8 @@
 //
 // See write.test.ts's header for why the tool module is imported at the top
 // level rather than inside a test().
+import { withContentParity } from "@/lib/mcp/tools/test-results"
+
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 
 import type { RegisterTool } from "@/lib/mcp/helpers"
@@ -22,8 +24,8 @@ const { registerRewind } = await import("@/lib/mcp/tools/rewind")
 function capture(register: RegisterTool) {
   let handler: (args: unknown) => Promise<unknown>
   const fakeServer = {
-    registerTool: (_name: string, _config: unknown, h: typeof handler) => {
-      handler = h
+    registerTool: (name: string, _config: unknown, h: typeof handler) => {
+      handler = withContentParity(name, h)
     },
   }
   register(fakeServer as never, {} as never)

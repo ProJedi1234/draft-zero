@@ -1,5 +1,7 @@
 // lib/mcp/tools/read.test.ts — handler shaping logic against mocked queries.
 // No live DB, no HTTP.
+import { withContentParity } from "@/lib/mcp/tools/test-results"
+
 import { beforeEach, describe, expect, mock, test } from "bun:test"
 
 import type { ManuscriptSlot } from "@/lib/db/queries"
@@ -47,8 +49,8 @@ type ToolHandler = (
 function registeredHandler(): ToolHandler {
   let handler: ToolHandler | undefined
   const server = {
-    registerTool: (_name: string, _config: unknown, h: ToolHandler) => {
-      handler = h
+    registerTool: (name: string, _config: unknown, h: ToolHandler) => {
+      handler = withContentParity(name, h)
     },
   }
   registerRead(server as never, {} as never)
