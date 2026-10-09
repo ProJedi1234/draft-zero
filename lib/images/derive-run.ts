@@ -28,7 +28,7 @@ import { parseLoreIdsJson } from "@/lib/db/mappers"
 import { composerDrafts } from "@/lib/db/schema"
 import { recordCallStarted, settleCall } from "@/lib/generation/calls"
 import { chunkText } from "@/lib/generation/fixtures"
-import { resolveOpenRouterKey } from "@/lib/generation/key"
+import { resolveKeyForModel } from "@/lib/generation/key"
 import { mapOpenRouterError } from "@/lib/generation/openrouter"
 import { streamDerivation } from "@/lib/images/derive-live"
 import { publishBus } from "@/lib/sync/bus"
@@ -210,7 +210,7 @@ export function discardStoryDeriveRun(storyId: string): void {
 }
 
 async function deriveRunLoop(run: LiveDeriveRun): Promise<void> {
-  const key = resolveOpenRouterKey()
+  const key = resolveKeyForModel(run.settings.modelId)
 
   // "aborted" is the default the same way it is in the other two loops: only
   // the signal distinguishes a cut-short run from a finished one, and every

@@ -19,7 +19,7 @@ import { useAccountZdrForModel } from "@/hooks/use-account-zdr"
 import { useModelEndpoints } from "@/hooks/use-model-endpoints"
 import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { updateAppSettings } from "@/lib/actions/settings"
-import { ATMOSPHERE_DECISION_MODEL_ID } from "@/lib/generation/atmosphere-decision"
+import { DEFAULT_ATMOSPHERE_DECISION_MODEL_ID } from "@/lib/generation/atmosphere-decision"
 import { DEFAULT_ATMOSPHERE_MODEL_ID } from "@/lib/generation/atmosphere-prompt"
 import type {
   AtmosphereEngine,
@@ -79,7 +79,9 @@ export function AtmosphereCard({
   // toggles, not one — so the two engines can genuinely differ, and both
   // questions are asked unconditionally rather than behind the active tab.
   const accountZdr = useAccountZdrForModel(modelId)
-  const decisionAccountZdr = useAccountZdrForModel(ATMOSPHERE_DECISION_MODEL_ID)
+  const decisionAccountZdr = useAccountZdrForModel(
+    DEFAULT_ATMOSPHERE_DECISION_MODEL_ID
+  )
   const zdrLock: ZdrLock =
     accountZdr === "enforced" ? "account" : requireZdr ? "app" : null
   const decisionZdrLock: ZdrLock =

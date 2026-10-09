@@ -41,6 +41,7 @@ table below.
 |---|---|
 | `DATABASE_URL` | the Postgres to open; defaults to the compose stack on 5433 |
 | `OPENROUTER_API_KEY` | optional — overrides the key saved on the Settings page. With neither, generation runs on the offline mock provider |
+| `OLLAMA_BASE_URL` / `OLLAMA_NUM_CTX` | optional — an Ollama host whose models appear beside OpenRouter's, and the context window sent with every local request |
 | `MCP_ALLOWED_HOSTS` | extra hostnames `/api/mcp` answers to beside localhost |
 | `DRAFT_ZERO_DEV_ORIGINS` | extra origins the dev server trusts, so HMR works from a phone on your LAN |
 | `DRAFT_ZERO_TIME_ZONE` / `DRAFT_ZERO_LOCALE` | the day boundary and date format on the usage page |

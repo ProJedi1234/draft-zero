@@ -21,7 +21,7 @@ import { persistGeneratedEntry } from "@/lib/db/entry-writes"
 import { stories } from "@/lib/db/schema"
 import { scheduleAtmosphere } from "@/lib/generation/atmosphere"
 import { recordCallStarted, settleCall } from "@/lib/generation/calls"
-import { resolveOpenRouterKey } from "@/lib/generation/key"
+import { resolveKeyForModel } from "@/lib/generation/key"
 import { MockGenerationProvider } from "@/lib/generation/mock-provider"
 import {
   mapOpenRouterError,
@@ -446,7 +446,7 @@ async function resolveStory(
 }
 
 async function runLoop(run: LiveRun, context: ComposedContext): Promise<void> {
-  const key = resolveOpenRouterKey()
+  const key = resolveKeyForModel(run.settings.modelId)
 
   // Aborted is the default, not the exception. A Stop does not throw anywhere:
   // both providers RETURN the moment their signal trips, so the `for await`

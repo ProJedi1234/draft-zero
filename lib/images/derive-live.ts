@@ -10,9 +10,10 @@ import { OpenRouterCore } from "@openrouter/sdk/core.js"
 import { chatSend } from "@openrouter/sdk/funcs/chatSend.js"
 import { EventStream } from "@openrouter/sdk/lib/event-streams.js"
 
-import type { GenerationSettings } from "@/lib/types"
+import { isLocalModelId, type GenerationSettings } from "@/lib/types"
 
 import { listModels } from "@/lib/generation/models"
+import { streamOllamaCompletion } from "@/lib/generation/ollama-chat"
 import { reasoningParam } from "@/lib/generation/openrouter"
 
 export interface DerivationEvent {
@@ -58,6 +59,10 @@ export async function* streamDerivation(opts: {
   signal: AbortSignal
 }): AsyncGenerator<DerivationEvent> {
   const { system, user, settings, key, signal } = opts
+  if (isLocalModelId(settings.modelId)) {
+    yield* streamLocalDerivation(opts)
+    return
+  }
   const core = new OpenRouterCore({ apiKey: key, appTitle: "draft-zero" })
 
   // Cached in-process, so this is a lookup rather than a round trip. Needed
@@ -122,6 +127,39 @@ export async function* streamDerivation(opts: {
     type: "done",
     generationId,
     costUsd,
+    promptTokens,
+    completionTokens,
+  }
+}
+
+/** The same derivation against the local Ollama host, which bills nothing. */
+async function* streamLocalDerivation(opts: {
+  system: string
+  user: string
+  settings: GenerationSettings
+  signal: AbortSignal
+}): AsyncGenerator<DerivationEvent> {
+  let promptTokens: number | null = null
+  let completionTokens: number | null = null
+  for await (const event of streamOllamaCompletion({
+    modelId: opts.settings.modelId,
+    system: opts.system,
+    user: opts.user,
+    thinking: "off",
+    temperature: 0.4,
+    signal: opts.signal,
+  })) {
+    if (event.type === "text") yield { type: "text", value: event.value }
+    if (event.type === "usage") {
+      promptTokens = event.usage.promptTokens
+      completionTokens = event.usage.completionTokens
+    }
+  }
+  if (opts.signal.aborted) return
+  yield {
+    type: "done",
+    generationId: null,
+    costUsd: 0,
     promptTokens,
     completionTokens,
   }

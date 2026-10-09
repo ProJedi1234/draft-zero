@@ -11,13 +11,18 @@ installFakeDb()
 // Other specs double this module process-wide with a fake key; see
 // lib/services/models.test.ts.
 let keyless = false
-mock.module("@/lib/generation/key", () => ({
-  resolveOpenRouterKey: () => {
+mock.module("@/lib/generation/key", () => {
+  const resolveOpenRouterKey = () => {
     if (keyless) return null
     const env = process.env.OPENROUTER_API_KEY?.trim()
     return env ? env : null
-  },
-}))
+  }
+  return {
+    resolveOpenRouterKey,
+    resolveKeyForModel: (modelId: string) =>
+      modelId.startsWith("ollama:") ? "" : resolveOpenRouterKey(),
+  }
+})
 
 const endpoints = await import("@/app/api/models/endpoints/[...modelId]/route")
 const zdrAll = await import("@/app/api/zdr/route")

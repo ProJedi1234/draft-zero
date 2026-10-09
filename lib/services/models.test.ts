@@ -14,13 +14,18 @@ installFakeDb()
 // send these reads to OpenRouter. Outside this file it reads the env as the
 // real module does.
 let keyless = false
-mock.module("@/lib/generation/key", () => ({
-  resolveOpenRouterKey: () => {
+mock.module("@/lib/generation/key", () => {
+  const resolveOpenRouterKey = () => {
     if (keyless) return null
     const env = process.env.OPENROUTER_API_KEY?.trim()
     return env ? env : null
-  },
-}))
+  }
+  return {
+    resolveOpenRouterKey,
+    resolveKeyForModel: (modelId: string) =>
+      modelId.startsWith("ollama:") ? "" : resolveOpenRouterKey(),
+  }
+})
 
 const models = await import("@/lib/services/models")
 const zdr = await import("@/lib/services/zdr")

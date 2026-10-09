@@ -10,6 +10,7 @@ import { EventStream } from "@openrouter/sdk/lib/event-streams.js"
 import { OpenRouterError } from "@openrouter/sdk/models/errors"
 
 import {
+  isLocalModelId,
   routableEndpointForTag,
   type GenerationSettings,
   type ModelEndpoint,
@@ -21,6 +22,11 @@ import {
 import { promptSegments, renderPrompt } from "./context"
 import { listModelEndpoints } from "./endpoints"
 import { listModels } from "./models"
+import {
+  completeOllamaOnce,
+  LocalModelError,
+  streamOllamaCompletion,
+} from "./ollama-chat"
 import { resolveSystemPrompt } from "./system-prompt"
 import type { ComposedContext, GenerationEvent, GenerationUsage } from "./types"
 import { isDataPolicyRefusal } from "./zdr-account"
@@ -30,6 +36,9 @@ export function mapOpenRouterError(err: unknown): {
   status: number
   message: string
 } {
+  if (err instanceof LocalModelError) {
+    return { status: err.status, message: err.message }
+  }
   if (err instanceof OpenRouterError) {
     switch (err.statusCode) {
       case 401:
@@ -193,6 +202,7 @@ export async function completeOnce(opts: {
   generationId: string | null
   usage: GenerationUsage | null
 }> {
+  if (isLocalModelId(opts.modelId)) return completeOllamaOnce(opts)
   const core = new OpenRouterCore({ apiKey: opts.key, appTitle: "draft-zero" })
   // Both catalogs are cached per process, so these are lookups rather than
   // round-trips. The endpoint list is only needed when a provider is pinned.
@@ -280,6 +290,26 @@ export async function* streamCompletion(opts: {
   sessionId?: string
 }): AsyncGenerator<GenerationEvent> {
   const { context, settings, key, signal, sessionId } = opts
+  if (isLocalModelId(settings.modelId)) {
+    // One plain user string: Ollama caches the prompt prefix on its own, and
+    // the parts concatenate to exactly this text.
+    yield* streamOllamaCompletion({
+      modelId: settings.modelId,
+      system:
+        context.systemPrompt.trim() === ""
+          ? resolveSystemPrompt(null)
+          : context.systemPrompt,
+      user: renderPrompt(context),
+      thinking: settings.thinking,
+      temperature: settings.temperature,
+      topP: settings.topP,
+      frequencyPenalty: settings.frequencyPenalty,
+      presencePenalty: settings.presencePenalty,
+      seed: context.seed,
+      signal,
+    })
+    return
+  }
   const core = new OpenRouterCore({ apiKey: key, appTitle: "draft-zero" })
   // Both catalogs are cached per process, so these are lookups rather than
   // round-trips on the hot path. The endpoint list is only needed when the story

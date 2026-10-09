@@ -20,8 +20,13 @@ export async function installEntriesDoubles(): Promise<FakeDb> {
   mock.module("@/lib/db/entry-writes", () => ({ ...real }))
   // loadEntryContext reads the model catalog, which fetches from OpenRouter
   // whenever a key resolves; another spec's double may hand it one.
-  mock.module("@/lib/generation/key", () => ({
-    resolveOpenRouterKey: () => null,
-  }))
+  mock.module("@/lib/generation/key", () => {
+    const resolveOpenRouterKey = () => null
+    return {
+      resolveOpenRouterKey,
+      resolveKeyForModel: (modelId: string) =>
+        modelId.startsWith("ollama:") ? "" : resolveOpenRouterKey(),
+    }
+  })
   return db
 }

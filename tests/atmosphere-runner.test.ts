@@ -142,6 +142,7 @@ let apiKey: string | null = "test-key"
 const BASE_ATMOSPHERE: AtmosphereSettings = {
   engine: "llm",
   minConfidence: 0.6,
+  decisionModelId: null,
   modelId: null,
   thinking: "off",
   providerTag: null,
@@ -187,11 +188,13 @@ const settled: { id: string; status: string }[] = []
 const started: Record<string, unknown>[] = []
 const completeCalls: Record<string, unknown>[] = []
 const decideCalls: Record<string, unknown>[] = []
+let decisionWindow: number | null = null
 
 const io: AtmosphereIo = {
   getStory: async () => currentStory,
   settings: async () => ({ atmosphere }),
   apiKey: () => apiKey,
+  decisionWindow: async () => decisionWindow,
   async complete(opts) {
     completeCalls.push(opts as unknown as Record<string, unknown>)
     return completeImpl()
@@ -228,6 +231,7 @@ beforeEach(() => {
   started.length = 0
   completeCalls.length = 0
   decideCalls.length = 0
+  decisionWindow = null
   currentStory = makeStory()
   apiKey = "test-key"
   atmosphere = BASE_ATMOSPHERE
@@ -848,6 +852,35 @@ describe("which engine answers", () => {
       thinking: "off",
       providerName: null,
     })
+  })
+
+  test("a chosen decision model is the one asked and the one billed", async () => {
+    atmosphere = { ...DECISION, decisionModelId: "ollama:tev1" }
+    currentStory = tinted(passages(10))
+    await run()
+    expect(decideCalls[0]).toMatchObject({ modelId: "ollama:tev1" })
+    expect(started[0]).toMatchObject({ modelId: "ollama:tev1" })
+  })
+
+  test("a small per-prompt window trims the oldest prose and keeps the newest", async () => {
+    atmosphere = { ...DECISION, decisionModelId: "ollama:tev1" }
+    const long = Array.from({ length: 6 }, (_, i) =>
+      entry(`Passage ${i} ${"the lamp burned low over the rocks ".repeat(15)}`)
+    )
+    const newest = entry("The keeper finally slept.")
+    currentStory = tinted({ entries: [...long, newest], entriesBefore: 10 })
+    await run()
+    const whole = (decideCalls[0]!.state as { recent_passages: string })
+      .recent_passages
+
+    resetAtmosphereState()
+    decideCalls.length = 0
+    decisionWindow = 2048
+    await run()
+    const fitted = (decideCalls[0]!.state as { recent_passages: string })
+      .recent_passages
+    expect(fitted.length).toBeLessThan(whole.length)
+    expect(fitted.endsWith("The keeper finally slept.")).toBe(true)
   })
 
   test("both engines bill against the same request kind", async () => {

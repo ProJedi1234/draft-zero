@@ -22,9 +22,15 @@ installQueryMocks()
 
 // Other specs double this module with their own key; this one restores the
 // real env read so a test can set OPENROUTER_API_KEY and mean it.
-mock.module("@/lib/generation/key", () => ({
-  resolveOpenRouterKey: () => process.env.OPENROUTER_API_KEY?.trim() || null,
-}))
+mock.module("@/lib/generation/key", () => {
+  const resolveOpenRouterKey = () =>
+    process.env.OPENROUTER_API_KEY?.trim() || null
+  return {
+    resolveOpenRouterKey,
+    resolveKeyForModel: (modelId: string) =>
+      modelId.startsWith("ollama:") ? "" : resolveOpenRouterKey(),
+  }
+})
 let keyCheck: (key: string) => Promise<void> = async () => {}
 const checkedKeys: string[] = []
 mock.module("@/lib/generation/key-check", () => ({
@@ -153,6 +159,21 @@ describe("updateAppSettings", () => {
     })
     expect(clearBreaker).toHaveBeenCalledTimes(1)
     expect(bus.events).toEqual([SETTINGS_CHANGED])
+  })
+
+  test("stores a chosen decision model, and an older client that omits it leaves it alone", async () => {
+    await settings.updateAppSettings(
+      { atmosphere: { ...ATMOSPHERE, decisionModelId: " ollama:tev1 " } },
+      CTX
+    )
+    expect(db.argsOf(0, "set")?.[0]).toMatchObject({
+      atmosphereDecisionModelId: "ollama:tev1",
+    })
+
+    await settings.updateAppSettings({ atmosphere: ATMOSPHERE }, CTX)
+    expect(db.argsOf(1, "set")?.[0]).not.toHaveProperty(
+      "atmosphereDecisionModelId"
+    )
   })
 
   test("an empty patch still ensures the row and announces, but writes nothing", async () => {

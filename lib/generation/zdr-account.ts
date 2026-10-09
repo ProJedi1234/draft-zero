@@ -24,7 +24,7 @@ import {
 
 import { listModelEndpoints } from "./endpoints"
 import { resolveOpenRouterKey } from "./key"
-import { listModels } from "./models"
+import { listOpenRouterModels } from "./models"
 
 /** An hour, matching the catalogs beside it: a retention contract is not a per-turn fact. */
 const TTL_MS = 60 * 60 * 1000
@@ -195,7 +195,7 @@ export async function accountZdrPolicy(
   let policy: AccountZdrPolicy = "unknown"
   let lookups = 0
   let asks = 0
-  for (const model of probeCandidates(await listModels(), group)) {
+  for (const model of probeCandidates(await listOpenRouterModels(), group)) {
     if (lookups >= LOOKUP_LIMIT || asks >= ASK_LIMIT) break
     lookups += 1
     const retaining = (await listModelEndpoints(model.id)).find((e) => !e.zdr)
