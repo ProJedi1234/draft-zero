@@ -15,6 +15,15 @@ struct SettingsForm: View {
                 .id(SettingsSectionID.openRouter)
             if let payload = store.payload, let editors = store.editors {
                 let requireZdr = editors.requireZdr.value
+                if let status = payload.localModels {
+                    LocalModelsSection(
+                        status: status,
+                        models: payload.models,
+                        summarizer: editors.summarizer.value,
+                        atmosphere: editors.atmosphere.value
+                    )
+                    .id(SettingsSectionID.localModels)
+                }
                 ProfilesSection(
                     store: store,
                     models: payload.models,
@@ -37,6 +46,8 @@ struct SettingsForm: View {
                 AtmosphereSection(
                     editor: editors.atmosphere,
                     models: payload.models,
+                    decisionModels: payload.decisionModels ?? [],
+                    localHost: payload.localModels?.host,
                     requireZdr: requireZdr,
                     policies: store.policies
                 )

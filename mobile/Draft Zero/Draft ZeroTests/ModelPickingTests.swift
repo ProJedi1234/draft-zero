@@ -97,8 +97,9 @@ struct ModelPickingTests {
 
     @Test func groupingKeepsTheCatalogOrder() throws {
         let groups = ModelCatalog.groupByProvider(try catalog())
-        #expect(groups.map(\.provider) == ["Anthropic", "OpenAI", "Google", "xAI", "MoonshotAI", "DeepSeek"])
-        #expect(groups[0].entries.map(\.name) == ["Claude Sonnet Latest", "Claude Opus Latest", "Claude Haiku Latest"])
+        // The server lists the local host's models ahead of OpenRouter's.
+        #expect(groups.map(\.provider) == ["Ollama · metis", "Anthropic", "OpenAI", "Google", "xAI", "MoonshotAI", "DeepSeek"])
+        #expect(groups[1].entries.map(\.name) == ["Claude Sonnet Latest", "Claude Opus Latest", "Claude Haiku Latest"])
     }
 
     @Test func zdrPartitionKeepsBlockedModels() throws {
@@ -212,5 +213,29 @@ struct ModelPickingTests {
         #expect(ContextLadder.tokens(atIndex: 42) == 131_072)
         #expect(ContextLadder.isLimited(contextLength: 65_536))
         #expect(!ContextLadder.isLimited(contextLength: 0))
+    }
+
+    // MARK: - Local models
+
+    @Test func sourceFilterSplitsTheCatalog() throws {
+        let models = try catalog()
+        let local = ModelCatalog.filter(models, source: .local)
+        let external = ModelCatalog.filter(models, source: .external)
+        #expect(!local.isEmpty && local.allSatisfy { $0.local != nil })
+        #expect(!external.isEmpty && external.allSatisfy { $0.local == nil })
+        #expect(local.count + external.count == ModelCatalog.filter(models, source: .all).count)
+    }
+
+    @Test func searchingLocalFindsLocalModels() throws {
+        let models = try catalog()
+        let found = ModelCatalog.filter(models, query: "local")
+        #expect(!found.isEmpty && found.allSatisfy { $0.local != nil })
+    }
+
+    @Test func aLocalModelNamesItsHostAndIsFree() throws {
+        let models = try catalog()
+        let local = try #require(models.first { $0.local != nil })
+        let line = SettingsSummary.lineWithPrice(modelId: local.id, providerTag: nil, thinking: .off, models: models)
+        #expect(line == "\(local.name) · metis · off · free")
     }
 }

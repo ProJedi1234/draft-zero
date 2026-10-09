@@ -55,7 +55,7 @@ struct ModelChoiceRows: View {
         ThinkingPicker(reasoning: model?.reasoning, selection: $thinking)
         ZdrToggle(
             isOn: $zdr,
-            lock: ZdrLock.resolve(accountEnforced: accountEnforced, requireZdr: requireZdr),
+            lock: model?.local != nil ? .local : ZdrLock.resolve(accountEnforced: accountEnforced, requireZdr: requireZdr),
             hint: zdrHint
         )
     }

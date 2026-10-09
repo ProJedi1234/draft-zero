@@ -35,6 +35,15 @@ nonisolated enum ModelCatalog {
         entries.filter { matches($0, query: query) }
     }
 
+    /// The half of the catalog the Local/External switch leaves showing.
+    static func filter<Entry: CatalogEntry>(_ entries: [Entry], source: ModelSource) -> [Entry] {
+        switch source {
+        case .all: entries
+        case .local: entries.filter { $0.local != nil }
+        case .external: entries.filter { $0.local == nil }
+        }
+    }
+
     /// The level to keep when the model changes: the current one if the new
     /// model offers it, otherwise off — never one that would be rejected on send.
     static func levelForModel(_ reasoning: OpenRouterModel.Reasoning?, current: ThinkingLevel) -> ThinkingLevel {

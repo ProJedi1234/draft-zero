@@ -26,4 +26,15 @@ nonisolated struct OpenRouterModel: Codable, Sendable, Hashable, Identifiable {
     var zdr: Bool
     /// For a "~lab/family-latest" alias, the concrete model it points at.
     var aliasTarget: String?
+    /// Present only on a model served by the local Ollama host.
+    var local: Local?
+
+    /// What the picker shows about a model running on the local Ollama host.
+    struct Local: Codable, Sendable, Hashable {
+        /// Short host label, e.g. "metis".
+        var host: String
+        /// Resident in memory, so the first token comes without a load.
+        var loaded: Bool
+        var quantization: String?
+    }
 }

@@ -17,6 +17,22 @@ struct ProviderPickerRow: View {
     @State private var isPresented = false
 
     var body: some View {
+        if let model = models.first(where: { $0.id == modelId }), let local = model.local {
+            // One place to run, so there is nothing to pick and nothing to load.
+            PickerRowLabel(
+                title: "Provider",
+                value: local.host,
+                detail: SettingsSummary.localPricing(local, contextLength: model.contextLength),
+                showsChevron: false
+            )
+            .accessibilityElement(children: .combine)
+        } else {
+            routedRow
+        }
+    }
+
+    @ViewBuilder
+    private var routedRow: some View {
         let list = endpoints.endpoints(for: modelId)
         let loaded = endpoints.hasLoaded(modelId)
         let routed = EndpointRouting.routableEndpoint(list, tag: selection, zdr: zdr)
