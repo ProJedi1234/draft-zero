@@ -1,19 +1,5 @@
 import SwiftUI
 
-/// The small "Local" capsule beside a local model's name or group.
-struct LocalBadge: View {
-    var body: some View {
-        Text("Local")
-            .font(.caption2.weight(.semibold))
-            .textCase(.uppercase)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .foregroundStyle(.teal)
-            .background(.teal.opacity(0.15), in: .capsule)
-            .accessibilityLabel("Runs locally")
-    }
-}
-
 /// "loaded · nvfp4 · 66K", with a dot that says whether the first passage
 /// waits for the model to load.
 struct LocalModelDetail: View {
@@ -30,19 +16,6 @@ struct LocalModelDetail: View {
         }
         .font(.footnote)
         .foregroundStyle(.secondary)
-    }
-}
-
-/// A provider group's header, marked when its models run locally.
-struct CatalogGroupHeader: View {
-    let provider: String
-    let isLocal: Bool
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(provider)
-            if isLocal { LocalBadge() }
-        }
     }
 }
 

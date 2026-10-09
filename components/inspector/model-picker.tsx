@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { ChevronsUpDownIcon, Loader2, ShieldCheck, Star } from "lucide-react"
 
-import { LocalBadge, ModelCombobox } from "@/components/model-combobox"
+import { ModelCombobox } from "@/components/model-combobox"
 import { ProviderCombobox } from "@/components/provider-combobox"
 import { ThinkingSelect } from "@/components/thinking-select"
 import { ZdrSwitch, type ZdrLock } from "@/components/zdr-switch"
@@ -141,16 +141,25 @@ export function ModelPicker({
       />
       {local ? (
         // One place to run, so nothing to pick: no Auto and no pins.
-        <div className="flex h-8 w-full items-center justify-between border bg-muted/40 px-2.5 text-sm">
+        <div className="flex h-9 w-full items-center justify-between border bg-muted/40 px-4 text-sm">
           <span className="text-muted-foreground">Provider</span>
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate font-mono text-[10px] text-muted-foreground">
-              {[local.quantization, local.loaded ? "loaded" : "cold"]
-                .filter(Boolean)
-                .join(" · ")}
-            </span>
-            <span>{local.host}</span>
-            <LocalBadge />
+          <span
+            className="flex min-w-0 items-center gap-1.5"
+            title={local.loaded ? "Loaded in memory" : "Not loaded yet"}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                local.loaded ? "bg-emerald-500" : "bg-muted-foreground/40"
+              )}
+            />
+            <span className="truncate">{local.host}</span>
+            {local.quantization ? (
+              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                {local.quantization}
+              </span>
+            ) : null}
           </span>
         </div>
       ) : (

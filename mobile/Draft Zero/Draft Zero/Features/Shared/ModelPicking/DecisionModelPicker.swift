@@ -84,7 +84,7 @@ struct DecisionModelPickerSheet: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     } header: {
-                        CatalogGroupHeader(provider: "Ollama · \(localHost)", isLocal: true)
+                        Text("Ollama · \(localHost)")
                     }
                 }
                 ForEach(groups) { group in
@@ -93,7 +93,7 @@ struct DecisionModelPickerSheet: View {
                             row(model, isBlocked: false)
                         }
                     } header: {
-                        CatalogGroupHeader(provider: group.provider, isLocal: group.entries.first?.local != nil)
+                        Text(group.provider)
                     }
                 }
                 if !split.blocked.isEmpty {

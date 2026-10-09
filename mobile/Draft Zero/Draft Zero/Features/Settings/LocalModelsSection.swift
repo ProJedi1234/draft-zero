@@ -38,10 +38,7 @@ struct LocalModelsSection: View {
                     .foregroundStyle(.orange)
             }
         } header: {
-            HStack(spacing: 6) {
-                Text("Local models")
-                LocalBadge()
-            }
+            Text("Local models")
         } footer: {
             Text("Served by Ollama on \(status.host). They cost nothing, and the prose never leaves your network. The context window is set on the server with OLLAMA_NUM_CTX; a request asking for a different one reloads the model.")
         }

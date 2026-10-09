@@ -47,7 +47,7 @@ struct ModelPickerSheet: View {
                                 }
                             }
                         } header: {
-                            CatalogGroupHeader(provider: group.provider, isLocal: group.entries.first?.local != nil)
+                            Text(group.provider)
                         }
                     }
                     if !split.blocked.isEmpty {

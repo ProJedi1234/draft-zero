@@ -267,9 +267,8 @@ function CatalogCombobox<T extends CatalogEntry>({
           />
         }
       >
-        <span className="flex flex-1 items-center gap-2 truncate text-left">
-          <span className="truncate">{selected?.name ?? placeholder}</span>
-          {selected?.local ? <LocalBadge /> : null}
+        <span className="flex-1 truncate text-left">
+          {selected?.name ?? placeholder}
         </span>
         <ChevronsUpDownIcon className="opacity-50" />
       </PopoverTrigger>
@@ -304,19 +303,7 @@ function CatalogCombobox<T extends CatalogEntry>({
             )}
             {showEmptyLocal && emptyLocal ? emptyLocal : null}
             {providers.map(({ provider, models: providerModels }) => (
-              <CommandGroup
-                key={provider}
-                heading={
-                  providerModels[0]?.local ? (
-                    <span className="flex items-center gap-2">
-                      {provider}
-                      <LocalBadge />
-                    </span>
-                  ) : (
-                    provider
-                  )
-                }
-              >
+              <CommandGroup key={provider} heading={provider}>
                 {providerModels.map((m) => renderRow(m, false))}
               </CommandGroup>
             ))}
@@ -329,14 +316,6 @@ function CatalogCombobox<T extends CatalogEntry>({
         </Command>
       </PopoverContent>
     </Popover>
-  )
-}
-
-export function LocalBadge() {
-  return (
-    <span className="rounded-full bg-teal-100 px-1.5 py-px text-[0.625rem] font-semibold tracking-wide text-teal-800 uppercase dark:bg-teal-900/60 dark:text-teal-200">
-      Local
-    </span>
   )
 }
 
