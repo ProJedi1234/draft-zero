@@ -1,10 +1,8 @@
 # .github/workflows/ci.yml — Two jobs, run in parallel.
 #
-# The split is drawn on cost, not on tidiness. This repo is private, so Actions
-# minutes are billed and every job rounds UP to a whole minute. Run serially in
-# one job the checks take ~75s, which bills as two minutes anyway. Two parallel
-# jobs cost the same two minutes and halve the wait. Splitting further would buy
-# nothing and start costing a third minute.
+# The split is drawn on wait time, not on tidiness. Run serially in one job the
+# checks take ~75s; two parallel jobs halve the wait. The repo is public, so
+# standard runners are free and the number of jobs costs nothing.
 #
 # There is almost no caching here, and that is a measured decision rather than
 # an oversight — see the notes in .github/actions/setup and on the build job.
@@ -16,8 +14,8 @@ name: CI
 # Runs on every push to main and every pull request, with no path filtering.
 # This check is required by branch protection, and a required check that a path
 # filter skips is never reported at all — which leaves the PR blocked forever,
-# with nothing the author can do to satisfy it. Paying for a few redundant runs
-# on docs-only changes is the cheaper side of that trade.
+# with nothing the author can do to satisfy it. A few redundant runs on
+# docs-only changes are the cheaper side of that trade.
 on:
   push:
     branches: [main]

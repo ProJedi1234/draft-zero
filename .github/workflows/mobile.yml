@@ -16,6 +16,7 @@ on:
     paths:
       - "mobile/**"
       - ".github/workflows/mobile.yml"
+  workflow_dispatch:
 
 concurrency:
   group: mobile-${{ github.ref }}
@@ -34,6 +35,8 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Signing is off because the runner has no Apple account, and the
       # simulator runs unsigned apps.
