@@ -114,3 +114,20 @@ export function useSoftwareReturn(
     }
   }
 }
+
+const COARSE_POINTER = "(any-pointer: coarse)"
+
+function subscribeCoarsePointer(notify: () => void) {
+  const query = window.matchMedia(COARSE_POINTER)
+  query.addEventListener("change", notify)
+  return () => query.removeEventListener("change", notify)
+}
+
+/** Whether this device can raise a software keyboard at all. */
+export function useTouchKeyboard() {
+  return React.useSyncExternalStore(
+    subscribeCoarsePointer,
+    () => window.matchMedia(COARSE_POINTER).matches,
+    () => false
+  )
+}

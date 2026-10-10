@@ -9,6 +9,7 @@ import { OfflineChip } from "@/components/offline/offline-chip"
 import { OfflineInert } from "@/components/offline/offline-inert"
 import { AtmosphereCard } from "@/components/settings/atmosphere-card"
 import { DeveloperCard } from "@/components/settings/developer-card"
+import { KeyboardCard } from "@/components/settings/keyboard-card"
 import { LocalModelsCard } from "@/components/settings/local-models-card"
 import { GenerationDefaultsCard } from "@/components/settings/generation-defaults-card"
 import { ImageGenerationCard } from "@/components/settings/image-generation-card"
@@ -262,6 +263,8 @@ function SettingsView({
               </CardContent>
             </Card>
           </OfflineInert>
+
+          <KeyboardCard />
 
           <DeveloperCard />
         </div>
