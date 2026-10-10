@@ -1,0 +1,47 @@
+# .github/workflows/mobile.yml — Builds the native app and runs its tests on a
+# GitHub-hosted Mac. Standard runners are free for public repos, so this costs
+# nothing; a self-hosted runner would let fork PRs run code on our own machine.
+
+name: Mobile
+
+# Path-filtered because this check is not required by branch protection. If it
+# ever becomes required, drop the filter (see the note in ci.yml).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test (iOS Simulator)
+    # The app targets iOS 27, which only the xcode-27 preview image ships.
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v7
+
+      # Signing is off because the runner has no Apple account, and the
+      # simulator runs unsigned apps.
+      - name: Test
+        run: >
+          xcodebuild test
+          -project "mobile/Draft Zero/Draft Zero.xcodeproj"
+          -scheme "Draft Zero"
+          -destination "platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0"
+          -derivedDataPath "$RUNNER_TEMP/DerivedData"
+          CODE_SIGNING_ALLOWED=NO
