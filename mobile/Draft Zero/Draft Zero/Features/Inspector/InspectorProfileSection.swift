@@ -71,10 +71,14 @@ struct InspectorProfileSection: View {
     }
 
     /// Priced against the endpoint that will actually serve it: a pinned one
-    /// under the retention policy, else the model's own.
+    /// under the retention policy, else the model's own. A local model has a host
+    /// instead of a price, as on the web's profile card.
     private func pricing(of profile: ModelProfile) -> String? {
         let modelId = profile.settings.modelId
         let model = workspace.model(modelId)
+        if let model, let local = model.local {
+            return SettingsSummary.localPricing(local, contextLength: model.contextLength)
+        }
         let endpoint = EndpointRouting.routableEndpoint(
             settings.endpoints.endpoints(for: modelId),
             tag: profile.settings.providerTag,
