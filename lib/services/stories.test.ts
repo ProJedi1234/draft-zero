@@ -599,6 +599,131 @@ describe("updateGenerationSettings", () => {
   })
 })
 
+describe("customizeGenerationSettings", () => {
+  const BASELINE = {
+    defaults: {
+      temperature: 0.8,
+      topP: 0.95,
+      contextWindow: 8192,
+      loreBudget: 25,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+    },
+    requireZdr: false,
+  }
+  const PROFILE_ROW = {
+    id: "profile-1",
+    name: "Noir",
+    sortOrder: 0,
+    modelId: "vendor/profile-model",
+    thinking: "medium",
+    providerTag: null,
+    zdr: false,
+    temperature: 1.2,
+    topP: null,
+    contextWindow: 16384,
+    loreBudget: null,
+    frequencyPenalty: null,
+    presencePenalty: null,
+  }
+
+  beforeEach(() => {
+    stubQueries({
+      getAppSettings: async () => ({ defaultProfileId: "profile-1" }),
+      getGenerationBaseline: async () => BASELINE,
+      listStoryRecords,
+      listStories,
+    })
+  })
+
+  test("a follower is detached at its profile's resolved settings, then patched", async () => {
+    db.next([{ profileId: "profile-1" }])
+    db.next([PROFILE_ROW])
+    db.next([{ id: STORY }])
+    const result = await stories.customizeGenerationSettings(
+      { id: STORY, patch: { modelId: "vendor/new-model", loreBudget: 99 } },
+      CTX
+    )
+
+    expect(result).toEqual({ ok: true, data: null })
+    expect(db.statements.map((s) => s.root)).toEqual([
+      "select",
+      "select",
+      "update",
+    ])
+    // The profile's own values, its inherited sliders as the baseline holds
+    // them, and the patch on top.
+    expect(db.argsOf(2, "set")?.[0]).toMatchObject({
+      profileId: null,
+      modelId: "vendor/new-model",
+      thinking: "medium",
+      temperature: 1.2,
+      topP: 0.95,
+      contextWindow: 16384,
+      loreBudget: 50,
+    })
+    expect(bus.events).toEqual([{ kind: "change", storyId: null }])
+  })
+
+  test("a Custom story only takes the patch", async () => {
+    db.next([{ profileId: null }])
+    db.next([row({ profileId: null })])
+    const result = await stories.customizeGenerationSettings(
+      { id: STORY, patch: { modelId: "vendor/new-model" } },
+      CTX
+    )
+
+    expect(result).toEqual({ ok: true, data: null })
+    expect(db.statements.map((s) => s.root)).toEqual(["select", "update"])
+    const { updatedAt: _version, ...set } = db.argsOf(1, "set")?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(set).toEqual({ modelId: "vendor/new-model" })
+    expect(bus.events).toEqual(upsertEvents(STORY, STORY))
+  })
+
+  test("a profile deleted mid-call leaves the patch on the frozen columns", async () => {
+    db.next([{ profileId: "profile-1" }])
+    db.next([])
+    db.next([{ id: STORY }])
+    await stories.customizeGenerationSettings(
+      { id: STORY, patch: { temperature: 0.5 } },
+      CTX
+    )
+
+    const { updatedAt: _version, ...set } = db.argsOf(2, "set")?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(set).toEqual({ profileId: null, temperature: 0.5 })
+  })
+
+  test("a missing story is not_found and writes nothing", async () => {
+    db.next([])
+    const result = await stories.customizeGenerationSettings(
+      { id: STORY, patch: { temperature: 1 } },
+      CTX
+    )
+    expect(result.ok || result.code).toBe("not_found")
+    expect(db.statements.map((s) => s.root)).toEqual(["select"])
+    expect(bus.events).toEqual([])
+  })
+
+  test("a context window off the ladder is refused before any read", async () => {
+    const result = await stories.customizeGenerationSettings(
+      { id: STORY, patch: { contextWindow: 1000 } },
+      CTX
+    )
+    expect(result).toEqual({
+      ok: false,
+      code: "invalid",
+      error: "Unsupported context window.",
+    })
+    expect(db.statements).toEqual([])
+  })
+})
+
 describe("setStoryImageModel", () => {
   test("writes the model, or null to follow the default", async () => {
     for (const imageModelId of ["img-model", null]) {

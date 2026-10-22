@@ -72,14 +72,14 @@ export function resolveGenerationSettings(
 }
 
 /**
- * The story-row patch that turns a follower of a deleted profile into a Custom
- * story with the settings it was generating under a moment ago.
+ * The story-row patch that turns a follower into a Custom story with the
+ * settings it was generating under a moment ago.
  *
- * The single place profile code writes a story's settings columns, and it only
- * runs when the profile they were reading through is going away — nothing else
- * may overwrite a story's custom memory. Takes RESOLVED settings, so a slider
- * the profile inherited lands in the follower's columns as the concrete number
- * it was generating under, not as a hole.
+ * It runs in two places only: when the profile a story reads through is going
+ * away, and when customizeGenerationSettings detaches a story to patch it.
+ * Nothing else may overwrite a story's custom memory. Takes RESOLVED settings,
+ * so a slider the profile inherited lands in the follower's columns as the
+ * concrete number it was generating under, not as a hole.
  *
  * Spelling out every field (rather than spreading `settings`) keeps the patch
  * to the columns it means to touch.
