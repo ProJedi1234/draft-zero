@@ -5,6 +5,7 @@ import {
   getManuscriptBounds,
   getStory,
   listLorebookEntries,
+  listModelProfiles,
 } from "@/lib/db/queries"
 
 import {
@@ -55,7 +56,12 @@ const outputSchema = z.object({
   }),
   generation: z
     .object({
+      profile: z
+        .string()
+        .nullable()
+        .describe("Name of the profile it follows; null when Custom."),
       model: z.string(),
+      thinking: z.string(),
       contextWindow: z.number().int().describe("Tokens."),
       loreBudgetPercent: z
         .number()
@@ -65,7 +71,9 @@ const outputSchema = z.object({
         ),
       temperature: z.number(),
     })
-    .describe("Read-only. Settings are not editable through MCP."),
+    .describe(
+      "The settings it generates under: the followed profile's, or its own when Custom. Change them with update_story."
+    ),
 })
 
 export const registerStoryMap: RegisterTool = (server) => {
@@ -74,7 +82,7 @@ export const registerStoryMap: RegisterTool = (server) => {
     {
       title: "Story map",
       description:
-        "Everything about one story except its prose: recap, memory, author's note, lorebook index, position bounds, counts, and read-only generation settings. A few hundred tokens. Read this before any other story tool.",
+        "Everything about one story except its prose: recap, memory, author's note, lorebook index, position bounds, counts, and the profile and model it generates with. A few hundred tokens. Read this before any other story tool.",
       inputSchema,
       outputSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
@@ -86,10 +94,12 @@ export const registerStoryMap: RegisterTool = (server) => {
           throw new ToolInputError(`No story with id ${args.storyId}.`)
         }
 
-        const [lore, bounds] = await Promise.all([
+        const [lore, bounds, profiles] = await Promise.all([
           listLorebookEntries(args.storyId),
           getManuscriptBounds(args.storyId),
+          story.profileId === null ? [] : listModelProfiles(),
         ])
+        const profile = profiles.find((p) => p.id === story.profileId)
 
         const passages = (story.entriesBefore ?? 0) + story.entries.length
 
@@ -124,7 +134,9 @@ export const registerStoryMap: RegisterTool = (server) => {
               words: story.wordCount,
             },
             generation: {
+              profile: profile?.name ?? null,
               model: story.settings.modelId,
+              thinking: story.settings.thinking,
               contextWindow: story.settings.contextWindow,
               loreBudgetPercent: story.settings.loreBudget,
               temperature: story.settings.temperature,

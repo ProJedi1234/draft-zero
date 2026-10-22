@@ -22,8 +22,10 @@ type FakeStory = {
   entriesBefore?: number
   images: unknown[]
   wordCount: number
+  profileId: string | null
   settings: {
     modelId: string
+    thinking: string
     contextWindow: number
     loreBudget: number
     temperature: number
@@ -92,8 +94,10 @@ function fakeStory(overrides: Partial<FakeStory> = {}): FakeStory {
     entriesBefore: 4,
     images: [{}, {}],
     wordCount: 4200,
+    profileId: null,
     settings: {
       modelId: "~anthropic/claude-sonnet-latest",
+      thinking: "off",
       contextWindow: 32000,
       loreBudget: 20,
       temperature: 0.8,
@@ -129,7 +133,7 @@ describe("story_map", () => {
     expect(listLorebookEntriesMock).not.toHaveBeenCalled()
   })
 
-  test("shapes recap, memory, notes, lore index, counts and read-only settings", async () => {
+  test("shapes recap, memory, notes, lore index, counts and settings", async () => {
     getStoryMock.mockImplementation(async () => fakeStory())
     listLorebookEntriesMock.mockImplementation(async () => [
       {
@@ -178,11 +182,34 @@ describe("story_map", () => {
       words: 4200,
     })
     expect(data.generation).toEqual({
+      profile: null,
       model: "~anthropic/claude-sonnet-latest",
+      thinking: "off",
       contextWindow: 32000,
       loreBudgetPercent: 20,
       temperature: 0.8,
     })
+  })
+
+  test("names the profile a story follows", async () => {
+    getStoryMock.mockImplementation(async () => fakeStory({ profileId: "p2" }))
+    stubQueries({
+      getStory: getStoryMock,
+      listLorebookEntries: listLorebookEntriesMock,
+      getManuscriptBounds: getManuscriptBoundsMock,
+      listModelProfiles: async () => [
+        { id: "p1", name: "Noir" },
+        { id: "p2", name: "Fast GLM" },
+      ],
+    })
+
+    const handler = registeredHandler()
+    const result = await handler({ storyId: "s1" })
+    const generation = result.structuredContent?.generation as Record<
+      string,
+      unknown
+    >
+    expect(generation.profile).toBe("Fast GLM")
   })
 
   test("an empty story reports -1 position bounds", async () => {
