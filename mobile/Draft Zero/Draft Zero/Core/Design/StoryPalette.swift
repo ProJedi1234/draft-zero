@@ -43,6 +43,16 @@ struct StoryPalette: Equatable {
         }
     }
 
+    /// A solid control fill in the story's hue, dark enough to carry white
+    /// glyphs. Nil for an untinted story, which keeps the app's accent.
+    static func action(_ tint: StoryTintValue, scheme: ColorScheme) -> Color? {
+        guard tint.chroma > 0, let h = tint.hue else { return nil }
+        let c = max(tint.chroma, 0.6)
+        return scheme == .dark
+            ? OKLCH.color(0.62, 0.13 * c, h)
+            : OKLCH.color(0.55, 0.14 * c, h)
+    }
+
     /// A card's own wash in a list of stories: a faint glow of its hue.
     static func cardWash(_ tint: StoryTintValue, scheme: ColorScheme) -> Color {
         let c = tint.chroma
