@@ -8,6 +8,7 @@ import type { Model } from "@openrouter/sdk/models"
 
 import { MOCK_MODELS } from "@/lib/mock-data"
 import {
+  isLocalModelId,
   REASONING_EFFORTS,
   type ModelReasoning,
   type OpenRouterModel,
@@ -129,4 +130,47 @@ export async function listOpenRouterModels(): Promise<OpenRouterModel[]> {
   } catch {
     return MOCK_MODELS
   }
+}
+
+/**
+ * Both chat catalogs, as far as each can vouch for an id it was not offered
+ * from. A half is null when it cannot call an id wrong: local models are off or
+ * the host is down, or OpenRouter's list is the offline fallback even though a
+ * key is configured.
+ */
+export interface ModelCatalog {
+  local: OpenRouterModel[] | null
+  remote: OpenRouterModel[] | null
+}
+
+export async function loadModelCatalog(): Promise<ModelCatalog> {
+  const [local, remote] = await Promise.all([
+    listOllamaChatModels(),
+    listOpenRouterModels(),
+  ])
+  return {
+    local: local.length > 0 ? local : null,
+    // Keyless, the mock list is the real catalog: generation runs on the mock
+    // provider, which serves exactly those ids.
+    remote:
+      remote === MOCK_MODELS && resolveOpenRouterKey() !== null ? null : remote,
+  }
+}
+
+export type ModelLookup =
+  | { status: "found"; model: OpenRouterModel }
+  | { status: "unknown"; candidates: OpenRouterModel[] }
+  | { status: "unverifiable" }
+
+/** Finds `modelId` in the half of the catalog that would serve it. */
+export function lookupModel(
+  catalog: ModelCatalog,
+  modelId: string
+): ModelLookup {
+  const list = isLocalModelId(modelId) ? catalog.local : catalog.remote
+  if (list === null) return { status: "unverifiable" }
+  const model = list.find((m) => m.id === modelId)
+  return model
+    ? { status: "found", model }
+    : { status: "unknown", candidates: list }
 }
