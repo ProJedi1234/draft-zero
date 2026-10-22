@@ -13,6 +13,7 @@ struct StoryWorkspaceView: View {
 
     var body: some View {
         StoryWorkspaceContent(workspace: workspace)
+            .storyActionTint(workspace.tint)
             .background { StoryAmbientBackground(tint: workspace.tint) }
             .navigationTitle(workspace.story?.title ?? "")
             .navigationBarTitleDisplayMode(.inline)

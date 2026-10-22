@@ -43,6 +43,7 @@ struct ContinueCard: View {
                 }
             }
             .padding(.top, 2)
+            .storyActionTint(story.tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
