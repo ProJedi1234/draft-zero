@@ -23,6 +23,11 @@ import { registerContextBreakdown } from "@/lib/mcp/tools/context-breakdown"
 import { registerEdit } from "@/lib/mcp/tools/edit"
 import { registerListStories } from "@/lib/mcp/tools/list-stories"
 import { registerLoreGet, registerLoreWrite } from "@/lib/mcp/tools/lore"
+import {
+  registerDeleteProfile,
+  registerProfiles,
+  registerSaveProfile,
+} from "@/lib/mcp/tools/profiles"
 import { registerRead } from "@/lib/mcp/tools/read"
 import { registerRewind } from "@/lib/mcp/tools/rewind"
 import { registerSearch } from "@/lib/mcp/tools/search"
@@ -58,7 +63,7 @@ Results are compact on purpose: lists give ids and counts, searches give snippet
 /**
  * Tool registration order, which is the order `tools/list` reports and the
  * order the client model reads. Reads first (they are the cheap moves), then
- * writes, then the one destructive tool. Insert a new tool at its place in
+ * writes, then the destructive tools. Insert a new tool at its place in
  * this list rather than appending — the ordering is the curriculum.
  */
 const REGISTRARS: readonly RegisterTool[] = [
@@ -70,6 +75,7 @@ const REGISTRARS: readonly RegisterTool[] = [
   registerLoreGet,
   registerUsage,
   registerContextBreakdown,
+  registerProfiles,
   // Writes
   registerCreateStory,
   registerDuplicateStory,
@@ -78,12 +84,14 @@ const REGISTRARS: readonly RegisterTool[] = [
   registerRewind,
   registerLoreWrite,
   registerUpdateStory,
+  registerSaveProfile,
   // Destroy
   registerDeleteStory,
+  registerDeleteProfile,
 ]
 
 /**
- * The `tools/list` answer is a build-time constant — the same 15 declarations
+ * The `tools/list` answer is a build-time constant — the same 18 declarations
  * every request — so it is worth caching client-side. `private` because a
  * single-user LAN app has no shared cache to populate.
  *
