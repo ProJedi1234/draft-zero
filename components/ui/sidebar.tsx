@@ -294,7 +294,7 @@ function Sidebar({
           // be inside it for the colour to reach the top and bottom of the
           // screen. Bottom matters as much as top — the footer sits on the
           // edge, which is where the home indicator is.
-          className="flex size-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] group-data-[variant=floating]:rounded-none group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          className="flex size-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] group-data-[side=left]:pl-[env(safe-area-inset-left)] group-data-[side=right]:pr-[env(safe-area-inset-right)] group-data-[variant=floating]:rounded-none group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
         >
           {children}
         </div>
