@@ -69,6 +69,15 @@
 @utility h-app {
   height: var(--app-h, 100dvh);
   padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-left: env(safe-area-inset-left);
+
+  /* An open desktop sidebar owns the left edge and clears the inset itself. */
+  @media (width >= 48rem) {
+    [data-slot="sidebar-wrapper"]:has(> [data-slot="sidebar"][data-state="expanded"][data-side="left"]) & {
+      padding-left: 0;
+    }
+  }
 }
 
 /*
