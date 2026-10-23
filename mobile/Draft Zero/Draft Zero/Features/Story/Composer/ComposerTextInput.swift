@@ -10,8 +10,6 @@ struct ComposerTextInput: UIViewRepresentable {
     var disabled = false
     var returnSends = true
     var focusRequest = 0
-    var lineBreakRequest = 0
-    var onFocus: () -> Void = {}
     var onTab: (() -> Void)?
     var onContinue: () -> Void = {}
     let send: () -> Void
@@ -53,14 +51,6 @@ struct ComposerTextInput: UIViewRepresentable {
             context.coordinator.focusRequest = focusRequest
             DispatchQueue.main.async { view.becomeFirstResponder() }
         }
-        if context.coordinator.lineBreakRequest != lineBreakRequest {
-            context.coordinator.lineBreakRequest = lineBreakRequest
-            guard !disabled else { return }
-            DispatchQueue.main.async {
-                view.becomeFirstResponder()
-                view.insertLineBreak()
-            }
-        }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ComposerTextView, context: Context) -> CGSize? {
@@ -75,15 +65,11 @@ struct ComposerTextInput: UIViewRepresentable {
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: ComposerTextInput
         var focusRequest: Int
-        var lineBreakRequest: Int
 
         init(_ parent: ComposerTextInput) {
             self.parent = parent
             focusRequest = parent.focusRequest
-            lineBreakRequest = parent.lineBreakRequest
         }
-
-        func textViewDidBeginEditing(_ textView: UITextView) { parent.onFocus() }
 
         func textViewDidChange(_ textView: UITextView) { parent.text = textView.text }
 

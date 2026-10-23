@@ -3,7 +3,6 @@
 import * as React from "react"
 import {
   ArrowUp,
-  CornerDownLeft,
   FastForward,
   ImagePlus,
   Loader2,
@@ -36,7 +35,6 @@ import {
   softwareKeyboardOpen,
   useMobileReturn,
   useSoftwareReturn,
-  useTouchKeyboard,
 } from "@/hooks/use-composer-return"
 import { OfflineComposerAction } from "@/components/offline/offline-composer-action"
 import { Button } from "@/components/ui/button"
@@ -266,10 +264,7 @@ export function Composer({
 }) {
   const isOffline = useIsOffline()
   const [mobileReturn] = useMobileReturn()
-  // Only a touch keyboard whose Return sends has no other way to break a line.
-  const showLineBreak = useTouchKeyboard() && mobileReturn === "send"
   const laneRef = React.useRef<HTMLTextAreaElement>(null)
-  const lastInput = React.useRef<"brief" | "lane">("brief")
 
   const active = MODES.find((m) => m.value === mode) ?? MODES[0]
   const isImage = mode === "image"
@@ -491,17 +486,8 @@ export function Composer({
     value,
   ])
 
-  const insertBriefLineBreak = useSoftwareReturn(
-    textareaRef,
-    mobileReturn,
-    handleSend
-  )
-  const insertLaneLineBreak = useSoftwareReturn(
-    laneRef,
-    mobileReturn,
-    handleSend,
-    isImage && laneVisible
-  )
+  useSoftwareReturn(textareaRef, mobileReturn, handleSend)
+  useSoftwareReturn(laneRef, mobileReturn, handleSend, isImage && laneVisible)
 
   // Autofocus only where a hardware keyboard is likely: on touch devices it
   // would pop the software keyboard over the prose on every story open.
@@ -628,33 +614,11 @@ export function Composer({
     >
       <div className="mx-auto w-full max-w-2xl px-6 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="pointer-events-auto relative border bg-surface-glass shadow-lg backdrop-blur-md transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
-          {showLineBreak && (
-            <div className="absolute top-1 right-1">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Insert line break"
-                disabled={isImage && deriving}
-                // Keeps focus in the field so the software keyboard stays up.
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  if (lastInput.current === "lane" && isImage && laneVisible)
-                    insertLaneLineBreak()
-                  else insertBriefLineBreak()
-                }}
-              >
-                <CornerDownLeft />
-              </Button>
-            </div>
-          )}
           <Textarea
             ref={textareaRef}
             value={value}
             onChange={(event) => onValueChange(event.target.value)}
             onKeyDown={onTextareaKeyDown}
-            onFocus={() => {
-              lastInput.current = "brief"
-            }}
             // Locked while the develop call streams, like the lane below it:
             // the call is answering THIS brief, and an edit mid-stream would
             // land the answer already stale — the writer watches one thing
@@ -687,10 +651,7 @@ export function Composer({
             // Match the software keyboard label to this device's preference.
             enterKeyHint={mobileReturn === "send" ? "send" : "enter"}
             spellCheck
-            className={cn(
-              "max-h-52 min-h-14 resize-none overflow-y-auto border-0 bg-transparent pl-3 font-serif text-base leading-7 shadow-none focus-visible:ring-0",
-              showLineBreak ? "pr-12" : "pr-3"
-            )}
+            className="max-h-52 min-h-14 resize-none overflow-y-auto border-0 bg-transparent px-3 font-serif text-base leading-7 shadow-none focus-visible:ring-0"
           />
           {/* The lore the brief summoned, between the words that summoned it
               and the prompt it will shape. Nothing renders when nothing
@@ -806,9 +767,6 @@ export function Composer({
               <form className="contents" onSubmit={(e) => e.preventDefault()}>
                 <textarea
                   ref={laneRef}
-                  onFocus={() => {
-                    lastInput.current = "lane"
-                  }}
                   value={imagePrompt ?? ""}
                   onChange={(event) => onImagePromptChange(event.target.value)}
                   onKeyDown={onLaneKeyDown}

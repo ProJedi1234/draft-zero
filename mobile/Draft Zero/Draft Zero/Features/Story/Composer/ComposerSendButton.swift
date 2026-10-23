@@ -14,10 +14,10 @@ struct ComposerSendButton: View {
                 if workspace.derivation.deriving {
                     Spinner(label: "Developing")
                 } else if composer.imageSendAction == .draw {
-                    Button("Draw This Picture", systemImage: "arrow.up", action: workspace.sendFromComposer)
+                    Button("Draw This Picture", systemImage: "arrow.up", action: send)
                         .disabled(workspace.illustration.isBusy || (composer.imageAssisted ? composer.lane.isEmpty : !composer.hasText))
                 } else {
-                    Button("Develop the Prompt", systemImage: "sparkles", action: workspace.sendFromComposer)
+                    Button("Develop the Prompt", systemImage: "sparkles", action: send)
                         .disabled(workspace.illustration.isBusy || !composer.hasText)
                 }
             } else if generation.isStoppable {
@@ -26,7 +26,7 @@ struct ComposerSendButton: View {
             } else if generation.status == .settling || generation.isMovingHistory || generation.isStarting {
                 Spinner(label: "Working")
             } else {
-                Button("Send", systemImage: "arrow.up", action: workspace.sendFromComposer)
+                Button("Send", systemImage: "arrow.up", action: send)
                     .disabled(!composer.hasText || generation.busy)
             }
         }
@@ -35,5 +35,11 @@ struct ComposerSendButton: View {
         .buttonBorderShape(.circle)
         .controlSize(.regular)
         .frame(width: 44, height: 44)
+    }
+
+    private func send() {
+        workspace.sendFromComposer()
+        // Software Return already drops the keyboard; the button should match.
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }

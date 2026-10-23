@@ -6,8 +6,6 @@ import SwiftUI
 struct ComposerActionBar: View {
     let workspace: StoryWorkspace
     let showsHistory: Bool
-    let insertLineBreak: () -> Void
-    @AppStorage("composerReturnSends") private var returnSends = true
 
     var body: some View {
         // A foldable's front display is too narrow for the regular row; HStack
@@ -26,12 +24,6 @@ struct ComposerActionBar: View {
 
         HStack(spacing: 2) {
             ComposerModePicker(composer: composer, segmentWidth: compact ? 34 : 42)
-
-            // A touch keyboard whose Return sends has no other way to break a line.
-            if returnSends {
-                Button("Insert Line Break", systemImage: "return", action: insertLineBreak)
-                    .disabled(isImage && workspace.derivation.deriving)
-            }
 
             Spacer(minLength: 4)
 

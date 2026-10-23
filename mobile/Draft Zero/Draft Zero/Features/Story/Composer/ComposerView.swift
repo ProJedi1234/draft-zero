@@ -7,9 +7,6 @@ struct ComposerView: View {
     let showsHistory: Bool
 
     @AppStorage("composerReturnSends") private var returnSends = true
-    @State private var lastInputIsLane = false
-    @State private var briefLineBreakRequest = 0
-    @State private var laneLineBreakRequest = 0
 
     var body: some View {
         @Bindable var composer = workspace.composer
@@ -33,8 +30,6 @@ struct ComposerView: View {
                 disabled: isImage && deriving,
                 returnSends: returnSends,
                 focusRequest: composer.focusRequest,
-                lineBreakRequest: briefLineBreakRequest,
-                onFocus: { lastInputIsLane = false },
                 onTab: { if !isImage { composer.swapWritingMode() } },
                 onContinue: {
                     if !isImage { workspace.generation.continueStory() }
@@ -54,7 +49,6 @@ struct ComposerView: View {
 
             if isImage && composer.laneVisible {
                 DevelopedPromptLane(composer: composer, deriving: deriving, returnSends: returnSends,
-                                    lineBreakRequest: laneLineBreakRequest, onFocus: { lastInputIsLane = true },
                                     send: workspace.sendFromComposer)
             }
 
@@ -62,10 +56,7 @@ struct ComposerView: View {
                 ImageOptionsRow(composer: composer, disabled: deriving || workspace.illustration.isBusy)
             }
 
-            ComposerActionBar(workspace: workspace, showsHistory: showsHistory, insertLineBreak: {
-                if lastInputIsLane && isImage && composer.laneVisible { laneLineBreakRequest += 1 }
-                else { briefLineBreakRequest += 1 }
-            })
+            ComposerActionBar(workspace: workspace, showsHistory: showsHistory)
         }
         .padding(12)
         .glassEffect(.regular, in: .rect(cornerRadius: 26))

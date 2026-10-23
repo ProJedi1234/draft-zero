@@ -6,8 +6,6 @@ struct DevelopedPromptLane: View {
     @Bindable var composer: ComposerModel
     let deriving: Bool
     let returnSends: Bool
-    let lineBreakRequest: Int
-    let onFocus: () -> Void
     let send: () -> Void
 
     var body: some View {
@@ -24,8 +22,6 @@ struct DevelopedPromptLane: View {
                 machineText: true,
                 disabled: deriving,
                 returnSends: returnSends,
-                lineBreakRequest: lineBreakRequest,
-                onFocus: onFocus,
                 send: send
             )
         }

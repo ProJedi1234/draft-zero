@@ -78,7 +78,6 @@ export function useSoftwareReturn(
   send: () => void,
   mounted = true
 ) {
-  const explicitLineBreak = React.useRef(false)
   const onSend = React.useEffectEvent(send)
 
   React.useEffect(() => {
@@ -86,7 +85,6 @@ export function useSoftwareReturn(
     if (!field || !mounted) return
     const beforeInput = (event: InputEvent) => {
       if (
-        explicitLineBreak.current ||
         event.isComposing ||
         !event.cancelable ||
         !softwareKeyboardOpen() ||
@@ -101,33 +99,4 @@ export function useSoftwareReturn(
     field.addEventListener("beforeinput", beforeInput)
     return () => field.removeEventListener("beforeinput", beforeInput)
   }, [ref, preference, mounted])
-
-  return () => {
-    const field = ref.current
-    if (!field || field.readOnly || field.disabled) return
-    field.focus({ preventScroll: true })
-    explicitLineBreak.current = true
-    try {
-      document.execCommand("insertText", false, "\n")
-    } finally {
-      explicitLineBreak.current = false
-    }
-  }
-}
-
-const COARSE_POINTER = "(any-pointer: coarse)"
-
-function subscribeCoarsePointer(notify: () => void) {
-  const query = window.matchMedia(COARSE_POINTER)
-  query.addEventListener("change", notify)
-  return () => query.removeEventListener("change", notify)
-}
-
-/** Whether this device can raise a software keyboard at all. */
-export function useTouchKeyboard() {
-  return React.useSyncExternalStore(
-    subscribeCoarsePointer,
-    () => window.matchMedia(COARSE_POINTER).matches,
-    () => false
-  )
 }

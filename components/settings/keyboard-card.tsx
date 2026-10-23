@@ -30,9 +30,9 @@ export function KeyboardCard() {
               Return sends
             </label>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              On, the Return key sends your move and a button in the composer
-              inserts line breaks. Off, Return inserts a new line. Hardware
-              keyboards always send with Return and break lines with Shift.
+              On, the Return key sends your move. Turn it off to type line
+              breaks on a touch keyboard. Hardware keyboards always send with
+              Return and break lines with Shift.
             </p>
           </div>
           <Switch
