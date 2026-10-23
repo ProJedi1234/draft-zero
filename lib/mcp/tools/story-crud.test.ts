@@ -5,6 +5,7 @@ import { withContentParity } from "@/lib/mcp/tools/test-results"
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 
+import { installKeylessCatalog } from "@/lib/mcp/tools/test-catalog"
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
 import { captureBus, installFakeDb } from "@/lib/services/test-support"
 
@@ -39,6 +40,7 @@ const getStoryTitleMock = mock(
 const countLivePassagesMock = mock(async (_id: string) => 0)
 
 installQueryMocks()
+installKeylessCatalog()
 const db = installFakeDb()
 
 const {
@@ -388,6 +390,168 @@ describe("update_story", () => {
     )) as { isError?: boolean; content: { text: string }[] }
     expect(missing.content[0].text).toBe("Story not found.")
     expect(bus.events).toEqual([])
+  })
+})
+
+/* -------------------------------------------------------------------------- */
+/* update_story — profiles and generation settings                           */
+/* -------------------------------------------------------------------------- */
+
+describe("update_story generation", () => {
+  const STORY = "11111111-1111-4111-8111-111111111111"
+  const NOIR = "33333333-3333-4333-8333-333333333333"
+  const PROFILE_ROW = {
+    id: NOIR,
+    name: "Noir",
+    sortOrder: 0,
+    modelId: "~anthropic/claude-sonnet-latest",
+    thinking: "medium",
+    providerTag: null,
+    zdr: false,
+    temperature: 1.2,
+    topP: null,
+    contextWindow: null,
+    loreBudget: null,
+    frequencyPenalty: null,
+    presencePenalty: null,
+  }
+
+  function handler() {
+    const { server, handlers } = makeFakeServer()
+    registerUpdateStory(server as never, undefined as never)
+    return handlers.get("update_story")! as (
+      args: unknown,
+      ctx: unknown
+    ) => Promise<{
+      isError?: boolean
+      content: { text: string }[]
+      structuredContent: { changed: string[] }
+    }>
+  }
+
+  beforeEach(() => {
+    stubQueries({
+      getStoryTitle: getStoryTitleMock,
+      countLivePassages: countLivePassagesMock,
+      getAppSettings: async () => ({ defaultProfileId: null }),
+      listStoryRecords: listStoryRecordsMock,
+      listModelProfiles: async () => [
+        { id: NOIR, name: "Noir", sortOrder: 0, settings: {} },
+      ],
+      getGenerationBaseline: async () => ({
+        defaults: {
+          temperature: 0.8,
+          topP: 0.95,
+          contextWindow: 8192,
+          loreBudget: 25,
+          frequencyPenalty: 0,
+          presencePenalty: 0,
+        },
+        requireZdr: false,
+      }),
+    })
+  })
+
+  test("follows a profile named in any case", async () => {
+    db.next([{ id: NOIR }])
+    db.next([{ id: STORY }])
+    const result = await handler()(
+      { storyId: STORY, profile: "noir" },
+      makeCtx()
+    )
+
+    expect(result.isError).toBeUndefined()
+    expect(roots()).toEqual(["select", "update"])
+    expect(updateSet(1)).toEqual({ profileId: NOIR })
+    expect(result.structuredContent.changed).toEqual(["profile"])
+    expect(result.content[0].text).toContain('follows "Noir"')
+    expect(bus.events).toEqual([{ kind: "change", storyId: null }])
+  })
+
+  test("settings alone detach a follower at its profile's values", async () => {
+    db.next([{ profileId: NOIR }])
+    db.next([PROFILE_ROW])
+    db.next([{ id: STORY }])
+    const result = await handler()(
+      {
+        storyId: STORY,
+        settings: { model: "~moonshotai/kimi-latest", topP: 0.9 },
+      },
+      makeCtx()
+    )
+
+    expect(result.isError).toBeUndefined()
+    expect(roots()).toEqual(["select", "select", "update"])
+    expect(updateSet(2)).toMatchObject({
+      profileId: null,
+      modelId: "~moonshotai/kimi-latest",
+      thinking: "medium",
+      temperature: 1.2,
+      topP: 0.9,
+      contextWindow: 8192,
+    })
+    expect(result.structuredContent.changed).toEqual([
+      "settings.model",
+      "settings.topP",
+    ])
+  })
+
+  test('"custom" returns to the saved settings, then patches them', async () => {
+    db.next([{ id: STORY }])
+    db.next([STORY_ROW])
+    const result = await handler()(
+      { storyId: STORY, profile: "Custom", settings: { temperature: 0.5 } },
+      makeCtx()
+    )
+
+    expect(result.isError).toBeUndefined()
+    expect(roots()).toEqual(["update", "update"])
+    expect(updateSet(0)).toEqual({ profileId: null })
+    expect(updateSet(1)).toEqual({ temperature: 0.5 })
+  })
+
+  test("settings with a named profile are refused before any write", async () => {
+    const result = await handler()(
+      {
+        storyId: STORY,
+        title: "Renamed",
+        profile: "Noir",
+        settings: { temperature: 0.5 },
+      },
+      makeCtx()
+    )
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain("save_profile")
+    expect(db.statements).toEqual([])
+  })
+
+  test("an unknown model leaves the metadata unwritten too", async () => {
+    const result = await handler()(
+      {
+        storyId: STORY,
+        title: "Renamed",
+        settings: { model: "moonshotai/kimi-k3" },
+      },
+      makeCtx()
+    )
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain("~moonshotai/kimi-latest")
+    expect(db.statements).toEqual([])
+    expect(bus.events).toEqual([])
+  })
+
+  test("an unknown profile points at the list", async () => {
+    const result = await handler()(
+      { storyId: STORY, profile: "Gothic" },
+      makeCtx()
+    )
+
+    expect(result.content[0].text).toBe(
+      'No profile "Gothic". Call profiles for the list.'
+    )
+    expect(db.statements).toEqual([])
   })
 })
 

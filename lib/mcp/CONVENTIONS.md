@@ -5,7 +5,7 @@ The contract the tool modules follow, verified against
 Where the SDK's own docs disagree with what the handler does, the correction is called out
 as ⚠️.
 
-Read this before writing a tool. It is the contract between the eleven `lib/mcp/tools/*.ts`
+Read this before writing a tool. It is the contract between the twelve `lib/mcp/tools/*.ts`
 modules; `server.ts`, `helpers.ts` and `app/api/mcp/route.ts` are shared and already written.
 
 ---
@@ -17,9 +17,10 @@ modules; `server.ts`, `helpers.ts` and `app/api/mcp/route.ts` are shared and alr
 | `app/api/mcp/route.ts` | shared | One module-scope `createMcpHandler`, exported as POST/GET/DELETE. `runtime = "nodejs"`. |
 | `lib/mcp/server.ts` | shared | Per-request `McpServer` factory; the fixed registrar order; `tools/list` cache hint; the `requestState` codec. |
 | `lib/mcp/helpers.ts` | shared | `structured`, `failed`, `runTool`, pagination, position ranges, compact formatters. |
+| `lib/mcp/model-settings.ts` | shared | The generation-settings fields, model-id check and profile lookup that `update_story` and the profile tools share. |
 | `lib/mcp/tools/*.ts` | one bundle each | Tool declarations and handlers. **Your file.** |
 
-To add a tool beyond the fifteen, you must edit `server.ts` — coordinate first. To
+To add a tool beyond the eighteen, you must edit `server.ts` — coordinate first. To
 implement one that is, you only edit your own file.
 
 Packages installed for this: `@modelcontextprotocol/server@2.0.0` (pulls
@@ -77,8 +78,8 @@ anything non-obvious: what a default is, what units are, which other tool produc
 ### Annotations that matter
 
 `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` — all optional booleans.
-Set `readOnlyHint: true` on every read tool and `destructiveHint: true` on `edit`, `rewind` and
-`delete_story`. Clients gate confirmation prompts on these.
+Set `readOnlyHint: true` on every read tool and `destructiveHint: true` on `edit`, `rewind`,
+`delete_story` and `delete_profile`. Clients gate confirmation prompts on these.
 
 ---
 
@@ -216,8 +217,8 @@ journal and the sync bus behave identically.
 These are the reason the server is worth building; a tool that breaks them costs the writer
 tokens on every call.
 
-1. **Workflow-shaped, not CRUD.** Fifteen tools cover the whole surface. If you find yourself
-   wanting a sixteenth, the answer is usually a flag on an existing one.
+1. **Workflow-shaped, not CRUD.** Eighteen tools cover the whole surface. If you find yourself
+   wanting a nineteenth, the answer is usually a flag on an existing one.
 2. **Compact by default.** Lists return ids and counts. Reads default to the tail (~10 entries).
    Searches return snippets (`snippet()`, ~160 chars), never passages. Detail is opt-in.
 3. **Map before manuscript.** `story_map` is the cheap orientation; other tools may assume the
@@ -230,7 +231,7 @@ tokens on every call.
 6. **Every tool declares `outputSchema` and returns `structuredContent`.** §3.
 7. **Registration order is fixed** and lives in `server.ts`. Reads, then writes, then destroy.
 
-Descriptions are the most-read text in the server: the client model sees all fifteen on every
+Descriptions are the most-read text in the server: the client model sees all eighteen on every
 `tools/list`. Aim for one or two sentences — what it does, what it returns, when to reach for it
 over its neighbour. `read`'s description earns its length by naming its default (the tail) so the
 model does not send a range it did not need.
@@ -295,7 +296,7 @@ throws when called, so a spec whose tool reads it must stub it.
 
 ### The integration spec
 
-`lib/mcp/server.test.ts` builds the real factory and asks it `tools/list`: all fifteen names in
+`lib/mcp/server.test.ts` builds the real factory and asks it `tools/list`: all eighteen names in
 the fixed order, an object `outputSchema` and `inputSchema` on each, and the annotations reads
 and destructive tools are supposed to carry. It never CALLS a tool, but importing the server reaches
 every service, which imports `"server-only"` — so it installs the fake db, which doubles that

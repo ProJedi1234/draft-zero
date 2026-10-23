@@ -6,8 +6,10 @@ import "server-only"
 import { and, asc, eq, isNull } from "drizzle-orm"
 
 import { getDb } from "@/lib/db/client"
+import { toProfileSettings } from "@/lib/db/mappers"
 import {
   getAppSettings,
+  getGenerationBaseline,
   listStories,
   listStoryRecords,
   STORY_PAGE_SIZE,
@@ -15,16 +17,25 @@ import {
 } from "@/lib/db/queries"
 import {
   lorebookEntries,
+  modelProfiles,
   stories,
   storyEntries,
   type StoryRow,
 } from "@/lib/db/schema"
 import { storyVersionBump } from "@/lib/db/story-version"
 import { discardStoryRun } from "@/lib/generation/live"
+import {
+  customColumnsFromSettings,
+  resolveProfileSettings,
+} from "@/lib/generation/resolve"
 import { discardStoryDeriveRun } from "@/lib/images/derive-run"
 import { discardStoryImageRun } from "@/lib/images/live"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
-import { commitStoryDelete, commitStoryUpsert } from "@/lib/services/commit"
+import {
+  commitChange,
+  commitStoryDelete,
+  commitStoryUpsert,
+} from "@/lib/services/commit"
 import type { ServiceContext } from "@/lib/services/context"
 import { fail, ok, parseInput, type ServiceResult } from "@/lib/services/result"
 import {
@@ -456,14 +467,10 @@ export async function deleteStory(
   return ok(null)
 }
 
-export async function updateGenerationSettings(
-  raw: UpdateGenerationSettingsInput,
-  ctx: ServiceContext
-): Promise<ServiceResult> {
-  const parsed = parseInput(updateGenerationSettingsInput, raw)
-  if (!parsed.ok) return parsed
-  const { id, patch } = parsed.data
-
+/** The story columns a generation settings patch moves. */
+function generationColumns(
+  patch: UpdateGenerationSettingsInput["patch"]
+): Partial<typeof stories.$inferInsert> {
   const values: Partial<typeof stories.$inferInsert> = {}
   if (patch.modelId !== undefined) values.modelId = patch.modelId
   if (patch.thinking !== undefined) values.thinking = patch.thinking
@@ -495,17 +502,91 @@ export async function updateGenerationSettings(
     values.frequencyPenalty = patch.frequencyPenalty
   if (patch.presencePenalty !== undefined)
     values.presencePenalty = patch.presencePenalty
+  return values
+}
+
+export async function updateGenerationSettings(
+  raw: UpdateGenerationSettingsInput,
+  ctx: ServiceContext
+): Promise<ServiceResult> {
+  const parsed = parseInput(updateGenerationSettingsInput, raw)
+  if (!parsed.ok) return parsed
+  const { id, patch } = parsed.data
 
   const db = await getDb()
   const [updated] = await db
     .update(stories)
-    .set({ ...values, updatedAt: storyVersionBump(new Date().toISOString()) })
+    .set({
+      ...generationColumns(patch),
+      updatedAt: storyVersionBump(new Date().toISOString()),
+    })
     .where(eq(stories.id, id))
     .returning()
 
   if (!updated) return fail("not_found", "Story not found.")
 
   commitStoryUpsert(await recordFor(updated), ctx.origin)
+  return ok(null)
+}
+
+/**
+ * Puts a story in Custom mode with `patch` applied, starting from the settings
+ * it generates under now. A Custom story just takes the patch.
+ *
+ * A follower first has its profile's resolved settings written into its own
+ * columns, so only the patched fields change. That overwrites the custom
+ * settings the inspector's switch would return to, which is the point: an
+ * agent asked to "try model X here" means this story's settings with X, not
+ * whatever Custom held weeks ago.
+ */
+export async function customizeGenerationSettings(
+  raw: UpdateGenerationSettingsInput,
+  ctx: ServiceContext
+): Promise<ServiceResult> {
+  const parsed = parseInput(updateGenerationSettingsInput, raw)
+  if (!parsed.ok) return parsed
+  const { id, patch } = parsed.data
+
+  const db = await getDb()
+  const story = await db
+    .select({ profileId: stories.profileId })
+    .from(stories)
+    .where(eq(stories.id, id))
+    .limit(1)
+    .then((rows) => rows[0])
+  if (!story) return fail("not_found", "Story not found.")
+  if (story.profileId === null) return updateGenerationSettings(raw, ctx)
+
+  const profile = await db
+    .select()
+    .from(modelProfiles)
+    .where(eq(modelProfiles.id, story.profileId))
+    .limit(1)
+    .then((rows) => rows[0])
+  // A profile deleted since the read already froze its followers into Custom.
+  const seed = profile
+    ? customColumnsFromSettings(
+        resolveProfileSettings(
+          toProfileSettings(profile),
+          await getGenerationBaseline()
+        )
+      )
+    : { profileId: null }
+
+  const updated = await db
+    .update(stories)
+    .set({
+      ...seed,
+      ...generationColumns(patch),
+      updatedAt: storyVersionBump(new Date().toISOString()),
+    })
+    .where(eq(stories.id, id))
+    .returning({ id: stories.id })
+  if (updated.length === 0) return fail("not_found", "Story not found.")
+
+  // No entities hint, as for setStoryProfile: the profile's follower count
+  // moved too, and a device on the settings page prints it.
+  commitChange(null)
   return ok(null)
 }
 

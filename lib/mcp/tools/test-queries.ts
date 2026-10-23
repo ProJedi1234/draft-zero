@@ -44,6 +44,7 @@ const EMPTY_USAGE = {
  */
 const DEFAULTS = {
   countLivePassages: async () => 0,
+  countProfileFollowers: async () => ({}),
   countLivePassagesAfter: async () => 0,
   countLivePassagesByStory: async () => new Map<string, number>(),
   escapeLikeNeedle: (query: string) => query.trim().replace(/[\\%_]/g, "\\$&"),
@@ -55,6 +56,7 @@ const DEFAULTS = {
   getStoryTitle: async () => null,
   getUsageAggregate: async () => EMPTY_USAGE,
   listLorebookEntries: async () => [],
+  listModelProfiles: async () => [],
   listStoriesWithCounts: async () => [],
   readManuscriptWindow: async () => [],
   resolveStoryRecap: async () => null,

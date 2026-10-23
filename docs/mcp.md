@@ -2,10 +2,14 @@
 
 draft zero serves an MCP endpoint at `/api/mcp`, so an agent can read and
 write your library the way the app does: list stories, read the manuscript,
-append a turn, edit lore, rewind, and see exactly what the model was shown for
-a passage. Every write goes through the same journal and sync bus as the UI,
-so a passage written by an agent is undoable in the app and appears in every
-open browser as it lands.
+append a turn, edit lore, rewind, manage model profiles and pick the model a
+story writes with, and see exactly what the model was shown for a passage.
+
+Every write goes through the same sync bus as the UI, so it appears in every
+open browser as it lands. Manuscript writes also go through the same journal,
+so a passage written by an agent is undoable in the app. Other writes — lore,
+story details, generation settings and profiles — are not journalled and
+cannot be undone.
 
 The endpoint speaks MCP revision 2026-07-28 over streamable HTTP, the
 revision that made the protocol stateless: no session id, no handshake, each
@@ -83,31 +87,37 @@ saving.
 
 ## Tools
 
-The fifteen tools, in the order the server lists them: reads first, then
-writes, then the one destructive tool.
+The eighteen tools, in the order the server lists them: reads first, then
+writes, then the destructive tools.
 
 | Tool | Does |
 |---|---|
 | `list_stories` | Compact index of every story: id, title, genre, passage and word counts, created and last updated. Paged, newest-updated first; `sort` (`updated`, `created`, `title`, `words`, `passages`) and `order` change that. Start here when you do not know a story id. |
-| `story_map` | Everything about one story except its prose: recap, memory, author's note, lorebook index, position bounds, counts, and read-only generation settings. A few hundred tokens. Read this before any other story tool. |
+| `story_map` | Everything about one story except its prose: recap, memory, author's note, lorebook index, position bounds, counts, and the profile and model it generates with. A few hundred tokens. Read this before any other story tool. |
 | `read` | A range of the manuscript by position. Defaults to the last 10 entries; pass `from`/`to` to page elsewhere. Active takes only; images come back as one-line stubs. |
 | `search` | Find text across passages and lorebook entries. Returns positions and short snippets, never full passages. |
 | `lore_get` | Full content of one lorebook entry, by id or exact name. |
 | `usage` | Aggregated spend from the call ledger — cost, calls and token splits grouped by model, request kind, day or story, over an optional date window. |
 | `context_breakdown` | Why the model wrote what it wrote: exactly what a passage was shown. Which lore entries fired and on which keys, which were dropped for want of budget, which recap version resolved, and per-section token counts. The tool for "my lore did not seem to apply". |
+| `profiles` | Every model profile: its model with live pricing, thinking level, slider overrides, how many stories follow it, and which is the default. |
 | `create_story` | Start a new, empty story, configured in one call. Returns its id. |
 | `duplicate_story` | Copy a story's live manuscript, lore and settings into a new story, optionally under a new title. Images, recaps and undo history stay behind. Returns the copy's id. |
 | `write` | Append one passage as narration or as a Do or Say turn — a turn is translated into second person exactly as the composer does it. Returns the position it took. |
 | `edit` | Replace the text of one passage in place, by position. |
 | `rewind` | Retire every passage after a position, the way the app's rewind does — a soft delete, so the recap falls back to the newest version the remaining text still covers. |
 | `lore_write` | Create or update one lorebook entry. Only the fields you pass change. |
-| `update_story` | Change a story's title, description, genre, memory, author's note or system prompt. |
+| `update_story` | Change a story's title, description, genre, memory, author's note or system prompt, and which model writes it: follow a profile by name, or switch to Custom with a model id and settings of its own. |
+| `save_profile` | Create a model profile, or edit one. An edit reaches every story that follows the profile. |
 | `delete_story` | Permanently delete a story and everything in it. Asks the writer to confirm first and does nothing until they do. Not undoable. |
+| `delete_profile` | Delete a model profile. Stories that followed it switch to Custom with the settings they had, so none changes model. The default profile cannot be deleted. |
 
-Every write is journalled, so it shows up in the app's undo, and synced, so it
-appears in every open browser. `delete_story` is the one exception to
-reversibility, which is why it is the one tool that elicits a confirmation
-before acting.
+`delete_story` is the one tool that elicits a confirmation before acting,
+because it is the one that destroys writing.
+
+Model ids an agent passes to `save_profile` or `update_story` are checked
+against the live catalog, and an unknown id is refused with the closest ids
+the catalog does list. When the catalog cannot be read, the id is accepted as
+given. An edit to a profile changes every story that follows it.
 
 For the contract the tool modules follow — registration, results, errors, the
 confirmation round trip — see [`lib/mcp/CONVENTIONS.md`](../lib/mcp/CONVENTIONS.md).

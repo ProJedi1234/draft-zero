@@ -3,12 +3,17 @@
 //
 // Four tools in one file because they are one table's lifecycle. They
 // register separately so each keeps its place in the global ordering. All
-// three call lib/services/stories.ts, the same service behind the UI's own
-// actions, so revalidation and the sync bus stay identical to what the UI
-// produces — this module never opens Drizzle for a write.
+// four call lib/services/stories.ts (and profiles.ts, for the profile a story
+// follows), the same services behind the UI's own actions, so revalidation and
+// the sync bus stay identical to what the UI produces — this module never
+// opens Drizzle for a write.
 import { z } from "zod"
 
-import { countLivePassages, getStoryTitle } from "@/lib/db/queries"
+import {
+  countLivePassages,
+  getStoryTitle,
+  listModelProfiles,
+} from "@/lib/db/queries"
 import {
   acceptedContent,
   inputRequired,
@@ -16,6 +21,7 @@ import {
   type CallToolResult,
 } from "@modelcontextprotocol/server"
 
+import { loadModelCatalog } from "@/lib/generation/models"
 import {
   ToolInputError,
   line,
@@ -25,14 +31,27 @@ import {
   type RegisterTool,
   type RequestStatePayload,
 } from "@/lib/mcp/helpers"
+import {
+  checkModel,
+  findProfile,
+  passedKeys,
+  storySettingsFields,
+  toSettingsPatch,
+} from "@/lib/mcp/model-settings"
 import { NO_ORIGIN } from "@/lib/services/context"
+import { setStoryProfile } from "@/lib/services/profiles"
 import {
   createStory,
+  customizeGenerationSettings,
   deleteStory,
   duplicateStory,
+  updateGenerationSettings,
   updateStoryMeta,
 } from "@/lib/services/stories"
-import type { UpdateStoryMetaInput } from "@/lib/services/stories.schema"
+import type {
+  UpdateGenerationSettingsInput,
+  UpdateStoryMetaInput,
+} from "@/lib/services/stories.schema"
 
 /* -------------------------------- create --------------------------------- */
 
@@ -88,7 +107,7 @@ export const registerCreateStory: RegisterTool = (server) => {
     {
       title: "Create story",
       description:
-        "Start a new, empty story, configured in one call — it takes the same metadata fields as update_story. Returns its id; follow with write to put the first passage in. Journalled and synced to open browsers.",
+        "Start a new, empty story, configured in one call — it takes the same metadata fields as update_story. Returns its id; follow with write to put the first passage in. Synced to open browsers.",
       inputSchema: createInput,
       outputSchema: createOutput,
       annotations: {
@@ -179,16 +198,105 @@ export const registerDuplicateStory: RegisterTool = (server) => {
 
 /* -------------------------------- update --------------------------------- */
 
+/** What `profile` accepts, besides an id or a name, to leave every profile. */
+const CUSTOM = "custom"
+
 const updateInput = z.object({
   storyId: z.string(),
   title: z.string().optional(),
   ...metaFields,
+  profile: z
+    .string()
+    .optional()
+    .describe(
+      `Id or name of a profile (see the profiles tool) for the story to follow, or "${CUSTOM}" to go back to the story's own saved settings.`
+    ),
+  settings: z
+    .object(storySettingsFields)
+    .optional()
+    .describe(
+      `Switches the story to Custom with these fields changed. If it followed a profile, every field you leave out keeps the profile's value. Pass profile "${CUSTOM}" too to patch the story's saved custom settings instead.`
+    ),
 })
 
 const updateOutput = z.object({
   id: z.string(),
-  changed: z.array(z.string()).describe("Fields this call actually moved."),
+  changed: z
+    .array(z.string())
+    .describe(
+      'Fields this call actually moved. Generation settings read "settings.<field>".'
+    ),
 })
+
+/**
+ * Where a call leaves the story's settings: following a named profile, back
+ * on its saved Custom settings, or detached with a patch. Null when the call
+ * did not touch generation at all.
+ */
+type GenerationMove =
+  | { kind: "follow"; profileId: string; name: string }
+  | { kind: "custom"; patch: UpdateGenerationSettingsInput["patch"] | null }
+  | { kind: "detach"; patch: UpdateGenerationSettingsInput["patch"] }
+  | null
+
+/**
+ * Resolves and checks the generation half of an update before anything is
+ * written, so a bad profile name or model id cannot leave the metadata half
+ * applied.
+ */
+async function planGenerationMove(
+  profile: string | undefined,
+  settings: z.infer<typeof updateInput>["settings"]
+): Promise<GenerationMove> {
+  const patch = settings ? toSettingsPatch(settings) : {}
+  const patched = Object.keys(patch).length > 0
+  if (patch.modelId !== undefined) {
+    checkModel(await loadModelCatalog(), patch.modelId)
+  }
+
+  if (profile === undefined) {
+    return patched ? { kind: "detach", patch } : null
+  }
+  if (profile.trim().toLowerCase() === CUSTOM) {
+    return { kind: "custom", patch: patched ? patch : null }
+  }
+  if (patched) {
+    throw new ToolInputError(
+      "A story following a profile generates with the profile's settings. Pass settings without profile to switch it to Custom, or change the profile itself with save_profile."
+    )
+  }
+  const target = findProfile(await listModelProfiles(), profile)
+  return { kind: "follow", profileId: target.id, name: target.name }
+}
+
+async function applyGenerationMove(
+  storyId: string,
+  move: NonNullable<GenerationMove>
+): Promise<void> {
+  const result =
+    move.kind === "detach"
+      ? await customizeGenerationSettings(
+          { id: storyId, patch: move.patch },
+          NO_ORIGIN
+        )
+      : await setStoryProfile(
+          {
+            storyId,
+            profileId: move.kind === "follow" ? move.profileId : null,
+          },
+          NO_ORIGIN
+        )
+  if (!result.ok) throw new ToolInputError(result.error)
+
+  // Back on Custom first, so the patch lands on the settings it came back to.
+  if (move.kind === "custom" && move.patch) {
+    const patched = await updateGenerationSettings(
+      { id: storyId, patch: move.patch },
+      NO_ORIGIN
+    )
+    if (!patched.ok) throw new ToolInputError(patched.error)
+  }
+}
 
 export const registerUpdateStory: RegisterTool = (server) => {
   server.registerTool(
@@ -196,7 +304,7 @@ export const registerUpdateStory: RegisterTool = (server) => {
     {
       title: "Update story",
       description:
-        "Change a story's title, description, genre, memory, author's note or system prompt — the same fields create_story takes. Only the fields you pass move. Journalled and synced to open browsers.",
+        "Change a story's title, description, genre, memory, author's note or system prompt — the same fields create_story takes — and which model writes it: follow a profile, or set a model and settings of its own. Only the fields you pass move. Synced to open browsers.",
       inputSchema: updateInput,
       outputSchema: updateOutput,
       annotations: {
@@ -208,16 +316,20 @@ export const registerUpdateStory: RegisterTool = (server) => {
     },
     async (args) =>
       runTool("update_story", async () => {
-        const { storyId, ...fields } = args
-        const changed = Object.entries(fields)
-          .filter(([, value]) => value !== undefined)
-          .map(([key]) => key)
+        const { storyId, profile, settings, ...fields } = args
+        const changed = [
+          ...passedKeys(fields),
+          ...(profile === undefined ? [] : ["profile"]),
+          ...passedKeys(settings ?? {}).map((key) => `settings.${key}`),
+        ]
 
         if (changed.length === 0) {
           throw new ToolInputError(
-            `Nothing to update — pass at least one of title, ${META_FIELDS.join(", ")}.`
+            `Nothing to update — pass at least one of title, ${META_FIELDS.join(", ")}, profile, settings.`
           )
         }
+
+        const move = await planGenerationMove(profile, settings)
 
         const patch: UpdateStoryMetaInput["patch"] = {}
         if (fields.title !== undefined) patch.title = fields.title
@@ -225,14 +337,24 @@ export const registerUpdateStory: RegisterTool = (server) => {
           const value = fields[field]
           if (value !== undefined) patch[field] = value
         }
+        if (Object.keys(patch).length > 0) {
+          const result = await updateStoryMeta(
+            { id: storyId, patch },
+            NO_ORIGIN
+          )
+          if (!result.ok) throw new ToolInputError(result.error)
+        }
+        if (move) await applyGenerationMove(storyId, move)
 
-        const result = await updateStoryMeta({ id: storyId, patch }, NO_ORIGIN)
-        if (!result.ok) throw new ToolInputError(result.error)
-
-        return structured(line(`updated ${storyId}`, changed.join(", ")), {
-          id: storyId,
-          changed,
-        })
+        return structured(
+          line(
+            `updated ${storyId}`,
+            changed.join(", "),
+            move?.kind === "follow" && `follows "${move.name}"`,
+            move && move.kind !== "follow" && "Custom settings"
+          ),
+          { id: storyId, changed }
+        )
       })
   )
 }
