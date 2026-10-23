@@ -16,6 +16,7 @@ struct ProseText: View {
             }
         }
         .textSelection(.enabled)
+        .contentShape(.rect)
         // Scrolling only drops the keyboard once the drag reaches it, so a tap
         // on the story is the quick way out of the composer.
         .onTapGesture {
