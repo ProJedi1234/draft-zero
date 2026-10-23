@@ -11,7 +11,7 @@ struct KeyboardSection: View {
         } header: {
             Text("Keyboard")
         } footer: {
-            Text("On, the Return key sends your move and a button in the composer inserts line breaks. Off, Return inserts a new line. Hardware keyboards always send with Return and break lines with Shift. Saved on this device only.")
+            Text("On, the Return key sends your move. Turn it off to type line breaks on the touch keyboard. Hardware keyboards always send with Return and break lines with Shift. Saved on this device only.")
         }
     }
 }
