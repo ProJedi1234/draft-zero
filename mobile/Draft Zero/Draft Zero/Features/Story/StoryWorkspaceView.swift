@@ -1,18 +1,24 @@
 import SwiftUI
 
 /// The story room: the manuscript, the composer floating over it, and the
-/// inspector beside it (a sheet on iPhone).
+/// inspector beside it (a sheet on iPhone). History and Retry move into the
+/// toolbar when it is a side rail, as on a foldable's front display; a top
+/// bar has no room for them, and focus mode hides the toolbar entirely.
 struct StoryWorkspaceView: View {
     let workspace: StoryWorkspace
 
     @Environment(AppModel.self) private var app
     @AppStorage("inspectorOpen") private var inspectorOpen = false
     @State private var focusMode = false
+    @State private var hasSideRail = false
     @State private var sheet: StorySheet?
     @State private var confirmingDelete = false
 
     var body: some View {
-        StoryWorkspaceContent(workspace: workspace)
+        StoryWorkspaceContent(workspace: workspace, historyInComposer: focusMode || !hasSideRail)
+            .onGeometryChange(for: Bool.self, of: { max($0.safeAreaInsets.leading, $0.safeAreaInsets.trailing) > 0 }) {
+                hasSideRail = $0
+            }
             .storyActionTint(workspace.tint)
             .background { StoryAmbientBackground(tint: workspace.tint) }
             .navigationTitle(workspace.story?.title ?? "")
@@ -54,6 +60,17 @@ struct StoryWorkspaceView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        if hasSideRail {
+            let generation = workspace.generation
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button(generation.undoLabel, systemImage: "arrow.uturn.backward", action: generation.undo)
+                    .disabled(!generation.canUndo)
+                Button(generation.redoLabel, systemImage: "arrow.uturn.forward", action: generation.redo)
+                    .disabled(!generation.canRedo)
+                RetryMenu(workspace: workspace, disabled: generation.busy)
+            }
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+        }
         ToolbarItem(placement: .topBarTrailing) {
             AtmosphereIndicator(status: workspace.atmosphere)
         }
