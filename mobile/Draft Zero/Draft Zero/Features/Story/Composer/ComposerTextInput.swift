@@ -94,6 +94,9 @@ struct ComposerTextInput: UIViewRepresentable {
                 // Autocorrect may commit just before Return; send that latest text.
                 parent.text = view.text
                 parent.send()
+                // The on-screen keyboard hides the new passage on compact phones.
+                // Hardware Return sends through key commands and keeps focus.
+                textView.resignFirstResponder()
                 return false
             }
             return true
