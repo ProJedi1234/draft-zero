@@ -3,6 +3,7 @@ import SwiftUI
 /// The manuscript and composer once the story has loaded, or why it has not.
 struct StoryWorkspaceContent: View {
     let workspace: StoryWorkspace
+    let historyInComposer: Bool
 
     var body: some View {
         switch workspace.loadState {
@@ -27,7 +28,7 @@ struct StoryWorkspaceContent: View {
         default:
             ManuscriptView(workspace: workspace)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    ComposerView(workspace: workspace)
+                    ComposerView(workspace: workspace, showsHistory: historyInComposer)
                 }
         }
     }

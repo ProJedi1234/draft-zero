@@ -4,6 +4,7 @@ import SwiftUI
 /// collapse into one chip that names the mode and offers the way back.
 struct ComposerModePicker: View {
     let composer: ComposerModel
+    var segmentWidth: CGFloat = 42
 
     var body: some View {
         if composer.mode == .image {
@@ -20,7 +21,7 @@ struct ComposerModePicker: View {
         } else {
             HStack(spacing: 0) {
                 ForEach(ComposerMode.allCases) { mode in
-                    ModeButton(mode: mode, selected: composer.mode == mode) {
+                    ModeButton(mode: mode, selected: composer.mode == mode, width: segmentWidth) {
                         composer.mode = mode
                     }
                 }

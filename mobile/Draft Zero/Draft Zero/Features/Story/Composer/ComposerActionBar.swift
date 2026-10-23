@@ -1,36 +1,46 @@
 import SwiftUI
 
-/// The composer's moves: which move is armed, history, Retry and Continue
-/// (or re-develop for a picture), and the one send slot.
+/// The composer's moves: which move is armed, Continue (or re-develop for a
+/// picture), and the one send slot. History and Retry join them unless the
+/// toolbar is a side rail with room for them.
 struct ComposerActionBar: View {
     let workspace: StoryWorkspace
+    let showsHistory: Bool
     let insertLineBreak: () -> Void
     @AppStorage("composerReturnSends") private var returnSends = true
 
     var body: some View {
+        // A foldable's front display is too narrow for the regular row; HStack
+        // won't shrink flexible buttons reliably, so pick a narrower fixed row.
+        ViewThatFits(in: .horizontal) {
+            row(compact: false)
+            row(compact: true)
+        }
+    }
+
+    @ViewBuilder
+    private func row(compact: Bool) -> some View {
         let generation = workspace.generation
         let composer = workspace.composer
         let isImage = composer.mode == .image
 
         HStack(spacing: 2) {
-            ComposerModePicker(composer: composer)
+            ComposerModePicker(composer: composer, segmentWidth: compact ? 34 : 42)
 
-            Menu("Composer keyboard options", systemImage: "keyboard") {
-                Button("Insert line break", systemImage: "return", action: insertLineBreak)
+            // A touch keyboard whose Return sends has no other way to break a line.
+            if returnSends {
+                Button("Insert Line Break", systemImage: "return", action: insertLineBreak)
                     .disabled(isImage && workspace.derivation.deriving)
-                Picker("Mobile Return key", selection: $returnSends) {
-                    Text("Send").tag(true)
-                    Text("Insert new line").tag(false)
-                }
-                Text("Saved on this device")
             }
 
             Spacer(minLength: 4)
 
-            Button(generation.undoLabel, systemImage: "arrow.uturn.backward", action: generation.undo)
-                .disabled(!generation.canUndo)
-            Button(generation.redoLabel, systemImage: "arrow.uturn.forward", action: generation.redo)
-                .disabled(!generation.canRedo)
+            if showsHistory {
+                Button(generation.undoLabel, systemImage: "arrow.uturn.backward", action: generation.undo)
+                    .disabled(!generation.canUndo)
+                Button(generation.redoLabel, systemImage: "arrow.uturn.forward", action: generation.redo)
+                    .disabled(!generation.canRedo)
+            }
 
             if isImage {
                 Button(composer.hasText ? "Develop Again" : "Write a Prompt From the Story", systemImage: "wand.and.sparkles") {
@@ -39,7 +49,9 @@ struct ComposerActionBar: View {
                 .disabled(!composer.imageAssisted || workspace.derivation.deriving || workspace.illustration.isBusy)
                 .help("Costs a call")
             } else {
-                RetryMenu(workspace: workspace, disabled: generation.busy)
+                if showsHistory {
+                    RetryMenu(workspace: workspace, disabled: generation.busy)
+                }
                 Button("Continue", systemImage: "forward.fill", action: generation.continueStory)
                     .disabled(generation.busy)
                     .keyboardShortcut(.return, modifiers: [.command, .shift])
@@ -49,6 +61,6 @@ struct ComposerActionBar: View {
                 .padding(.leading, 4)
         }
         .labelStyle(.iconOnly)
-        .buttonStyle(ComposerIconButtonStyle())
+        .buttonStyle(ComposerIconButtonStyle(width: compact ? 30 : 38))
     }
 }

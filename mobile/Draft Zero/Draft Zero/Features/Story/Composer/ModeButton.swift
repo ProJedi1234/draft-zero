@@ -4,13 +4,14 @@ import SwiftUI
 struct ModeButton: View {
     let mode: ComposerMode
     let selected: Bool
+    var width: CGFloat = 42
     let select: () -> Void
 
     var body: some View {
         Button(action: select) {
             Label(mode.label, systemImage: mode.systemImage)
                 .labelStyle(.iconOnly)
-                .frame(width: 42, height: 38)
+                .frame(width: width, height: 38)
                 .contentShape(.capsule)
                 .background {
                     if selected {

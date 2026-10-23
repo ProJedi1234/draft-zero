@@ -4,6 +4,7 @@ import SwiftUI
 /// or briefs a picture, and every move is made.
 struct ComposerView: View {
     let workspace: StoryWorkspace
+    let showsHistory: Bool
 
     @AppStorage("composerReturnSends") private var returnSends = true
     @State private var lastInputIsLane = false
@@ -61,7 +62,7 @@ struct ComposerView: View {
                 ImageOptionsRow(composer: composer, disabled: deriving || workspace.illustration.isBusy)
             }
 
-            ComposerActionBar(workspace: workspace, insertLineBreak: {
+            ComposerActionBar(workspace: workspace, showsHistory: showsHistory, insertLineBreak: {
                 if lastInputIsLane && isImage && composer.laneVisible { laneLineBreakRequest += 1 }
                 else { briefLineBreakRequest += 1 }
             })

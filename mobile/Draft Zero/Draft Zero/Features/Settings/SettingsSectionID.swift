@@ -11,5 +11,6 @@ enum SettingsSectionID: String, CaseIterable {
     case summarizer
     case atmosphere
     case images
+    case keyboard
     case about
 }

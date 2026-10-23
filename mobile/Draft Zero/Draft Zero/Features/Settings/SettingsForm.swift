@@ -65,6 +65,8 @@ struct SettingsForm: View {
             } else {
                 SettingsLoadingSection(error: store.loadError, retry: retry)
             }
+            KeyboardSection()
+                .id(SettingsSectionID.keyboard)
             AboutSection()
                 .id(SettingsSectionID.about)
         }
