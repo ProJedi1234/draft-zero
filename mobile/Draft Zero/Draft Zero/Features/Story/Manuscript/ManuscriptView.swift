@@ -8,7 +8,9 @@ import SwiftUI
 struct ManuscriptView: View {
     let workspace: StoryWorkspace
 
-    @State private var position = ScrollPosition()
+    // Typed so the scroll view tracks the top-most passage and keeps it in
+    // place when the column changes width; see readingColumn().
+    @State private var position = ScrollPosition(idType: String.self)
     @State private var pinned = true
 
     var body: some View {
@@ -19,35 +21,40 @@ struct ManuscriptView: View {
             LazyVStack(alignment: .leading, spacing: 6) {
                 if workspace.hasMoreOlder {
                     LoadEarlierRow(isLoading: workspace.isLoadingOlder, load: loadEarlier)
+                        .readingColumn()
                 } else if let story = workspace.story {
                     StoryTitleHeader(story: story)
+                        .readingColumn()
                 }
 
                 if items.isEmpty && workspace.generation.echo == nil
                     && workspace.generation.status == .idle && workspace.illustration.job == nil {
                     StoryEmptyState(title: workspace.story?.title ?? "", suggest: suggest)
+                        .readingColumn()
                 }
 
                 ForEach(items) { item in
-                    switch item {
-                    case .entry(let entry):
-                        EntryBlockView(
-                            entry: entry,
-                            isLast: entry.id == lastEntryId,
-                            busy: busy,
-                            workspace: workspace
-                        )
-                    case .image(let image):
-                        ImageBlockView(image: image, busy: busy, workspace: workspace)
+                    Group {
+                        switch item {
+                        case .entry(let entry):
+                            EntryBlockView(
+                                entry: entry,
+                                isLast: entry.id == lastEntryId,
+                                busy: busy,
+                                workspace: workspace
+                            )
+                        case .image(let image):
+                            ImageBlockView(image: image, busy: busy, workspace: workspace)
+                        }
                     }
+                    .readingColumn()
                 }
 
                 LiveEdgeView(workspace: workspace, onGrowth: followLiveEdge)
+                    .readingColumn()
                     .id(Self.liveEdgeID)
             }
             .scrollTargetLayout()
-            .frame(maxWidth: Theme.readingWidth)
-            .frame(maxWidth: .infinity)
         }
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 12, for: .scrollContent)
@@ -100,5 +107,16 @@ struct ManuscriptView: View {
         workspace.composer.mode = .do
         workspace.composer.text = text
         workspace.composer.requestFocus()
+    }
+}
+
+private extension View {
+    /// Centres a row in the reading column while the row itself spans the full
+    /// width. Keeping a scroll target in place holds its leading edge, so a
+    /// target as narrow as the column would scroll the view sideways whenever
+    /// the screen widens, as when a Duo unfolds.
+    func readingColumn() -> some View {
+        frame(maxWidth: Theme.readingWidth, alignment: .leading)
+            .frame(maxWidth: .infinity)
     }
 }

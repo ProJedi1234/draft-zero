@@ -10,12 +10,15 @@ struct StoryWorkspaceView: View {
     @Environment(AppModel.self) private var app
     @AppStorage("inspectorOpen") private var inspectorOpen = false
     @State private var focusMode = false
+    @State private var reclaimsStrip = false
     @State private var hasSideRail = false
     @State private var sheet: StorySheet?
     @State private var confirmingDelete = false
 
     var body: some View {
         StoryWorkspaceContent(workspace: workspace, historyInComposer: focusMode || !hasSideRail)
+            // Focus mode reclaims the camera strip on a foldable's front display.
+            .ignoresSafeArea(.container, edges: reclaimsStrip ? .horizontal : [])
             .onGeometryChange(for: Bool.self, of: { max($0.safeAreaInsets.leading, $0.safeAreaInsets.trailing) > 0 }) {
                 hasSideRail = $0
             }
@@ -24,7 +27,12 @@ struct StoryWorkspaceView: View {
             .navigationTitle(workspace.story?.title ?? "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarVisibility(focusMode ? .hidden : .automatic, for: .navigationBar)
-            .onChange(of: focusMode) { _, on in app.hidesStatusBar = on }
+            .onChange(of: focusMode) { _, on in
+                app.hidesStatusBar = on
+                // Widening the column under focus mode's animation re-wraps every
+                // passage each frame, so the strip is reclaimed in one step.
+                withTransaction(\.disablesAnimations, true) { reclaimsStrip = on }
+            }
             .onDisappear { app.hidesStatusBar = false }
             .toolbar { toolbarContent }
             .toolbarTitleMenu {
