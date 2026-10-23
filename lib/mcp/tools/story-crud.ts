@@ -107,7 +107,7 @@ export const registerCreateStory: RegisterTool = (server) => {
     {
       title: "Create story",
       description:
-        "Start a new, empty story, configured in one call — it takes the same metadata fields as update_story. Returns its id; follow with write to put the first passage in. Journalled and synced to open browsers.",
+        "Start a new, empty story, configured in one call — it takes the same metadata fields as update_story. Returns its id; follow with write to put the first passage in. Synced to open browsers.",
       inputSchema: createInput,
       outputSchema: createOutput,
       annotations: {

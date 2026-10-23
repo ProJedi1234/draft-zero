@@ -172,7 +172,7 @@ export const registerLoreWrite: RegisterTool = (server) => {
     {
       title: "Write lore entry",
       description:
-        "Create or update one lorebook entry. Omit id to create, give id to update — only the fields you pass change. An entry enters context when one of its keys appears as a substring of the recent story text (or when alwaysActive is set), and an entry already in context is itself scanned for other entries' keys, up to 3 levels deep — so lore can pull in lore. Use context_breakdown to see which entries actually fired for a passage and which lost the budget. Journalled and synced to open browsers.",
+        "Create or update one lorebook entry. Omit id to create, give id to update — only the fields you pass change. An entry enters context when one of its keys appears as a substring of the recent story text (or when alwaysActive is set), and an entry already in context is itself scanned for other entries' keys, up to 3 levels deep — so lore can pull in lore. Use context_breakdown to see which entries actually fired for a passage and which lost the budget. Synced to open browsers; not undoable in the app.",
       inputSchema: writeInput,
       outputSchema: writeOutput,
       annotations: {

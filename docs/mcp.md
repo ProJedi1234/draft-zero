@@ -3,9 +3,13 @@
 draft zero serves an MCP endpoint at `/api/mcp`, so an agent can read and
 write your library the way the app does: list stories, read the manuscript,
 append a turn, edit lore, rewind, manage model profiles and pick the model a
-story writes with, and see exactly what the model was shown for a passage. Every write goes through the same journal and sync bus as the UI,
-so a passage written by an agent is undoable in the app and appears in every
-open browser as it lands.
+story writes with, and see exactly what the model was shown for a passage.
+
+Every write goes through the same sync bus as the UI, so it appears in every
+open browser as it lands. Manuscript writes also go through the same journal,
+so a passage written by an agent is undoable in the app. Other writes — lore,
+story details, generation settings and profiles — are not journalled and
+cannot be undone.
 
 The endpoint speaks MCP revision 2026-07-28 over streamable HTTP, the
 revision that made the protocol stateless: no session id, no handshake, each
@@ -107,8 +111,6 @@ writes, then the destructive tools.
 | `delete_story` | Permanently delete a story and everything in it. Asks the writer to confirm first and does nothing until they do. Not undoable. |
 | `delete_profile` | Delete a model profile. Stories that followed it switch to Custom with the settings they had, so none changes model. The default profile cannot be deleted. |
 
-Every write is synced, so it appears in every open browser. Writes to the
-manuscript are journalled, so they show up in the app's undo.
 `delete_story` is the one tool that elicits a confirmation before acting,
 because it is the one that destroys writing.
 
