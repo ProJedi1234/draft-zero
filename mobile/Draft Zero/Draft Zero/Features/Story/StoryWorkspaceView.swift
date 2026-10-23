@@ -28,7 +28,6 @@ struct StoryWorkspaceView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarVisibility(focusMode ? .hidden : .automatic, for: .navigationBar)
             .onChange(of: focusMode) { _, on in
-                app.hidesStatusBar = on
                 // Widening the column under focus mode's animation re-wraps every
                 // passage each frame, so the strip is reclaimed in one step.
                 withTransaction(\.disablesAnimations, true) { reclaimsStrip = on }
@@ -61,7 +60,7 @@ struct StoryWorkspaceView: View {
             }
             .overlay {
                 if focusMode {
-                    FocusExitButton { withAnimation { focusMode = false } }
+                    FocusExitButton { setFocusMode(false) }
                 }
             }
     }
@@ -96,16 +95,21 @@ struct StoryWorkspaceView: View {
                 Button("Story Details", systemImage: "info.circle") { sheet = .details }
                 Button("Cost", systemImage: "dollarsign.circle") { sheet = .cost }
                 Button("Focus Mode", systemImage: "arrow.up.left.and.arrow.down.right") {
-                    withAnimation {
-                        inspectorOpen = false
-                        focusMode = true
-                    }
+                    withAnimation { inspectorOpen = false }
+                    setFocusMode(true)
                 }
                 .keyboardShortcut(".", modifiers: .command)
                 Divider()
                 Button("Duplicate", systemImage: "plus.square.on.square", action: duplicate)
                 Button("Delete Story", systemImage: "trash", role: .destructive) { confirmingDelete = true }
             }
+        }
+    }
+
+    private func setFocusMode(_ on: Bool) {
+        withBarAnimation {
+            focusMode = on
+            app.hidesStatusBar = on
         }
     }
 
