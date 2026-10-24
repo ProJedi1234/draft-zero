@@ -30,8 +30,8 @@ struct LiveEdgeView: View {
 
     /// Matches ManuscriptItem.startsTurn, so the persisted row lands where the stream was.
     private var continuesUnprompted: Bool {
-        guard workspace.generation.optimisticUserText == nil, let last = workspace.manuscript.last else { return false }
-        if case .entry(let entry) = last, entry.source == .user { return false }
-        return true
+        let manuscript = workspace.manuscript
+        return workspace.generation.optimisticUserText == nil
+            && !manuscript.isEmpty && !ManuscriptItem.endsOnMove(manuscript)
     }
 }

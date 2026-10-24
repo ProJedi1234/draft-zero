@@ -34,7 +34,6 @@ struct ManuscriptView: View {
                 }
 
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    let previous = index > 0 ? items[index - 1] : nil
                     Group {
                         switch item {
                         case .entry(let entry):
@@ -48,7 +47,7 @@ struct ManuscriptView: View {
                             ImageBlockView(image: image, busy: busy, workspace: workspace)
                         }
                     }
-                    .padding(.top, item.startsTurn(after: previous) ? Theme.turnBreak : 0)
+                    .padding(.top, item.startsTurn(following: items[..<index]) ? Theme.turnBreak : 0)
                     .readingColumn()
                 }
 
