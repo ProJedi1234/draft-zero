@@ -32,6 +32,12 @@ struct ComposerTextInputTests {
         #expect(sends == 0)
     }
 
+    @Test func dictationUsesTheStockTextViewPath() {
+        // UITextView lacks insertDictationResult:, so overriding it makes UIKit call a super that crashes.
+        let selector = NSSelectorFromString("insertDictationResult:")
+        #expect(!ComposerTextView.instancesRespond(to: selector))
+    }
+
     @Test func explicitLineBreakPreservesTheSelectionAndDoesNotSend() {
         var draft = "OneTwo"
         var sends = 0

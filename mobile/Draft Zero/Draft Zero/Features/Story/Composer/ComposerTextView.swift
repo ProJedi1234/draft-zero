@@ -33,12 +33,6 @@ final class ComposerTextView: UITextView {
         super.paste(sender)
     }
 
-    override func insertDictationResult(_ dictationResult: [UIDictationPhrase]) {
-        insertingLineBreak = true
-        defer { insertingLineBreak = false }
-        super.insertDictationResult(dictationResult)
-    }
-
     @objc private func hardwareSend() {
         guard isEditable, markedTextRange == nil else { return }
         send()
