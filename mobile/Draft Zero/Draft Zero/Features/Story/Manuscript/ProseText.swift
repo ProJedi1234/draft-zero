@@ -16,6 +16,12 @@ struct ProseText: View {
             }
         }
         .textSelection(.enabled)
+        .contentShape(.rect)
+        // Scrolling only drops the keyboard once the drag reaches it, so a tap
+        // on the story is the quick way out of the composer.
+        .onTapGesture {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
     }
 
     /// Splits on blank lines and drops empty paragraphs, like lib/markdown.ts.
