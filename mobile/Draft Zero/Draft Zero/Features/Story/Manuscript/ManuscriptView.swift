@@ -33,7 +33,7 @@ struct ManuscriptView: View {
                         .readingColumn()
                 }
 
-                ForEach(items) { item in
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     Group {
                         switch item {
                         case .entry(let entry):
@@ -47,6 +47,7 @@ struct ManuscriptView: View {
                             ImageBlockView(image: image, busy: busy, workspace: workspace)
                         }
                     }
+                    .padding(.top, item.startsTurn(following: items[..<index]) ? Theme.turnBreak : 0)
                     .readingColumn()
                 }
 

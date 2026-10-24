@@ -5,11 +5,13 @@ import SwiftUI
 struct ProseText: View {
     let text: String
 
+    @ScaledMetric(relativeTo: .body) private var pointSize = Theme.manuscriptPointSize
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.paragraphSpacing) {
             ForEach(Array(ProseText.paragraphs(of: text).enumerated()), id: \.offset) { _, paragraph in
                 Text(ProseText.styled(paragraph))
-                    .font(Theme.proseFont)
+                    .font(.system(size: pointSize, design: .serif))
                     .lineSpacing(Theme.proseLineSpacing)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
