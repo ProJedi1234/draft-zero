@@ -19,4 +19,13 @@ enum ManuscriptItem: Identifiable, Hashable {
         case .image(let image): image.position
         }
     }
+
+    /// A turn opens with the writer's move, or with a passage the model wrote
+    /// unprompted (Continue). A reply and its pictures stay with the move.
+    func startsTurn(after previous: ManuscriptItem?) -> Bool {
+        guard previous != nil, case .entry(let entry) = self else { return false }
+        if entry.source == .user { return true }
+        if case .entry(let prior) = previous, prior.source == .user { return false }
+        return true
+    }
 }
