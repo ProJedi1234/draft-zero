@@ -153,3 +153,21 @@ export const applyWorldPatchOutput = z.object({ state: worldState })
 
 export type GetWorldInput = z.input<typeof getWorldInput>
 export type ApplyWorldPatchInput = z.input<typeof applyWorldPatchInput>
+
+/** The post-passage model's complete answer. Presence is checked against its input. */
+export const worldPassOutput = z.object({
+  minutesElapsed: minutes,
+  minuteOfDay: z.number().int().min(0).max(1439).optional(),
+  npcs: z.array(
+    z.object({
+      loreEntryId,
+      mind: z.string().trim().max(MIND_MAX_CHARS),
+      memories: z.array(
+        z.object({
+          text: z.string().trim().min(1).max(MEMORY_MAX_CHARS),
+          importance,
+        })
+      ),
+    })
+  ),
+})

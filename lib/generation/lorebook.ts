@@ -98,7 +98,7 @@ export function buildScanSources(story: {
 }
 
 /** The first key of `entry` present in `haystack`, or null. */
-function firstMatchingKey(
+export function firstMatchingKey(
   entry: LorebookEntry,
   haystack: string
 ): string | null {

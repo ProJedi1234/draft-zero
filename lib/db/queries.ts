@@ -1,6 +1,9 @@
 // lib/db/queries.ts — Read layer. Server-only: imported by server components
 // and server actions. Every call reads fresh from Postgres (no caching layer).
 
+import { readWorldData } from "@/lib/db/world"
+import { parseStoryFeatures } from "@/lib/world/features"
+
 import {
   and,
   asc,
@@ -847,7 +850,7 @@ export async function getStory(
     })
   }
 
-  return toStory(
+  const story = toStory(
     storyRow,
     profileRow ?? null,
     manuscript.rows,
@@ -861,6 +864,10 @@ export async function getStory(
     imageCosts,
     manuscript.window
   )
+  if (parseStoryFeatures(storyRow.featuresJson).world?.enabled) {
+    story.world = (await readWorldData(db, id)).state
+  }
+  return story
 }
 
 /**

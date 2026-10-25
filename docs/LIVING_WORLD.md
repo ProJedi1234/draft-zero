@@ -32,7 +32,7 @@ Not in v1: dice of any kind, daily events, schedules, relationships, reflection,
 State = apply ops in order, starting from `{ minutes: 0, npcs: {} }`.
 
 - **Live patches only.** NULL-anchored patches always count. Others count only while their entry is live: not deleted, and the active take of its slot.
-- **Order.** NULL-anchored first, then by entry position, then `created_at`.
+- **Order.** NULL-anchored first, then by entry position. Within an entry, the `world` patch always precedes its `manual` patches, regardless of `created_at`, so a correction made during a world pass keeps precedence. Manual patches sort by `created_at`, then id.
 - **Ops.** `advance-clock` adds; `set-clock` replaces. `set-mind` replaces the line. `add-memory` appends with the current clock and the patch's entry, which is NULL for a NULL-anchored patch. `strike-memory` removes.
 - **Opted-in NPCs.** Ops naming a lorebook entry that is deleted or no longer opted in are skipped. Every opted-in NPC appears in the output, empty if it has no state.
 
@@ -41,14 +41,16 @@ Undo, redo, retry, switch-take, and rewind need no journal changes, because they
 ## World pass
 
 - **When.** In `finishRun` next to `scheduleSummary`, only when a passage landed and `features.world.enabled`. Same contract as `summarize.ts` and `atmosphere.ts`: floated, never awaited, never throws into generation, and the next turn is the retry.
+- **Queue.** Per-story requests run serially in manuscript order. Each drain also catches up at most four earlier live generated passages without world patches, oldest first. Recheck liveness and existing patches before each request.
 - **Model.** The summarizer's resolved model and key. Ledger kind `"world"`, a server-only `GenerationRequestKind`.
 - **Present NPCs.** Opted-in, enabled character entries whose keys appear in the passage or in the player's turn that prompted it. Matching works the same way as lore triggers.
 - **Input.** Pacing rules, current clock, the player's turn, the new passage, and for each present NPC its card content, mind, and most recent memories.
 - **Output.** One JSON object, validated with zod:
   - `minutesElapsed`: integer, at least 0, following the pacing rules
+  - `minuteOfDay`: optional integer from 0 to 1439. When the prefix has no clock op yet, infer the time of day at the end of the passage from its prose, or use 480 when there is no cue. The first patch uses `set-clock` with this value instead of `advance-clock`.
   - `npcs`: `[{ loreEntryId, mind, memories: [{ text, importance }] }]` for present NPCs only. Memories are first-person, specific, and limited to what that NPC saw or heard.
   - An invalid answer writes nothing.
-- **Write.** One `world` patch on the passage, then commit through `commit.ts` so every device refetches.
+- **Write.** One `world` patch on the passage, then commit through `commit.ts` so every device refetches. Capture the live prefix entry ids and folded patch ids at read time, then compare them under the story row lock before inserting. A mismatch writes nothing and requeues the passage once.
 
 ## Narrator context
 
