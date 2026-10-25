@@ -13,6 +13,7 @@ import { installFakeDb } from "@/lib/services/test-support"
 /* -------------------------------------------------------------------------- */
 
 type FakeEntry = {
+  npc: boolean
   id: string
   storyId: string
   name: string
@@ -27,6 +28,7 @@ type FakeEntry = {
 }
 
 const EXISTING: FakeEntry = {
+  npc: false,
   id: "lore-1",
   storyId: "s1",
   name: "Vell",

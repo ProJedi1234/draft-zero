@@ -137,6 +137,7 @@ describe("story_map", () => {
     getStoryMock.mockImplementation(async () => fakeStory())
     listLorebookEntriesMock.mockImplementation(async () => [
       {
+        npc: false,
         id: "lore-1",
         name: "Vell",
         keys: ["vell", "the wanderer"],

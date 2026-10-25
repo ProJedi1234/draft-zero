@@ -23,6 +23,7 @@ const NOW = 1_700_000_000_000
 
 function story(id: string, overrides: Partial<StoryRecord> = {}): StoryRecord {
   return {
+    features: {},
     id,
     title: "A Story",
     description: "",

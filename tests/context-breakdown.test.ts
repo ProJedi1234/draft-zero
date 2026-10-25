@@ -51,6 +51,7 @@ function entry(text: string): StoryEntry {
 function lore(overrides: Partial<LorebookEntry> = {}): LorebookEntry {
   seq += 1
   return {
+    npc: false,
     id: `lore-${seq}`,
     storyId: "story-1",
     name: `Entry ${seq}`,
@@ -68,6 +69,7 @@ function lore(overrides: Partial<LorebookEntry> = {}): LorebookEntry {
 
 function story(overrides: Partial<Story> = {}): Story {
   return {
+    features: {},
     id: "story-1",
     title: "Test",
     description: "",

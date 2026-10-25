@@ -17,6 +17,7 @@ import type { LorebookEntry } from "@/lib/types"
 
 function entry(overrides: Partial<LorebookEntry> = {}): LorebookEntry {
   return {
+    npc: false,
     id: "e1",
     storyId: "s1",
     name: "Lara",

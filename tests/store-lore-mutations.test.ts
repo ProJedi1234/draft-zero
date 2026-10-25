@@ -16,6 +16,7 @@ import type { ActionResult, NewLorebookEntry } from "@/lib/types"
 const STORY_ID = "22222222-2222-4222-8222-222222222222"
 
 const canonical: LorebookEntryRecord = {
+  npc: false,
   id: "unused — replaced per call",
   storyId: STORY_ID,
   name: "Server Name",
@@ -84,6 +85,7 @@ const mutations = await import("@/lib/store/lorebook-mutations")
 
 function draft(overrides: Partial<NewLorebookEntry> = {}): NewLorebookEntry {
   return {
+    npc: false,
     name: "Ash",
     category: "character",
     keys: ["ash"],

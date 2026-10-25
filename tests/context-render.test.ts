@@ -18,6 +18,7 @@ function storyOf(
   extra: Partial<Story> = {}
 ): Story {
   return {
+    features: {},
     id: "story",
     title: "Untitled Story",
     memory: "",

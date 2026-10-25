@@ -15,6 +15,7 @@ import { captureBus, installFakeDb } from "@/lib/services/test-support"
 
 /** A stories row as the service's insert or update returns it. */
 const STORY_ROW = {
+  featuresJson: null,
   id: "story-1",
   title: "Doomed Story",
   description: "",
@@ -246,6 +247,20 @@ describe("duplicate_story", () => {
   function copyId() {
     return (db.argsOf(3, "values")?.[0] as { id: string }).id
   }
+
+  test("duplication preserves living-world settings and character opt-in", async () => {
+    const featuresJson = JSON.stringify({
+      world: { enabled: true, pacing: "Slow." },
+    })
+    db.next([{ ...STORY_ROW, featuresJson }])
+    db.next([])
+    db.next([{ id: "npc", storyId: "story-1", name: "Vell", npc: true }])
+    db.next([{ ...STORY_ROW, featuresJson, id: "copy" }])
+    db.next([])
+    await duplicateHandler()({ storyId: "story-1" }, makeCtx())
+    expect(db.argsOf(3, "values")?.[0]).toMatchObject({ featuresJson })
+    expect(db.argsOf(4, "values")?.[0]).toMatchObject([{ npc: true }])
+  })
 
   test("copies under the service's default title", async () => {
     scriptEmptyCopy()

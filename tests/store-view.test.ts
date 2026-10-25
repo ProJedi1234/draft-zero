@@ -18,6 +18,7 @@ import type { StoryRecord } from "@/lib/store/records"
 
 function story(id: string, updatedAt: string, title = id): StoryRecord {
   return {
+    features: {},
     id,
     title,
     description: "",

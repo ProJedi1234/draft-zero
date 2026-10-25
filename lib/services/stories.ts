@@ -199,6 +199,8 @@ export async function updateStoryMeta(
   if (patch.genre !== undefined) values.genre = patch.genre
   if (patch.memory !== undefined) values.memory = patch.memory
   if (patch.authorsNote !== undefined) values.authorsNote = patch.authorsNote
+  if (patch.features !== undefined)
+    values.featuresJson = JSON.stringify(patch.features)
   if (patch.summarize !== undefined) values.summarize = patch.summarize
   if (patch.systemPrompt !== undefined) {
     // Blank means "no override" — stored as NULL so the story keeps following

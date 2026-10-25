@@ -1,6 +1,8 @@
 // lib/types.ts — Single source of truth for the draft-zero domain contract.
 // Implementation packages import from "@/lib/types" and MUST NOT redefine these.
 
+import type { StoryFeatures, WorldState } from "@/lib/services/world.schema"
+
 /** Who produced a passage of story text. */
 export type EntrySource = "user" | "generated"
 
@@ -121,7 +123,7 @@ export interface EntryGeneration {
 /**
  * Which move sent a generation request.
  *
- * "summarize" and "atmosphere" are the odd ones and deliberately so: they are
+ * "world", "summarize" and "atmosphere" are the odd ones and deliberately so: they are
  * the kinds the writer never asked for and never watches, and the only ones
  * that produce no passage. They are in this union because the spend ledger is
  * keyed by it and a billed call that no aggregate can see is worse than one
@@ -140,6 +142,7 @@ export type GenerationRequestKind =
   | "generate"
   | "retry"
   | "continue"
+  | "world"
   | "summarize"
   | "atmosphere"
   | "illustrate-prompt"
@@ -635,6 +638,9 @@ export interface ModelProfile {
 }
 
 export interface Story {
+  features: StoryFeatures
+  /** Folded world state, supplied by server reads when the feature is enabled. */
+  world?: WorldState
   id: string
   title: string
   /** One-to-two sentence pitch shown in the library and inspector. */
@@ -778,6 +784,7 @@ export interface StoryRecap {
 
 /** Story metadata without entries — sidebar/library surface. */
 export interface StorySummary {
+  features: StoryFeatures
   id: string
   title: string
   description: string
@@ -808,6 +815,7 @@ export type LorebookCategory =
   "character" | "class" | "location" | "faction" | "item" | "event" | "concept"
 
 export interface LorebookEntry {
+  npc: boolean
   id: string
   /** Owning story. Lore is scoped per story — there is no global lorebook. */
   storyId: string

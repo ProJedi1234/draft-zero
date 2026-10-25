@@ -4,6 +4,8 @@
 // through as ISO strings. wordCount and activeLorebookEntryIds are computed at
 // read time and are never stored.
 
+import { parseStoryFeatures } from "@/lib/world/features"
+
 import {
   buildScanSources,
   matchActiveLorebookEntries,
@@ -465,6 +467,7 @@ export function toLorebookEntry(row: LorebookEntryRow): LorebookEntry {
     storyId: row.storyId,
     name: row.name,
     category: row.category as LorebookCategory,
+    npc: row.npc,
     keys: parseKeys(row.keysJson),
     content: row.content,
     enabled: row.enabled,
@@ -491,6 +494,7 @@ export function toStorySummary(
   wordCount?: number
 ): StorySummary {
   return {
+    features: parseStoryFeatures(row.featuresJson),
     id: row.id,
     title: row.title,
     description: row.description,
@@ -645,6 +649,7 @@ export function toStory(
   )
 
   return {
+    features: parseStoryFeatures(row.featuresJson),
     id: row.id,
     title: row.title,
     description: row.description,

@@ -2,6 +2,7 @@
 // contract. Isomorphic: no server imports, so a contract package can lift it.
 import { z } from "zod"
 
+import { storyFeatures } from "@/lib/services/world.schema"
 import { entityId } from "@/lib/services/schema"
 import {
   isContextWindow,
@@ -48,6 +49,7 @@ export const createStoryInput = z.object({
 })
 
 export const storyMetaPatch = z.object({
+  features: storyFeatures.optional(),
   title: z.string().trim().min(1, "Title can't be empty.").optional(),
   description: z.string().optional(),
   genre: z.string().optional(),
@@ -128,6 +130,7 @@ export const setStoryImageModelInput = z.object({
 })
 
 export const storyRecord = z.object({
+  features: storyFeatures,
   id: z.string(),
   title: z.string(),
   description: z.string(),

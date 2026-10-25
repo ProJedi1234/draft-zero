@@ -65,6 +65,7 @@ export function startLorebookCreate(
     category: input.category,
     keys: input.keys ?? [],
     content: input.content ?? "",
+    npc: input.npc ?? false,
     enabled: input.enabled ?? true,
     alwaysActive: input.alwaysActive ?? false,
     priority: input.priority ?? 50,

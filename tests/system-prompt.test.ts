@@ -51,6 +51,7 @@ describe("NARRATOR_MECHANICS", () => {
     // Every optional block switched on at once, so the rendered prompt shows
     // each label renderPrompt knows how to emit.
     const story = {
+      features: {},
       id: "story",
       title: "Untitled Story",
       memory: "You are a smuggler.",
@@ -72,6 +73,7 @@ describe("NARRATOR_MECHANICS", () => {
       })),
     } as unknown as Story
     const lore: LorebookEntry = {
+      npc: false,
       id: "lore-1",
       storyId: "story",
       name: "The Gull",

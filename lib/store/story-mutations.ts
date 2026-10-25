@@ -67,6 +67,7 @@ export function startStoryCreate(): {
   const id = randomId()
   const now = new Date().toISOString()
   const ghost: StoryRecord = {
+    features: {},
     id,
     title: "Untitled Story",
     description: "",
@@ -207,6 +208,7 @@ export async function duplicateStoryOptimistic(
   const copyId = randomId()
   const now = new Date().toISOString()
   const ghost: StoryRecord = {
+    features: seed.features,
     id: copyId,
     title: `${seed.title} (copy)`,
     description: seed.description,

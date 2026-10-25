@@ -51,6 +51,7 @@ import {
 
 /** A blank draft — the shape the create dialog starts from. */
 export const EMPTY_LOREBOOK_DRAFT: NewLorebookEntry = {
+  npc: false,
   name: "",
   category: "character",
   keys: [],
@@ -63,6 +64,7 @@ export const EMPTY_LOREBOOK_DRAFT: NewLorebookEntry = {
 function draftFromEntry(entry?: LorebookEntry): NewLorebookEntry {
   if (!entry) return { ...EMPTY_LOREBOOK_DRAFT }
   return {
+    npc: entry.npc,
     name: entry.name,
     category: entry.category,
     keys: [...entry.keys],

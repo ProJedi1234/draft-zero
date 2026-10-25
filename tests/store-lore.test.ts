@@ -26,6 +26,7 @@ function lore(
   overrides: Partial<LorebookEntryRecord> = {}
 ): LorebookEntryRecord {
   return {
+    npc: false,
     id,
     storyId,
     name: id,

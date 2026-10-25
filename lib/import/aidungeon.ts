@@ -437,6 +437,7 @@ export function readCards(raw: unknown[], warnings: string[]): ReadCards {
     // setting bible would also catch any force-activated entry that arrived by
     // another route. Two lists make the distinction structural.
     ;(isWorld ? settings : entries).push({
+      npc: false,
       name,
       category: category ?? "concept",
       keys,

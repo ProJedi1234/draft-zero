@@ -62,6 +62,7 @@ function passage(id: string, position: number, text: string): StoryEntry {
 
 function lore(id: string, overrides: Partial<LorebookEntry> = {}) {
   return {
+    npc: false,
     id,
     storyId: "story-1",
     name: "Vell",
@@ -79,6 +80,7 @@ function lore(id: string, overrides: Partial<LorebookEntry> = {}) {
 
 function story(overrides: Partial<Story> = {}): Story {
   return {
+    features: {},
     id: "story-1",
     title: "Test",
     description: "",

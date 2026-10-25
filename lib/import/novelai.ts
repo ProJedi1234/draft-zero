@@ -331,6 +331,7 @@ function readLorebook(raw: unknown, warnings: string[]): NewLorebookEntry[] {
     }
 
     entries.push({
+      npc: false,
       name: name || keys[0] || "Untitled entry",
       category: toCategory(categoryNames.get(str(item.category)) ?? ""),
       keys,

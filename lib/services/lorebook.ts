@@ -53,6 +53,7 @@ export async function createLorebookEntry(
         category: input.category,
         keysJson: JSON.stringify(input.keys),
         content: input.content,
+        npc: input.npc,
         enabled: input.enabled,
         alwaysActive: input.alwaysActive,
         priority: input.priority,
@@ -92,6 +93,7 @@ export async function updateLorebookEntry(
   if (patch.category !== undefined) values.category = patch.category
   if (patch.keys !== undefined) values.keysJson = JSON.stringify(patch.keys)
   if (patch.content !== undefined) values.content = patch.content
+  if (patch.npc !== undefined) values.npc = patch.npc
   if (patch.enabled !== undefined) values.enabled = patch.enabled
   if (patch.alwaysActive !== undefined) values.alwaysActive = patch.alwaysActive
   if (patch.priority !== undefined) values.priority = patch.priority

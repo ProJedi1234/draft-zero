@@ -489,6 +489,7 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
 
 export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   {
+    npc: false,
     id: "lore-char-maren",
     storyId: "story-cartographer",
     name: "Maren Kestrel",
@@ -503,6 +504,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-01T17:20:00Z",
   },
   {
+    npc: false,
     id: "lore-char-oswin",
     storyId: "story-cartographer",
     name: "Oswin Pyke",
@@ -517,6 +519,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-07-18T11:05:00Z",
   },
   {
+    npc: false,
     id: "lore-char-elathe",
     storyId: "story-cartographer",
     name: "Elathe, the Ithren",
@@ -531,6 +534,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-05T08:40:00Z",
   },
   {
+    npc: false,
     id: "lore-loc-graywater",
     storyId: "story-cartographer",
     name: "Graywater Crossing",
@@ -545,6 +549,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-07-30T14:00:00Z",
   },
   {
+    npc: false,
     id: "lore-loc-saltmarket",
     storyId: "story-cartographer",
     name: "The Salt Market",
@@ -559,6 +564,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-06-28T16:30:00Z",
   },
   {
+    npc: false,
     id: "lore-loc-undermap",
     storyId: "story-cartographer",
     name: "The Undermap Archive",
@@ -573,6 +579,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-07-02T10:10:00Z",
   },
   {
+    npc: false,
     id: "lore-faction-guild",
     storyId: "story-cartographer",
     name: "The Surveyors' Guild",
@@ -587,6 +594,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-07-25T09:45:00Z",
   },
   {
+    npc: false,
     id: "lore-faction-drowned",
     storyId: "story-cartographer",
     name: "Court of the Drowned",
@@ -601,6 +609,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-07-12T15:00:00Z",
   },
   {
+    npc: false,
     id: "lore-item-needle",
     storyId: "story-cartographer",
     name: "The Bone Needle",
@@ -615,6 +624,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-03T19:00:00Z",
   },
   {
+    npc: false,
     id: "lore-event-flood",
     storyId: "story-cartographer",
     name: "The Third Flood",
@@ -629,6 +639,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-07-08T13:20:00Z",
   },
   {
+    npc: false,
     id: "lore-concept-debt",
     storyId: "story-cartographer",
     name: "Cartographer's Debt",
@@ -656,6 +667,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
   //   · The Sleepers     — one hop past the cap, so it stays out
   //   · Port Ellis       — nothing mentions it, so it never activates
   {
+    npc: false,
     id: "lore-mer-orders",
     storyId: "story-meridian",
     name: "Standing Orders",
@@ -670,6 +682,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-18T09:00:00Z",
   },
   {
+    npc: false,
     id: "lore-mer-captain",
     storyId: "story-meridian",
     name: "Ines Vaharan",
@@ -684,6 +697,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-18T09:01:00Z",
   },
   {
+    npc: false,
     id: "lore-mer-ship",
     storyId: "story-meridian",
     name: "Meridian Ascending",
@@ -698,6 +712,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-18T09:02:00Z",
   },
   {
+    npc: false,
     id: "lore-mer-compact",
     storyId: "story-meridian",
     name: "The Compact",
@@ -712,6 +727,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-18T09:03:00Z",
   },
   {
+    npc: false,
     id: "lore-mer-reactor",
     storyId: "story-meridian",
     name: "Reactor Core",
@@ -726,6 +742,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-18T09:04:00Z",
   },
   {
+    npc: false,
     id: "lore-mer-ninth",
     storyId: "story-meridian",
     name: "The Ninth Rotation",
@@ -740,6 +757,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-18T09:05:00Z",
   },
   {
+    npc: false,
     id: "lore-mer-hollow",
     storyId: "story-meridian",
     name: "Hollow Deck",
@@ -754,6 +772,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-18T09:06:00Z",
   },
   {
+    npc: false,
     id: "lore-mer-cassiel",
     storyId: "story-meridian",
     name: "Cassiel Yun",
@@ -768,6 +787,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-18T09:07:00Z",
   },
   {
+    npc: false,
     id: "lore-mer-sleepers",
     storyId: "story-meridian",
     name: "The Sleepers",
@@ -782,6 +802,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-18T09:08:00Z",
   },
   {
+    npc: false,
     id: "lore-mer-seal",
     storyId: "story-meridian",
     name: "Tannhauser Seal",
@@ -796,6 +817,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
     updatedAt: "2026-08-18T09:09:00Z",
   },
   {
+    npc: false,
     id: "lore-mer-portellis",
     storyId: "story-meridian",
     name: "Port Ellis",
@@ -817,6 +839,7 @@ export const MOCK_LOREBOOK_ENTRIES: LorebookEntry[] = [
 
 export const MOCK_STORIES: Story[] = [
   {
+    features: {},
     id: "story-cartographer",
     title: "The Cartographer's Debt",
     tintHue: 200,
@@ -898,6 +921,7 @@ export const MOCK_STORIES: Story[] = [
     ],
   },
   {
+    features: {},
     id: "story-static",
     title: "Static Between Stars",
     tintHue: 255,
@@ -964,6 +988,7 @@ export const MOCK_STORIES: Story[] = [
     ],
   },
   {
+    features: {},
     id: "story-lighthouse",
     title: "The Lighthouse at Wren Point",
     tintHue: 60,
@@ -1024,6 +1049,7 @@ export const MOCK_STORIES: Story[] = [
     ],
   },
   {
+    features: {},
     id: "story-untitled",
     title: "Untitled Story",
     tintHue: null,
@@ -1052,6 +1078,7 @@ export const MOCK_STORIES: Story[] = [
   },
 
   {
+    features: {},
     id: "story-meridian",
     title: "Signal from the Hollow Deck",
     tintHue: 25,

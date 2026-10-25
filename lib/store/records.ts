@@ -9,6 +9,8 @@
 // deliberately absent: both are server-owned bookkeeping that no client surface
 // renders row by row, so they stay on the RSC lane permanently.
 
+import { parseStoryFeatures } from "@/lib/world/features"
+import type { StoryFeatures } from "@/lib/services/world.schema"
 import type { StoryRow } from "@/lib/db/schema"
 import type {
   ActionKind,
@@ -35,6 +37,7 @@ export type EntityKind =
  * StorySummary-typed props accept a StoryRecord unchanged.
  */
 export interface StoryRecord {
+  features: StoryFeatures
   id: string
   title: string
   description: string
@@ -90,6 +93,7 @@ export interface StoryImageRecord {
 }
 
 export interface LorebookEntryRecord {
+  npc: boolean
   id: string
   storyId: string
   name: string
@@ -175,6 +179,7 @@ export function isValidEntityId(id: string): boolean {
  */
 export function toStoryRecord(row: StoryRow, wordCount: number): StoryRecord {
   return {
+    features: parseStoryFeatures(row.featuresJson),
     id: row.id,
     title: row.title,
     description: row.description,

@@ -21,6 +21,7 @@ const UPDATED_AT = "2026-09-23T00:00:01.000Z"
 
 function row(overrides: Record<string, unknown> = {}) {
   return {
+    featuresJson: null,
     id: STORY,
     title: "The Long Road",
     description: "",
@@ -51,6 +52,7 @@ function row(overrides: Record<string, unknown> = {}) {
 function record(overrides: Record<string, unknown> = {}) {
   const base = row(overrides)
   return {
+    features: {},
     id: base.id,
     title: base.title,
     description: base.description,
@@ -369,10 +371,13 @@ describe("duplicateStory", () => {
     actionKind: "do",
     inputText: "open the door",
   }
-  const lore = { id: "l1", storyId: STORY, name: "Vell" }
+  const lore = { id: "l1", storyId: STORY, name: "Vell", npc: true }
 
-  test("copies the live manuscript and lore under the copy id", async () => {
-    db.next([row()])
+  test("copies the live manuscript, features and NPC flags under the copy id", async () => {
+    const featuresJson = JSON.stringify({
+      world: { enabled: true, pacing: "Slow." },
+    })
+    db.next([row({ featuresJson })])
     db.next([entry])
     db.next([lore])
     db.next([row({ id: COPY, title: "The Long Road (copy)" })])
@@ -395,6 +400,7 @@ describe("duplicateStory", () => {
     expect(db.argsOf(3, "values")?.[0]).toMatchObject({
       id: COPY,
       title: "The Long Road (copy)",
+      featuresJson,
       undoCursor: 0,
     })
     const [copied] = db.argsOf(4, "values")?.[0] as Record<string, unknown>[]
@@ -411,7 +417,7 @@ describe("duplicateStory", () => {
       string,
       unknown
     >[]
-    expect(copiedLore).toMatchObject({ storyId: COPY, name: "Vell" })
+    expect(copiedLore).toMatchObject({ storyId: COPY, name: "Vell", npc: true })
     expect(copiedLore.id).not.toBe("l1")
     expect(bus.events).toEqual(upsertEvents(COPY, null))
   })
@@ -797,4 +803,18 @@ describe("setStoryImageModel", () => {
     )
     expect(result.ok || result.code).toBe("not_found")
   })
+})
+
+test("story features persist as JSON, return in the record and ride the sync bus", async () => {
+  const features = { world: { enabled: true, pacing: "Travel takes days." } }
+  db.next([row({ featuresJson: JSON.stringify(features) })])
+  const result = await stories.updateStoryMeta(
+    { id: STORY, patch: { features } },
+    CTX
+  )
+  expect(result.ok && result.data.record.features).toEqual(features)
+  expect(db.argsOf(0, "set")?.[0]).toMatchObject({
+    featuresJson: JSON.stringify(features),
+  })
+  expect(bus.events[0]).toMatchObject({ data: { features } })
 })
