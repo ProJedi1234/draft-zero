@@ -48,6 +48,7 @@ import {
   updateGenerationSettings,
   updateStoryMeta,
 } from "@/lib/services/stories"
+import { storyFeatures } from "@/lib/services/world.schema"
 import {
   duplicateScopes,
   type UpdateGenerationSettingsInput,
@@ -212,6 +213,11 @@ const updateInput = z.object({
   storyId: z.string(),
   title: z.string().optional(),
   ...metaFields,
+  features: storyFeatures
+    .optional()
+    .describe(
+      "Per-story feature settings. Replaces the feature object; omitted features are off."
+    ),
   profile: z
     .string()
     .optional()
@@ -340,6 +346,7 @@ export const registerUpdateStory: RegisterTool = (server) => {
 
         const patch: UpdateStoryMetaInput["patch"] = {}
         if (fields.title !== undefined) patch.title = fields.title
+        if (fields.features !== undefined) patch.features = fields.features
         for (const field of META_FIELDS) {
           const value = fields[field]
           if (value !== undefined) patch[field] = value

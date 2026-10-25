@@ -81,6 +81,7 @@ const EXPECTED_ORDER = [
   "read",
   "search",
   "lore_get",
+  "world_state",
   "usage",
   "context_breakdown",
   "profiles",
@@ -90,6 +91,7 @@ const EXPECTED_ORDER = [
   "edit",
   "rewind",
   "lore_write",
+  "world_patch",
   "update_story",
   "save_profile",
   "delete_story",
@@ -102,13 +104,14 @@ const READ_TOOLS = new Set([
   "read",
   "search",
   "lore_get",
+  "world_state",
   "usage",
   "context_breakdown",
   "profiles",
 ])
 
 describe("createMcpServer", () => {
-  test("registers all 18 planned tools, in the fixed order", async () => {
+  test("registers all 20 planned tools, in the fixed order", async () => {
     const tools = await listTools()
     expect(tools.map((tool) => tool.name)).toEqual(EXPECTED_ORDER)
   })

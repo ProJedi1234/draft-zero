@@ -121,6 +121,7 @@ export const composedContext = z.object({
   ),
   summary: z.string(),
   storyText: z.string(),
+  world: z.array(z.string()).optional(),
   authorsNote: z.string(),
   seed: z.number(),
   approxTokens: z.number(),

@@ -2,6 +2,10 @@
 // run, callable from a server action, a route handler or an MCP tool alike.
 import "server-only"
 
+import { getDb } from "@/lib/db/client"
+import { readWorldData } from "@/lib/db/world"
+import { foldWorld } from "@/lib/world/fold"
+
 import { nextTakeVariant } from "@/lib/db/entry-writes"
 import { appendActionEntry } from "@/lib/services/entries"
 import {
@@ -36,10 +40,7 @@ import {
   type GenerationSettings,
 } from "@/lib/types"
 
-// The kinds a CLIENT may name, which is deliberately not every kind that
-// exists: "summarize" and "atmosphere" are minted server-side only, and a
-// browser able to ask for one could bill an account for calls that leave no
-// passage behind to notice.
+// Auxiliary kinds are server-only: clients must not bill calls that leave no passage.
 const REQUEST_KINDS: string[] = ["generate", "retry", "continue"]
 const BUSY_ERROR = "A generation is already running for this story."
 const STORY_NOT_FOUND = "Story not found."
@@ -233,6 +234,21 @@ export const startGeneration: Service<
       opts.variantGroupId === undefined
         ? 0
         : await nextTakeVariant(storyId, opts.variantGroupId)
+
+    if (
+      storyForContext.features.world?.enabled &&
+      opts.variantGroupId !== undefined
+    ) {
+      const world = await readWorldData(await getDb(), storyId)
+      storyForContext.world = foldWorld(
+        storyId,
+        world.entries.filter(
+          (entry) => entry.variantGroupId !== opts.variantGroupId
+        ),
+        world.lore,
+        world.patches
+      )
+    }
 
     const context = composeContext({
       story: storyForContext,

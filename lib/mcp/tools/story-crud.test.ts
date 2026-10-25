@@ -333,6 +333,19 @@ describe("duplicate_story", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("update_story", () => {
+  test("writes features through the story service", async () => {
+    const { server, handlers } = makeFakeServer()
+    registerUpdateStory(server as never, undefined as never)
+    const features = { world: { enabled: true, pacing: "Take it slow." } }
+    db.next([{ ...STORY_ROW, featuresJson: JSON.stringify(features) }])
+    const result = (await handlers.get("update_story")!(
+      { storyId: "story-1", features },
+      makeCtx()
+    )) as { structuredContent: { changed: string[] } }
+    expect(updateSet(0)).toEqual({ featuresJson: JSON.stringify(features) })
+    expect(result.structuredContent.changed).toEqual(["features"])
+  })
+
   test("reports only the fields actually passed as changed", async () => {
     const { server, handlers } = makeFakeServer()
     registerUpdateStory(server as never, undefined as never)

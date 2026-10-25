@@ -77,9 +77,12 @@ export const NARRATOR_MECHANICS = `how the story reaches you:
 - never write a > line yourself, and never take a further turn for the player. write only the prose that follows, with no > and no leading marker of any kind
 - unless the instructions above set a different length, write ONE paragraph, roughly 40 to 100 words. a second only if a distinct beat demands it, never a third. stop while the scene still has somewhere to go`
 
+const WORLD_MECHANICS =
+  "- [World: …] is the story clock and [Name, now] gives an NPC's current mind and witnessed memories. keep each NPC's knowledge limited to their own experience"
+
 /** The two halves as they go on the wire. */
-function joinSystemPrompt(narrator: string): string {
-  return `${narrator}\n\n${NARRATOR_MECHANICS}`
+function joinSystemPrompt(narrator: string, worldEnabled = false): string {
+  return `${narrator}\n\n${NARRATOR_MECHANICS}${worldEnabled ? `\n${WORLD_MECHANICS}` : ""}`
 }
 
 /** The whole system turn for a story that follows the built-in narrator. */
@@ -94,7 +97,13 @@ export const DEFAULT_SYSTEM_PROMPT = joinSystemPrompt(DEFAULT_NARRATOR_PROMPT)
  * NOT idempotent — the result already carries the mechanics, and resolving it
  * again would append a second copy. Resolve a story's override once.
  */
-export function resolveSystemPrompt(override: string | null): string {
+export function resolveSystemPrompt(
+  override: string | null,
+  worldEnabled = false
+): string {
   const trimmed = override?.trim() ?? ""
-  return joinSystemPrompt(trimmed === "" ? DEFAULT_NARRATOR_PROMPT : trimmed)
+  return joinSystemPrompt(
+    trimmed === "" ? DEFAULT_NARRATOR_PROMPT : trimmed,
+    worldEnabled
+  )
 }

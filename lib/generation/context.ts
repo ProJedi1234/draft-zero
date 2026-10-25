@@ -2,6 +2,7 @@
 // only consumer today, but everything here is what a real provider would send.
 // Pure and deterministic: same inputs → same ComposedContext, same prompt.
 
+import { worldContext } from "@/lib/world/context"
 import type { LorebookEntry, Story, StoryEntry } from "@/lib/types"
 import { buildScanSources, matchActiveLorebookEntries } from "./lorebook"
 import { resolveSystemPrompt } from "./system-prompt"
@@ -279,9 +280,18 @@ export function composeContext(input: {
   }))
 
   const context: ComposedContext = {
-    systemPrompt: resolveSystemPrompt(story.systemPrompt),
+    systemPrompt: resolveSystemPrompt(
+      story.systemPrompt,
+      story.features?.world?.enabled
+    ),
     memory: story.memory,
     lore: [],
+    world: story.features?.world?.enabled
+      ? worldContext(
+          story.world ?? { storyId: story.id, minutes: 0, npcs: [] },
+          matches.map((match) => match.entry)
+        )
+      : [],
     // Set BEFORE the probe below, which is the entire mechanism by which the
     // summary is paid for: the probe measures the untrimmable overhead, so a
     // summary counted there is deducted from what prose may spend, exactly the
@@ -302,7 +312,10 @@ export function composeContext(input: {
   // the overhead we cannot trim away.
   const charBudget = contextWindow * CHARS_PER_TOKEN
   const quantum = trimQuantum(charBudget)
-  const fixedChars = context.systemPrompt.length + renderPrompt(context).length
+  const withoutWorld = renderPrompt({ ...context, world: [] })
+  const worldChars = renderPrompt(context).length - withoutWorld.length
+  // Changing NPC state must never change which stable lore fits in the head.
+  const fixedChars = context.systemPrompt.length + withoutWorld.length
   const remaining = Math.max(0, charBudget - fixedChars)
 
   // One pool, offered stable-first. Both zones draw from it in priority order
@@ -328,7 +341,7 @@ export function composeContext(input: {
   const fullStoryLength = precedingChars + tailStoryText.length
   context.storyText = trimStoryText(
     tailStoryText,
-    remaining - loreUsed,
+    remaining - loreUsed - worldChars,
     quantum,
     precedingChars
   )
@@ -436,6 +449,13 @@ export function promptBlocks(ctx: ComposedContext): PromptBlock[] {
     loreId: entry.id,
     text: `[Lore: ${entry.name}]\n${entry.content.trim()}`,
   }))
+
+  volatileBlocks.push(
+    ...(ctx.world ?? []).map((text): PromptBlock => ({
+      section: "world",
+      text,
+    }))
+  )
 
   const authorsNote = ctx.authorsNote.trim()
   const authorsNoteBlock: PromptBlock | null =

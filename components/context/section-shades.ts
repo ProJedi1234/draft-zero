@@ -23,5 +23,6 @@ export const SECTION_SHADES: Record<ContextSectionId, string> = {
   lore: "bg-foreground/55",
   summary: "bg-foreground/70",
   story: "bg-foreground/82",
+  world: "bg-foreground/90",
   authorsNote: "bg-foreground/95",
 }

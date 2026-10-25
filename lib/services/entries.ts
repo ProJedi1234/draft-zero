@@ -11,6 +11,8 @@ import "server-only"
 
 import { and, eq, gt, isNull } from "drizzle-orm"
 
+import { readWorldData } from "@/lib/db/world"
+import { foldWorld } from "@/lib/world/fold"
 import { getDb } from "@/lib/db/client"
 import { appendEntryCore, touchStoryRow } from "@/lib/db/entry-writes"
 import { recordOp } from "@/lib/db/journal"
@@ -569,6 +571,17 @@ export const loadEntryContext: Service<
 
     const index = story.entries.findIndex((entry) => entry.id === entryId)
     if (index === -1) return ok(null)
+
+    if (story.features.world?.enabled) {
+      const world = await readWorldData(await getDb(), storyId)
+      const position = story.entries[index].position ?? Infinity
+      story.world = foldWorld(
+        storyId,
+        world.entries.filter((entry) => entry.position < position),
+        world.lore,
+        world.patches
+      )
+    }
 
     const contextWindow = await requestContextWindow(story, models)
 

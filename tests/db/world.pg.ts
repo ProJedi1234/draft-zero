@@ -180,6 +180,30 @@ test("duplication copies feature and NPC flags, leaving patches behind without a
   expect(result.data.state.npcs[0].loreEntryId).not.toBe(npcId)
 })
 
+test("passage context folds only earlier patches while next context includes the live world", async () => {
+  const { loadEntryContext, loadNextContext } =
+    await import("@/lib/services/entries")
+  const first = await narrate("Vell waits ten minutes.")
+  await patch(first.id, 10)
+  const second = await narrate("Vell waits six hours.")
+  await patch(second.id, 360)
+  const beforeSecond = await loadEntryContext(
+    { storyId, entryId: second.id },
+    NO_ORIGIN
+  )
+  expect(beforeSecond.ok && beforeSecond.data?.context.world?.[0]).toBe(
+    "[World: day 1, night]"
+  )
+  expect(
+    beforeSecond.ok && beforeSecond.data?.context.world?.join("\n")
+  ).not.toContain("360 bells")
+  const next = await loadNextContext({ storyId }, NO_ORIGIN)
+  expect(next.ok && next.data.context.world?.[0]).toBe(
+    "[World: day 1, morning]"
+  )
+  expect(next.ok && next.data.context.world?.join("\n")).toContain("360 bells")
+})
+
 async function revision(entryId: string) {
   const data = await liveWorldIo.load(storyId)
   return worldPrefix(

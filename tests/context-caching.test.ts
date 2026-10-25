@@ -316,3 +316,64 @@ describe("promptSegments", () => {
     expect(joined).toBe(renderPrompt(ctx))
   })
 })
+
+test("NPC state cannot evict stable lore at the lore-budget boundary", () => {
+  const npc = lore({
+    id: "npc",
+    name: "Mira",
+    category: "character",
+    npc: true,
+    alwaysActive: true,
+    content: "A harbourmaster.",
+  })
+  const base = story({
+    features: { world: { enabled: true, pacing: "" } },
+    memory: "Mira keeps the port.",
+    settings: { ...story().settings, contextWindow: 2048, loreBudget: 20 },
+    entries: [entry("The tide comes in.\n\n".repeat(400))],
+  })
+  const empty = composeContext({ story: base, lorebookEntries: [] })
+  const withoutWorld = renderPrompt({ ...empty, world: [], storyText: "" })
+  const pool = Math.floor(
+    (8192 - empty.systemPrompt.length - withoutWorld.length) * 0.2
+  )
+  // Two chars of headroom makes even one NPC's volatile line expose the old budget bug.
+  npc.content = "x".repeat(pool - `[Lore: Mira]\n`.length - 2 - 2)
+  const compose = (mind: string) =>
+    composeContext({
+      story: {
+        ...base,
+        world: {
+          storyId: base.id,
+          minutes: 480,
+          npcs: [
+            {
+              loreEntryId: "npc",
+              name: "Mira",
+              mind,
+              memories:
+                mind === ""
+                  ? []
+                  : Array.from({ length: 6 }, (_, i) => ({
+                      id: `m${i}`,
+                      text: "A".repeat(280),
+                      importance: 3,
+                      minutes: 480,
+                      entryId: "p",
+                    })),
+            },
+          ],
+        },
+      },
+      lorebookEntries: [npc],
+    })
+  const before = compose("")
+  const after = compose("I need to close the port. ".repeat(10))
+  expect(before.lore.map((l) => l.id)).toEqual(["npc"])
+  expect(after.lore.map((l) => l.id)).toEqual(["npc"])
+  expect(Buffer.from(promptSegments(before)[0].text)).toEqual(
+    Buffer.from(promptSegments(after)[0].text)
+  )
+  expect(after.storyText.length).toBeLessThan(before.storyText.length)
+  expect(after.approxTokens).toBeLessThanOrEqual(2048)
+})
