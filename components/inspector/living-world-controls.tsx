@@ -13,9 +13,12 @@ import { WorldSection } from "./sections/world-section"
 
 export function LivingWorldControls({ story }: { story: Story }) {
   const uid = React.useId()
-  const enabled = useServerSyncedValue(story.features.world?.enabled ?? false, {
-    version: story.updatedAt,
-  })
+  const enabled = useServerSyncedValue(
+    story.features?.world?.enabled ?? false,
+    {
+      version: story.updatedAt,
+    }
+  )
   const pacingRef = React.useRef<HTMLTextAreaElement>(null)
   const [pending, startTransition] = React.useTransition()
   const [pacingSaving, setPacingSaving] = React.useState(false)
@@ -24,7 +27,7 @@ export function LivingWorldControls({ story }: { story: Story }) {
   function toggle(next: boolean) {
     cancelPacing.current?.()
     const previous = enabled.value
-    const text = pacingRef.current?.value ?? story.features.world?.pacing ?? ""
+    const text = pacingRef.current?.value ?? story.features?.world?.pacing ?? ""
     enabled.write(next)
     startTransition(async () => {
       try {
@@ -61,7 +64,7 @@ export function LivingWorldControls({ story }: { story: Story }) {
         <>
           <WorldProseField
             title="Pacing rules"
-            value={story.features.world?.pacing ?? ""}
+            value={story.features?.world?.pacing ?? ""}
             placeholder="How time passes in this story…"
             maxLength={PACING_MAX_CHARS}
             inputRef={pacingRef}

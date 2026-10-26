@@ -514,3 +514,18 @@ test("invalid initial times fail validation without writing", async () => {
     expect(r.settled[0]).toMatchObject({ status: "error" })
   }
 })
+
+test("a failed earlier pass stops the drain, and the next turn retries it first", async () => {
+  const r = manuscriptRig(3)
+  const complete = r.io.complete
+  let fail = true
+  r.io.complete = async (request) => {
+    if (fail && request.user.includes("bell 0")) throw new Error("down")
+    return complete(request)
+  }
+  await runWorldForStory(story.id, "p1", r.io)
+  expect(r.patches).toEqual([])
+  fail = false
+  await runWorldForStory(story.id, "p2", r.io)
+  expect(r.patches.map((p) => p.entryId)).toEqual(["p0", "p1", "p2"])
+})

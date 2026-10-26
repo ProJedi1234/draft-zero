@@ -163,10 +163,10 @@ export async function runWorldForStory(
       if (earlier) catchUpRemaining--
       pending.delete(next.id)
       attempted.add(next.id)
-      if (
-        (await worldOnce(story, data, next.id, io)) === "stale" &&
-        !retried.has(next.id)
-      ) {
+      const outcome = await worldOnce(story, data, next.id, io)
+      // Later passages would be computed on a gap; the next turn retries.
+      if (outcome === "failed") break
+      if (outcome === "stale" && !retried.has(next.id)) {
         retried.add(next.id)
         pending.add(next.id)
       }
@@ -184,7 +184,7 @@ async function worldOnce(
   data: Awaited<ReturnType<WorldIo["load"]>>,
   entryId: string,
   io: WorldIo
-): Promise<"stale" | void> {
+): Promise<"stale" | "failed" | void> {
   const storyId = story.id
   const passageIndex = story.entries.findIndex(
     (entry) => entry.id === entryId && entry.source === "generated"
@@ -296,6 +296,7 @@ async function worldOnce(
     status = abort.signal.aborted ? "aborted" : "error"
     console.error("[world]", mapOpenRouterError(error).message)
     noteFailure(storyId)
+    return "failed"
   } finally {
     clearTimeout(timer)
     await io.settle(callId, {
@@ -313,6 +314,12 @@ function noteFailure(storyId: string): void {
     registry.tripped.add(storyId)
     console.error("[world] stopped", storyId)
   }
+}
+
+/** Settings changed, so earlier strikes were against a different model. */
+export function clearWorldBreaker(): void {
+  registry.failures.clear()
+  registry.tripped.clear()
 }
 
 export function resetWorldState(): void {

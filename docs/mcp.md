@@ -87,7 +87,7 @@ saving.
 
 ## Tools
 
-The eighteen tools, in the order the server lists them: reads first, then
+The twenty tools, in the order the server lists them: reads first, then
 writes, then the destructive tools.
 
 | Tool | Does |
@@ -99,6 +99,7 @@ writes, then the destructive tools.
 | `lore_get` | Full content of one lorebook entry, by id or exact name. |
 | `usage` | Aggregated spend from the call ledger — cost, calls and token splits grouped by model, request kind, day or story, over an optional date window. |
 | `context_breakdown` | Why the model wrote what it wrote: exactly what a passage was shown. Which lore entries fired and on which keys, which were dropped for want of budget, which recap version resolved, and per-section token counts. The tool for "my lore did not seem to apply". |
+| `world_state` | A living-world story's clock and every opted-in NPC's mind and memories, with the ids `world_patch` needs. |
 | `profiles` | Every model profile: its model with live pricing, thinking level, slider overrides, how many stories follow it, and which is the default. |
 | `create_story` | Start a new, empty story, configured in one call. Returns its id. |
 | `duplicate_story` | Copy a story's live manuscript, lore and settings into a new story, optionally under a new title. `scope: "opening"` keeps only the first passage. Images, recaps and undo history stay behind. Returns the copy's id. |
@@ -106,7 +107,8 @@ writes, then the destructive tools.
 | `edit` | Replace the text of one passage in place, by position. |
 | `rewind` | Retire every passage after a position, the way the app's rewind does — a soft delete, so the recap falls back to the newest version the remaining text still covers. |
 | `lore_write` | Create or update one lorebook entry. Only the fields you pass change. |
-| `update_story` | Change a story's title, description, genre, memory, author's note or system prompt, and which model writes it: follow a profile by name, or switch to Custom with a model id and settings of its own. |
+| `world_patch` | Correct the living world by hand: set the clock, replace an NPC's mind, add or strike a memory. Undoing past the passage it anchors to removes it. |
+| `update_story` | Change a story's title, description, genre, memory, author's note, system prompt or features such as the living world, and which model writes it: follow a profile by name, or switch to Custom with a model id and settings of its own. |
 | `save_profile` | Create a model profile, or edit one. An edit reaches every story that follows the profile. |
 | `delete_story` | Permanently delete a story and everything in it. Asks the writer to confirm first and does nothing until they do. Not undoable. |
 | `delete_profile` | Delete a model profile. Stories that followed it switch to Custom with the settings they had, so none changes model. The default profile cannot be deleted. |

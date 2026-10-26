@@ -43,10 +43,12 @@ final class WorldModel {
         let next = Task {
             if let previous { _ = await previous.value }
             request += 1
+            let own = request
             do {
                 let state = try await api.patchWorld(storyId: storyId, ops: ops)
-                request += 1
-                receive(state)
+                // A read that started meanwhile may hold newer state, so re-read
+                // instead of letting this response overwrite it.
+                if own == request { receive(state) } else { await load() }
                 return true
             } catch {
                 notices.error(error, fallback: "Couldn't save the world.")

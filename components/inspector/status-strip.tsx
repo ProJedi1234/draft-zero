@@ -135,7 +135,7 @@ function ContextMeter({
   contextWindow: number
 }) {
   const [open, setOpen] = React.useState(false)
-  const world = useWorld(story.id, story.features.world?.enabled ?? false)
+  const world = useWorld(story.id, story.features?.world?.enabled ?? false)
   const context = React.useMemo(
     () =>
       composeContext({

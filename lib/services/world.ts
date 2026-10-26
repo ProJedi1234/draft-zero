@@ -16,7 +16,7 @@ import {
   type GetWorldInput,
   type WorldState,
 } from "@/lib/services/world.schema"
-import { foldWorld } from "@/lib/world/fold"
+import { foldWorld, type WorldPatch } from "@/lib/world/fold"
 
 export const getWorldState: Service<
   GetWorldInput,
@@ -60,6 +60,8 @@ export const applyWorldPatch: Service<
     const data = await readWorldData(tx, storyId)
     const busy = refuseDuringRun(storyId)
     if (busy) return fail("conflict", busy.error)
+    const invalid = checkOps(ops, data.state, data.patches)
+    if (invalid) return fail("invalid", invalid)
     const anchor = data.entries
       .filter(
         (e) => e.isActive && e.deletedAt === null && e.source === "generated"
@@ -89,4 +91,42 @@ export const applyWorldPatch: Service<
   })
   if (result.ok) commitChange(storyId)
   return result
+}
+
+/** Names the first op that would silently do nothing, or null. */
+function checkOps(
+  ops: ApplyWorldPatchInput["ops"],
+  state: WorldState,
+  patches: readonly WorldPatch[]
+): string | null {
+  const live = new Map(
+    state.npcs.map((npc) => [
+      npc.loreEntryId,
+      new Set(npc.memories.map((memory) => memory.id)),
+    ])
+  )
+  // Ids are checked against every patch, live or not, so a struck or undone
+  // memory can never come back as a duplicate.
+  const used = new Set(
+    patches.flatMap((patch) =>
+      patch.ops.flatMap((op) =>
+        op.type === "add-memory" ? [op.memory.id] : []
+      )
+    )
+  )
+  for (const op of ops) {
+    if (op.type === "set-clock" || op.type === "advance-clock") continue
+    const memories = live.get(op.loreEntryId)
+    if (!memories) return "That character is not a living NPC in this story."
+    if (op.type === "add-memory") {
+      if (used.has(op.memory.id)) return "That memory id is already used."
+      used.add(op.memory.id)
+      memories.add(op.memory.id)
+    }
+    if (op.type === "strike-memory") {
+      if (!memories.delete(op.memoryId))
+        return "That memory is not in the current world."
+    }
+  }
+  return null
 }

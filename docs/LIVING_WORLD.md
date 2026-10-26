@@ -24,7 +24,7 @@ Not in v1: dice of any kind, daily events, schedules, relationships, reflection,
 | `world_patches` | `id`, `story_id`, `entry_id` (nullable), `source` (`world` / `manual`), `ops_json`, `created_at` |
 
 - One `world` patch per entry at most (unique on `entry_id` where `source = 'world'`), so a re-run cannot double-apply.
-- `entry_id` is the generated passage the patch belongs to. A manual patch takes the latest live passage, or NULL when the story has none.
+- `entry_id` is the generated passage the patch belongs to. A manual patch takes the latest live generated passage, or NULL when the story has none.
 - Memory ids are minted by whoever writes the op.
 
 ## Fold
@@ -42,6 +42,7 @@ Undo, redo, retry, switch-take, and rewind need no journal changes, because they
 
 - **When.** In `finishRun` next to `scheduleSummary`, only when a passage landed and `features.world.enabled`. Same contract as `summarize.ts` and `atmosphere.ts`: floated, never awaited, never throws into generation, and the next turn is the retry.
 - **Queue.** Per-story requests run serially in manuscript order. Each drain also catches up at most four earlier live generated passages without world patches, oldest first. Recheck liveness and existing patches before each request.
+- **Failure.** A failed pass stops the drain, so later passages are never computed on a gap. The next turn retries it first. Three failures in a row stop the story's passes until the summarizer settings change or the server restarts.
 - **Model.** The summarizer's resolved model and key. Ledger kind `"world"`, a server-only `GenerationRequestKind`.
 - **Present NPCs.** Opted-in, enabled character entries whose keys appear in the passage or in the player's turn that prompted it. Matching works the same way as lore triggers.
 - **Input.** Pacing rules, current clock, the player's turn, the new passage, and for each present NPC its card content, mind, and most recent memories.
@@ -67,6 +68,8 @@ Remembers:
 - **Clock line.** Always present while the feature is on. Time of day comes in buckets: night, morning, afternoon, evening.
 - **NPC blocks.** One for each opted-in NPC whose lore entry is active this turn. At most 4, by lore priority.
 - **Memories.** At most 6 per NPC, ranked by importance and then recency, printed oldest first.
+- **Budget.** World blocks get at most an eighth of the context window. An NPC that does not fit loses its least important memories first, then its block. The clock line always stays.
+- **Sanitized.** Names, minds and memories are flattened to one line, and brackets become parentheses, so model-written text cannot open a fake prompt section.
 - **Volatile placement.** These blocks change every turn, so they never go in the cacheable head.
 - **Breakdown.** `breakdown.ts` and the inspector context meter show a `world` section.
 
@@ -79,7 +82,7 @@ Remembers:
 | PATCH | `/api/stories/:storyId` | `{ features }` | existing story record, now with `features` |
 | PATCH | `/api/lorebook/:entryId` | `{ npc }` | existing lore record, now with `npc` |
 
-A manual patch made while a run is live gets refused with `conflict`.
+A manual patch made while a run is live gets refused with `conflict`. One that names an NPC that is not opted in, strikes a memory that is not in the current state, or reuses a memory id is refused with `invalid`.
 
 ## MCP
 
@@ -100,3 +103,11 @@ Web and iOS show the same UI:
   - Memories newest first, each with an importance mark and a strike action, plus an add field.
   - Hidden when the feature is off.
 - **Context meter.** Shows the `world` section.
+
+## Known limits
+
+- **One server process.** The queue and breaker live in memory. Several server instances could each run, and bill, the same pass. The unique index keeps it from being applied twice.
+- **Catch-up is capped.** Turning the feature on for a long story, or a long outage, leaves older passages without patches.
+- **Prose edits.** Editing a passage, or the lore behind it, does not recompute its patch, even mid-pass.
+- **Duplication.** A copy keeps feature flags and NPC opt-ins but starts with an empty world.
+- **Strikes and takes.** A strike is sent once its Undo window ends. Switching takes before then attaches it to the new take.

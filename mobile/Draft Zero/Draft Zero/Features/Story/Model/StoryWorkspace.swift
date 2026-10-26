@@ -195,6 +195,9 @@ final class StoryWorkspace {
         } catch {
             if story == nil {
                 loadState = .failed((error as? LocalizedError)?.errorDescription ?? "Couldn't open this story.")
+            } else if story?.features?.world?.enabled == true, world.state == nil {
+                // A cached story still needs a world result, or the section spins forever.
+                await world.load()
             }
         }
     }

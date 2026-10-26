@@ -155,29 +155,33 @@ function NPCRow({ npc, patch }: { npc: NpcState; patch: Patch }) {
 
   function strike(memoryId: string) {
     setStriking((previous) => new Set(previous).add(memoryId))
-    // Wait through Undo so the original memory keeps its day and passage.
-    const timer = setTimeout(async () => {
-      const result = await patch([
-        { type: "strike-memory", loreEntryId: npc.loreEntryId, memoryId },
-      ])
+    const reveal = () =>
       setStriking((previous) => {
         const next = new Set(previous)
         next.delete(memoryId)
         return next
       })
+    let settled = false
+    // Send when the toast closes rather than on a timer: a hovered toast
+    // pauses, and Undo must work for as long as it is visible.
+    const send = async () => {
+      if (settled) return
+      settled = true
+      const result = await patch([
+        { type: "strike-memory", loreEntryId: npc.loreEntryId, memoryId },
+      ])
+      reveal()
       if (!result.ok) toast.error(result.error)
-    }, 6000)
+    }
     toast("Memory struck.", {
       duration: 6000,
+      onAutoClose: send,
+      onDismiss: send,
       action: {
         label: "Undo",
         onClick: () => {
-          clearTimeout(timer)
-          setStriking((previous) => {
-            const next = new Set(previous)
-            next.delete(memoryId)
-            return next
-          })
+          settled = true
+          reveal()
         },
       },
     })

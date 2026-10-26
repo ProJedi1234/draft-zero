@@ -171,4 +171,23 @@ describe("world service", () => {
     expect(db.statements).toEqual([])
     expect(bus.events).toEqual([])
   })
+  test("refuses ops that name a missing NPC, a missing memory or a used id", async () => {
+    const memory = {
+      type: "add-memory" as const,
+      loreEntryId: "npc",
+      memory: { id: "m1", text: "I saw the bell.", importance: 2 },
+    }
+    for (const ops of [
+      [{ type: "set-mind" as const, loreEntryId: "ghost", mind: "Hm." }],
+      [{ type: "strike-memory" as const, loreEntryId: "npc", memoryId: "m9" }],
+      [memory, memory],
+    ]) {
+      db.reset()
+      script()
+      expect(
+        await applyWorldPatch({ storyId: STORY, ops }, NO_ORIGIN)
+      ).toMatchObject({ ok: false, code: "invalid" })
+    }
+    expect(bus.events).toEqual([])
+  })
 })

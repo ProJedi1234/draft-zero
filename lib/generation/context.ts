@@ -20,6 +20,8 @@ import type {
  * below therefore budgets in characters and only converts once, at the top.
  */
 export const CHARS_PER_TOKEN = 4
+/** World blocks get at most 1/8 of the window. */
+const WORLD_WINDOW_SHARE = 8
 /** Paragraphs are separated by a blank line everywhere in the app. */
 const PARAGRAPH_SEPARATOR = "\n\n"
 /**
@@ -289,7 +291,9 @@ export function composeContext(input: {
     world: story.features?.world?.enabled
       ? worldContext(
           story.world ?? { storyId: story.id, minutes: 0, npcs: [] },
-          matches.map((match) => match.entry)
+          matches.map((match) => match.entry),
+          // World blocks are never trimmed later, so cap them up front.
+          Math.floor((contextWindow * CHARS_PER_TOKEN) / WORLD_WINDOW_SHARE)
         )
       : [],
     // Set BEFORE the probe below, which is the entire mechanism by which the

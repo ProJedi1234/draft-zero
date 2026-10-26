@@ -53,7 +53,7 @@ export function useWorld(storyId: string, enabled = true) {
   const patch = React.useCallback(
     (ops: WorldOp[]): Promise<ActionResult<{ state: WorldState }>> => {
       const run = async (): Promise<ActionResult<{ state: WorldState }>> => {
-        ++revision.current
+        const own = ++revision.current
         try {
           const response = await fetch(`/api/stories/${storyId}/world/patch`, {
             method: "POST",
@@ -65,10 +65,14 @@ export function useWorld(storyId: string, enabled = true) {
           })
           const result: ActionResult<{ state: WorldState }> =
             await response.json()
-          ++revision.current
           if (result.ok) {
-            setState(result.data.state)
-            setError(null)
+            // A read that started meanwhile may hold newer state, so re-read
+            // instead of letting this response overwrite it.
+            if (own !== revision.current) storyChanges.publish(storyId)
+            else {
+              setState(result.data.state)
+              setError(null)
+            }
           }
           return result
         } catch {
