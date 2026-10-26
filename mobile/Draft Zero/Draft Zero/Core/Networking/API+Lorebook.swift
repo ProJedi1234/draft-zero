@@ -9,6 +9,7 @@ nonisolated struct NewLorebookEntry: Sendable, Hashable {
     var enabled: Bool = true
     var alwaysActive: Bool = false
     var priority: Int = 50
+    var npc: Bool = false
 }
 
 nonisolated private struct LorebookRecordBox: Decodable, Sendable {
@@ -34,6 +35,7 @@ extension APIClient {
             "enabled": .bool(entry.enabled),
             "alwaysActive": .bool(entry.alwaysActive),
             "priority": .number(Double(entry.priority)),
+            "npc": .bool(entry.npc),
         ]
         if let id { body["id"] = .string(id) }
         return try await service(.post, "api/lorebook", body: body, as: LorebookRecordBox.self).record

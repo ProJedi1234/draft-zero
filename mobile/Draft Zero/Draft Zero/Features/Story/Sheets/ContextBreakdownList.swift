@@ -12,6 +12,7 @@ struct ContextBreakdownList: View {
         List {
             Section {
                 ContextBudgetMeter(used: composed.approxTokens, budget: context.contextWindow)
+                ContextSegments(context: context)
                 if let modelId = context.modelId {
                     LabeledContent("Model", value: Format.shortModelId(modelId))
                 }
@@ -63,6 +64,10 @@ struct ContextBreakdownList: View {
                 }
             }
 
+            ContextTextSection(
+                title: "World", text: (composed.world ?? []).joined(separator: "\n\n"),
+                tokenCount: ContextSections.sections(composed).first { $0.name == "World" }?.tokens
+            )
             ContextTextSection(title: "Author's Note", text: composed.authorsNote)
         }
     }

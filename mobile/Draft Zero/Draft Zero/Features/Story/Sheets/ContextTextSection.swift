@@ -5,6 +5,7 @@ struct ContextTextSection: View {
     let title: String
     let text: String
     var monospaced = false
+    var tokenCount: Int?
 
     @State private var expanded = false
 
@@ -26,7 +27,7 @@ struct ContextTextSection: View {
                 }
             }
         } header: {
-            Text("\(title) · ≈\(Format.tokens(ContextBreakdownList.tokens(trimmed)))")
+            Text("\(title) · ≈\(Format.tokens(tokenCount ?? ContextBreakdownList.tokens(trimmed)))")
         }
     }
 }

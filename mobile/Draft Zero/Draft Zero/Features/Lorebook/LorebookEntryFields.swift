@@ -28,6 +28,14 @@ struct LorebookEntryFields: View {
             }
         }
 
+        if draft.category == .character {
+            Section {
+                Toggle("Living NPC", isOn: $draft.npc)
+            } footer: {
+                Text("Remembers what it witnesses and keeps a line of what is on its mind.")
+            }
+        }
+
         Section {
             LorebookKeysEditor(keys: $draft.keys)
         } header: {

@@ -10,7 +10,8 @@ extension NewLorebookEntry {
             content: entry.content,
             enabled: entry.enabled,
             alwaysActive: entry.alwaysActive,
-            priority: entry.priority
+            priority: entry.priority,
+            npc: entry.npc ?? false
         )
     }
 
@@ -30,6 +31,7 @@ extension LorebookEntry {
         entry.enabled = draft.enabled
         entry.alwaysActive = draft.alwaysActive
         entry.priority = draft.priority
+        entry.npc = draft.npc
         return entry
     }
 }

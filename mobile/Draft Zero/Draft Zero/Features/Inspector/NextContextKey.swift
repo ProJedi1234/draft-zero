@@ -8,11 +8,13 @@ struct NextContextKey: Hashable {
     var settings: GenerationSettings?
     var loreCount: Int
     var loreVersion: String?
+    var worldRevision: Int
 
     init(workspace: StoryWorkspace) {
         storyVersion = workspace.story?.updatedAt ?? ""
         settings = workspace.story?.settings
         loreCount = workspace.lorebook.count
         loreVersion = workspace.lorebook.map(\.updatedAt).max()
+        worldRevision = workspace.world.revision
     }
 }
