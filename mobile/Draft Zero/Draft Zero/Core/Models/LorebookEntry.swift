@@ -10,6 +10,7 @@ nonisolated struct LorebookEntry: Codable, Sendable, Hashable, Identifiable {
     var keys: [String]
     var content: String
     var enabled: Bool
+    var npc: Bool? = nil
     /// In context regardless of keys.
     var alwaysActive: Bool
     /// 0–100; higher survives context trimming longer.

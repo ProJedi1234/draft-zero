@@ -4,6 +4,7 @@ import Foundation
 /// arbitrated by. Mirrors `StoryRecord` in lib/store/records.ts.
 nonisolated struct StoryRecord: Codable, Sendable, Hashable, Identifiable {
     var id: String
+    var features: StoryFeatures? = nil
     var title: String
     var description: String
     var genre: String

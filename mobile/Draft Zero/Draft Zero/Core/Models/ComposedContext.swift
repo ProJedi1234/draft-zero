@@ -31,6 +31,7 @@ nonisolated struct ComposedContext: Codable, Sendable {
     var summary: String
     var storyText: String
     var authorsNote: String
+    var world: [String]? = nil
     var seed: Int
     var approxTokens: Int
     var fit: Fit
