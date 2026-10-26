@@ -5,6 +5,7 @@ import { ShieldCheck } from "lucide-react"
 
 import { ContextDialog } from "@/components/context/context-dialog"
 import { Meter } from "@/components/ui/meter"
+import { useWorld } from "@/hooks/use-world"
 import { describeContext } from "@/lib/generation/breakdown"
 import { composeContext } from "@/lib/generation/context"
 import { settingsSummaryParts } from "@/lib/settings-summary"
@@ -134,9 +135,15 @@ function ContextMeter({
   contextWindow: number
 }) {
   const [open, setOpen] = React.useState(false)
+  const world = useWorld(story.id, story.features.world?.enabled ?? false)
   const context = React.useMemo(
-    () => composeContext({ story, lorebookEntries, contextWindow }),
-    [story, lorebookEntries, contextWindow]
+    () =>
+      composeContext({
+        story: { ...story, world: world.state ?? story.world },
+        lorebookEntries,
+        contextWindow,
+      }),
+    [story, lorebookEntries, contextWindow, world.state]
   )
   const approxTokens = context.approxTokens
   // Only while the dialog is open: this runs on every keystroke in the panel

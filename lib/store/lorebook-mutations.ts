@@ -116,6 +116,7 @@ export async function updateLorebookEntryOptimistic(
   if (patch.keys !== undefined) fields.keys = patch.keys
   if (patch.content !== undefined) fields.content = patch.content
   if (patch.enabled !== undefined) fields.enabled = patch.enabled
+  if (patch.npc !== undefined) fields.npc = patch.npc
   if (patch.alwaysActive !== undefined) fields.alwaysActive = patch.alwaysActive
   if (patch.priority !== undefined) fields.priority = patch.priority
 
