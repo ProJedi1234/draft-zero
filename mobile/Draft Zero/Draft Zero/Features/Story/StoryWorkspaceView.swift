@@ -100,7 +100,8 @@ struct StoryWorkspaceView: View {
                 }
                 .keyboardShortcut(".", modifiers: .command)
                 Divider()
-                Button("Duplicate", systemImage: "plus.square.on.square", action: duplicate)
+                Button("Duplicate", systemImage: "plus.square.on.square") { duplicate(.full) }
+                Button("Duplicate from Opening", systemImage: "arrow.counterclockwise") { duplicate(.opening) }
                 Button("Delete Story", systemImage: "trash", role: .destructive) { confirmingDelete = true }
             }
         }
@@ -113,11 +114,14 @@ struct StoryWorkspaceView: View {
         }
     }
 
-    private func duplicate() {
+    private func duplicate(_ scope: DuplicateScope) {
         Task {
             do {
-                let copy = try await app.library.duplicateStory(workspace.storyId)
-                app.notices.info("Story duplicated.", actionTitle: "Open") {
+                let copy = try await app.library.duplicateStory(workspace.storyId, scope: scope)
+                app.notices.info(
+                    scope == .opening ? "Story duplicated from its opening." : "Story duplicated.",
+                    actionTitle: "Open"
+                ) {
                     app.openStory(copy)
                 }
             } catch {

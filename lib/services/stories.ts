@@ -306,14 +306,17 @@ export async function setStoryTintAuto(
   return ok({ record })
 }
 
-/** Full copy (entries + lorebook + settings), title suffixed " (copy)", fresh ids/timestamps. */
+/**
+ * Copies a story (entries + lorebook + settings), title suffixed " (copy)",
+ * fresh ids/timestamps. Scope "opening" copies only the first live passage.
+ */
 export async function duplicateStory(
   raw: DuplicateStoryInput,
   ctx: ServiceContext
 ): Promise<ServiceResult<{ id: string; record: StoryRecord }>> {
   const parsed = parseInput(duplicateStoryInput, raw)
   if (!parsed.ok) return parsed
-  const { id } = parsed.data
+  const { id, scope } = parsed.data
 
   const db = await getDb()
   const source = await db
@@ -330,18 +333,19 @@ export async function duplicateStory(
   // copy is deliberately given none (see below). Copying them would be worse
   // than useless — with no ops to explain them they would have to land as
   // ordinary active passages, so every retried block would appear twice.
-  const [entries, lore] = await Promise.all([
-    db
-      .select()
-      .from(storyEntries)
-      .where(
-        and(
-          eq(storyEntries.storyId, id),
-          isNull(storyEntries.deletedAt),
-          eq(storyEntries.isActive, true)
-        )
+  const liveEntries = db
+    .select()
+    .from(storyEntries)
+    .where(
+      and(
+        eq(storyEntries.storyId, id),
+        isNull(storyEntries.deletedAt),
+        eq(storyEntries.isActive, true)
       )
-      .orderBy(asc(storyEntries.position)),
+    )
+    .orderBy(asc(storyEntries.position))
+  const [entries, lore] = await Promise.all([
+    scope === "opening" ? liveEntries.limit(1) : liveEntries,
     db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
   ])
 

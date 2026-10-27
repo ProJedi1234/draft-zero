@@ -101,7 +101,7 @@ writes, then the destructive tools.
 | `context_breakdown` | Why the model wrote what it wrote: exactly what a passage was shown. Which lore entries fired and on which keys, which were dropped for want of budget, which recap version resolved, and per-section token counts. The tool for "my lore did not seem to apply". |
 | `profiles` | Every model profile: its model with live pricing, thinking level, slider overrides, how many stories follow it, and which is the default. |
 | `create_story` | Start a new, empty story, configured in one call. Returns its id. |
-| `duplicate_story` | Copy a story's live manuscript, lore and settings into a new story, optionally under a new title. Images, recaps and undo history stay behind. Returns the copy's id. |
+| `duplicate_story` | Copy a story's live manuscript, lore and settings into a new story, optionally under a new title. `scope: "opening"` keeps only the first passage. Images, recaps and undo history stay behind. Returns the copy's id. |
 | `write` | Append one passage as narration or as a Do or Say turn — a turn is translated into second person exactly as the composer does it. Returns the position it took. |
 | `edit` | Replace the text of one passage in place, by position. |
 | `rewind` | Retire every passage after a position, the way the app's rewind does — a soft delete, so the recap falls back to the newest version the remaining text still covers. |

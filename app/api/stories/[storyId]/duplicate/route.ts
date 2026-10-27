@@ -1,5 +1,6 @@
-// POST /api/stories/:storyId/duplicate — body { copyId? }; send {} to let the
-// server mint the copy's id. A client-minted copyId makes a retry idempotent.
+// POST /api/stories/:storyId/duplicate — body { copyId?, scope? }; send {} to
+// let the server mint the copy's id. A client-minted copyId makes a retry
+// idempotent. scope "opening" copies only the first passage; default "full".
 import { contextOf, readJson, refuse, respond } from "@/lib/api/respond"
 import { duplicateStory } from "@/lib/services/stories"
 import {
@@ -18,9 +19,9 @@ export async function POST(
   const { storyId } = await params
   const body = await readJson(request)
   if (!body.ok) return refuse(body)
-  const { copyId } = (body.data ?? {}) as Partial<DuplicateStoryInput>
+  const { copyId, scope } = (body.data ?? {}) as Partial<DuplicateStoryInput>
   const result = await duplicateStory(
-    { id: storyId, copyId },
+    { id: storyId, copyId, scope },
     contextOf(request)
   )
   return respond(storyCreatedOutput, result)
