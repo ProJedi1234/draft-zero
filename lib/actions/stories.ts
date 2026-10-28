@@ -3,6 +3,7 @@
 import type { StoryPage } from "@/lib/db/queries"
 import { NO_ORIGIN } from "@/lib/services/context"
 import * as stories from "@/lib/services/stories"
+import type { DuplicateScope } from "@/lib/services/stories.schema"
 import type { StoryRecord } from "@/lib/store/records"
 import type { ActionResult, GenerationSettings } from "@/lib/types"
 
@@ -90,10 +91,10 @@ export async function setStoryTintAuto(
 
 export async function duplicateStory(
   id: string,
-  opts?: { copyId?: string; origin?: string }
+  opts?: { copyId?: string; scope?: DuplicateScope; origin?: string }
 ): Promise<ActionResult<{ id: string; record: StoryRecord }>> {
   return stories.duplicateStory(
-    { id, copyId: opts?.copyId },
+    { id, copyId: opts?.copyId, scope: opts?.scope },
     { origin: opts?.origin ?? null }
   )
 }

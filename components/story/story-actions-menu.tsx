@@ -2,9 +2,17 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Copy, Loader2, MoreHorizontal, PencilLine, Trash2 } from "lucide-react"
+import {
+  Copy,
+  ListRestart,
+  Loader2,
+  MoreHorizontal,
+  PencilLine,
+  Trash2,
+} from "lucide-react"
 import { toast } from "sonner"
 
+import type { DuplicateScope } from "@/lib/services/stories.schema"
 import { duplicateStoryOptimistic } from "@/lib/store/story-mutations"
 import type { StorySummary } from "@/lib/types"
 import {
@@ -21,12 +29,13 @@ import { StoryDetailsDialog } from "@/components/story/story-details-dialog"
 type PendingDialog = "details" | "delete" | null
 
 /**
- * Edit details / Duplicate / Delete, and the two dialogs behind them.
+ * Edit details / Duplicate / Duplicate from opening / Delete, and the two
+ * dialogs behind them.
  *
  * Shared by the sidebar row and the library card, which have almost no chrome
  * in common — one is built from sidebar primitives and carries a run mark and
  * a running clock, the other is a static card with a word count. What they do
- * share is this: the same three actions and the same fiddly orchestration
+ * share is this: the same actions and the same fiddly orchestration
  * around them. So the menu travels and the rows stay separate; each call site
  * passes the trigger its own layout wants.
  */
@@ -82,25 +91,33 @@ export function StoryActionsMenu({
     setQueuedDialog(null)
   }
 
-  function handleDuplicate() {
+  function handleDuplicate(scope: DuplicateScope) {
     startTransition(async () => {
       // seed is StorySummary-shaped; duplicateStoryOptimistic only reads the
       // fields below, but id/createdAt/updatedAt are required by the type.
-      const res = await duplicateStoryOptimistic(story.id, {
-        id: story.id,
-        title: story.title,
-        description: story.description,
-        genre: story.genre,
-        createdAt: story.createdAt,
-        updatedAt: story.updatedAt,
-        tintHue: story.tintHue,
-        tintStrength: story.tintStrength,
-      })
+      const res = await duplicateStoryOptimistic(
+        story.id,
+        {
+          id: story.id,
+          title: story.title,
+          description: story.description,
+          genre: story.genre,
+          createdAt: story.createdAt,
+          updatedAt: story.updatedAt,
+          tintHue: story.tintHue,
+          tintStrength: story.tintStrength,
+        },
+        scope
+      )
       if (!res.ok) {
         toast.error(res.error)
         return
       }
-      toast.success("Story duplicated")
+      toast.success(
+        scope === "opening"
+          ? "Story duplicated from its opening"
+          : "Story duplicated"
+      )
       if (navigateOnDuplicate) router.push(`/story/${res.data.id}`)
     })
   }
@@ -127,9 +144,19 @@ export function StoryActionsMenu({
             <PencilLine />
             Edit details
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={isPending} onClick={handleDuplicate}>
+          <DropdownMenuItem
+            disabled={isPending}
+            onClick={() => handleDuplicate("full")}
+          >
             <Copy />
             Duplicate
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={isPending}
+            onClick={() => handleDuplicate("opening")}
+          >
+            <ListRestart />
+            Duplicate from opening
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

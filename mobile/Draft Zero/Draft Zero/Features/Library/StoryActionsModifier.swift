@@ -34,7 +34,7 @@ struct StoryActionsModifier: ViewModifier {
             .swipeActions(edge: .leading) {
                 Button("Lorebook", systemImage: "book.closed", action: openLorebook)
                     .tint(.indigo)
-                Button("Duplicate", systemImage: "plus.square.on.square", action: duplicate)
+                Button("Duplicate", systemImage: "plus.square.on.square") { duplicate(.full) }
                     .tint(.blue)
             }
             .alert("Rename Story", isPresented: $isRenaming) {
@@ -87,13 +87,13 @@ struct StoryActionsModifier: ViewModifier {
         }
     }
 
-    private func duplicate() {
+    private func duplicate(_ scope: DuplicateScope) {
         let title = story.title
         let storyId = story.id
         Task {
             do {
-                _ = try await library.duplicateStory(storyId)
-                notices.info("Duplicated “\(title)”")
+                _ = try await library.duplicateStory(storyId, scope: scope)
+                notices.info(scope == .opening ? "Duplicated “\(title)” from its opening" : "Duplicated “\(title)”")
             } catch {
                 notices.error(error)
             }

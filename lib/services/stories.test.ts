@@ -416,6 +416,46 @@ describe("duplicateStory", () => {
     expect(bus.events).toEqual(upsertEvents(COPY, null))
   })
 
+  test("the opening scope reads only the first live passage", async () => {
+    db.next([row()])
+    db.next([entry])
+    db.next([lore])
+    db.next([row({ id: COPY })])
+    db.next([])
+    db.next([])
+    await stories.duplicateStory(
+      { id: STORY, copyId: COPY, scope: "opening" },
+      CTX
+    )
+    expect(db.argsOf(1, "limit")).toEqual([1])
+    expect(db.statements.map((s) => s.root)).toEqual([
+      "select",
+      "select",
+      "select",
+      "insert",
+      "insert",
+      "insert",
+    ])
+  })
+
+  test("the full scope is the default and reads every live passage", async () => {
+    db.next([row()])
+    db.next([])
+    db.next([])
+    db.next([row({ id: COPY })])
+    await stories.duplicateStory({ id: STORY, copyId: COPY }, CTX)
+    expect(db.argsOf(1, "limit")).toBeUndefined()
+  })
+
+  test("an unknown scope is refused before the source is read", async () => {
+    const result = await stories.duplicateStory(
+      { id: STORY, scope: "chapter" as "full" },
+      CTX
+    )
+    expect(result.ok).toBe(false)
+    expect(db.statements).toEqual([])
+  })
+
   test("a given title names the copy, trimmed", async () => {
     db.next([row()])
     db.next([])

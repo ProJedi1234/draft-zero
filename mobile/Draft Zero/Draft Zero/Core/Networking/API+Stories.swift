@@ -6,6 +6,12 @@ nonisolated struct StoryCreated: Decodable, Sendable {
     var record: StoryRecord
 }
 
+/// How much manuscript a duplicate takes. `.opening` keeps only the first passage.
+nonisolated enum DuplicateScope: String, Sendable {
+    case full
+    case opening
+}
+
 nonisolated private struct RecordBox<T: Decodable & Sendable>: Decodable, Sendable {
     var record: T
 }
@@ -49,8 +55,12 @@ extension APIClient {
     }
 
     /// POST /api/stories/:id/duplicate.
-    func duplicateStory(_ storyId: String, copyId: String? = nil) async throws -> StoryCreated {
-        var body: JSONObject = [:]
+    func duplicateStory(
+        _ storyId: String,
+        copyId: String? = nil,
+        scope: DuplicateScope = .full
+    ) async throws -> StoryCreated {
+        var body: JSONObject = ["scope": .string(scope.rawValue)]
         if let copyId { body["copyId"] = .string(copyId) }
         return try await service(.post, "api/stories/\(storyId)/duplicate", body: body)
     }

@@ -48,9 +48,10 @@ import {
   updateGenerationSettings,
   updateStoryMeta,
 } from "@/lib/services/stories"
-import type {
-  UpdateGenerationSettingsInput,
-  UpdateStoryMetaInput,
+import {
+  duplicateScopes,
+  type UpdateGenerationSettingsInput,
+  type UpdateStoryMetaInput,
 } from "@/lib/services/stories.schema"
 
 /* -------------------------------- create --------------------------------- */
@@ -154,6 +155,12 @@ const duplicateInput = z.object({
     .min(1)
     .optional()
     .describe('Title for the copy. Default: the original\'s, plus " (copy)".'),
+  scope: z
+    .enum(duplicateScopes)
+    .optional()
+    .describe(
+      '"opening" keeps only the first passage, to replay the setup with the same lore and settings. Default "full".'
+    ),
 })
 
 const duplicateOutput = z.object({
@@ -168,7 +175,7 @@ export const registerDuplicateStory: RegisterTool = (server) => {
     {
       title: "Duplicate story",
       description:
-        "Copy a story — its live manuscript, lore and settings — into a new story, to branch it or try a direction without touching the original. Images, recaps and undo history stay behind. Returns the copy's id.",
+        "Copy a story — its live manuscript (or just its opening), lore and settings — into a new story, to branch it or replay it without touching the original. Images, recaps and undo history stay behind. Returns the copy's id.",
       inputSchema: duplicateInput,
       outputSchema: duplicateOutput,
       annotations: {
@@ -181,7 +188,7 @@ export const registerDuplicateStory: RegisterTool = (server) => {
     async (args) =>
       runTool("duplicate_story", async () => {
         const copied = await duplicateStory(
-          { id: args.storyId, title: args.title },
+          { id: args.storyId, title: args.title, scope: args.scope },
           NO_ORIGIN
         )
         if (!copied.ok) throw new ToolInputError(copied.error)

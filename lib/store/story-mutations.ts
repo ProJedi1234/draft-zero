@@ -15,6 +15,7 @@ import {
   updateStoryTint,
 } from "@/lib/actions/stories"
 import { randomId } from "@/lib/id"
+import type { DuplicateScope } from "@/lib/services/stories.schema"
 import { mutationQueue, type CanonicalRow } from "@/lib/store/mutation-queue"
 import { isValidEntityId, type StoryRecord } from "@/lib/store/records"
 import { syncClientId } from "@/lib/sync/client"
@@ -198,7 +199,8 @@ export async function deleteStoryOptimistic(id: string): Promise<ActionResult> {
 
 export async function duplicateStoryOptimistic(
   sourceId: string,
-  seed: StorySummary
+  seed: StorySummary,
+  scope: DuplicateScope = "full"
 ): Promise<ActionResult<{ id: string }>> {
   if (!isValidEntityId(sourceId)) return { ok: false, error: INVALID_ID }
 
@@ -225,6 +227,7 @@ export async function duplicateStoryOptimistic(
     async run() {
       const res = await actions.duplicateStory(sourceId, {
         copyId,
+        scope,
         origin: syncClientId,
       })
       if (!res.ok) return { ok: false, error: res.error }

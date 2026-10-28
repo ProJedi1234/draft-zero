@@ -247,9 +247,9 @@ final class LibraryStore {
         return created.id
     }
 
-    func duplicateStory(_ storyId: String) async throws -> String {
+    func duplicateStory(_ storyId: String, scope: DuplicateScope = .full) async throws -> String {
         guard let api else { throw APIError.notConfigured }
-        let created = try await api.duplicateStory(storyId, copyId: RandomID.make())
+        let created = try await api.duplicateStory(storyId, copyId: RandomID.make(), scope: scope)
         upsert(created.record)
         scheduleRefresh()
         return created.id

@@ -226,6 +226,19 @@ describe("POST /api/stories/:storyId/duplicate", () => {
     expect(bus.events[0]).toMatchObject({ id: COPY, origin: "phone-1" })
   })
 
+  test("passes the opening scope through", async () => {
+    db.next([{ ...ROW }])
+    db.next([])
+    db.next([])
+    db.next([{ ...ROW, id: COPY }])
+    const res = await duplicate.POST(
+      request("POST", { copyId: COPY, scope: "opening" }),
+      params
+    )
+    expect(res.status).toBe(200)
+    expect(db.argsOf(1, "limit")).toEqual([1])
+  })
+
   test("an unknown source is a 404", async () => {
     db.next([])
     const res = await duplicate.POST(request("POST", {}), params)

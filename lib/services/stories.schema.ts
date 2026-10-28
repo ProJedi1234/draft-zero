@@ -84,9 +84,17 @@ export const setStoryTintAutoInput = z.object({
 })
 
 /** Keys are ordered as the old action checked them; see parseInput. */
+export const duplicateScopes = ["full", "opening"] as const
+export type DuplicateScope = (typeof duplicateScopes)[number]
+
 export const duplicateStoryInput = z.object({
   copyId: newStoryId.optional(),
   id: existingStoryId,
+  /**
+   * How much manuscript the copy takes. "opening" keeps only the first live
+   * passage, so the copy replays the same setup with lore and settings intact.
+   */
+  scope: z.enum(duplicateScopes).default("full"),
   /** Names the copy at insert. Default: the original's, plus " (copy)". */
   title: storyMetaPatch.shape.title,
 })
