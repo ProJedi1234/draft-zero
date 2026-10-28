@@ -1,0 +1,161 @@
+# .github/workflows/release.yml — Runs when a GitHub release is published.
+#
+# Builds Dockerfile.prod for amd64 and arm64, each on its native runner because
+# `next build` under QEMU is several times slower, then merges the two into one
+# multi-arch tag on GHCR. Last, it attaches a compose.yaml pinned to that tag
+# and an env.example to the release, so a release is runnable on its own.
+#
+# Tests are not re-run here. Release from a commit on main, which CI has
+# already checked.
+
+name: Release
+
+on:
+  release:
+    types: [published]
+
+# Two runs for one release would race on the same tags and assets.
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/projedi1234/draft-zero
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  image:
+    name: Image (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # The image tags come from the release tag, so a tag that is not semver
+      # would produce an image with no tags at all.
+      - name: Check tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tag '$TAG' is not semver like v1.2.3 or v1.2.3-rc.1"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Only for the OCI labels. The source label is what links the GHCR
+      # package back to this repo.
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+
+      # Pushed by digest with no tag. The publish job tags the merged index.
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.prod
+          platforms: linux/${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Tag image and attach assets
+    needs: image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # v1.2.3 → 1.2.3 and 1.2. Prereleases get only their full version and
+      # never move `latest`.
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !github.event.release.prerelease }}
+
+      - name: Create multi-arch tags
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          tags=$(jq -r '.tags[] | "-t " + .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          # shellcheck disable=SC2046,SC2086
+          docker buildx imagetools create $tags $(printf "$IMAGE@sha256:%s " *)
+
+      - name: Inspect
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: docker buildx imagetools inspect "$IMAGE:$VERSION"
+
+      - name: Attach compose.yaml and env.example
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p dist
+          sed "s/\${DRAFT_ZERO_VERSION:-latest}/\${DRAFT_ZERO_VERSION:-$VERSION}/" \
+            docker/release/compose.yaml > dist/compose.yaml
+          # Both services must point at this release, or the pin silently failed.
+          test "$(grep -c "draft-zero:\${DRAFT_ZERO_VERSION:-$VERSION}" dist/compose.yaml)" -eq 2
+          cp docker/release/env.example dist/env.example
+          gh release upload "$TAG" dist/compose.yaml dist/env.example --clobber
