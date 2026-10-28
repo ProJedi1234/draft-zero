@@ -1,5 +1,7 @@
 "use server"
 
+import type { StoryFeatures } from "@/lib/services/world.schema"
+
 import type { StoryPage } from "@/lib/db/queries"
 import { NO_ORIGIN } from "@/lib/services/context"
 import * as stories from "@/lib/services/stories"
@@ -46,6 +48,7 @@ export async function updateStoryMeta(
     /** "" clears the override back to the built-in prompt. */
     systemPrompt?: string | null
     /** Whether new summary versions are written. See the schema's column note. */
+    features?: StoryFeatures
     summarize?: boolean
   },
   opts?: { origin?: string }

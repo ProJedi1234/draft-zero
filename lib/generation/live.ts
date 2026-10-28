@@ -28,6 +28,7 @@ import {
   streamCompletion,
 } from "@/lib/generation/openrouter"
 import { reconcileCall, shouldReconcile } from "@/lib/generation/reconcile"
+import { scheduleWorld } from "@/lib/generation/world"
 import { scheduleSummary } from "@/lib/generation/summarize"
 import {
   invalidateAccountZdrPolicy,
@@ -707,6 +708,7 @@ async function finishRun(
   // long as it was — so neither the window nor the mood can have moved, and the
   // answer is already known without reading anything.
   if (!run.discarded && entryId !== null) {
+    scheduleWorld(run.storyId, entryId)
     scheduleSummary(run.storyId)
     scheduleAtmosphere(run.storyId)
   }

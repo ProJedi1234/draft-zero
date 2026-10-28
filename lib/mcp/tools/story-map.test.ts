@@ -23,6 +23,7 @@ type FakeStory = {
   images: unknown[]
   wordCount: number
   profileId: string | null
+  features: { world?: { enabled: boolean; pacing: string } }
   settings: {
     modelId: string
     thinking: string
@@ -95,6 +96,7 @@ function fakeStory(overrides: Partial<FakeStory> = {}): FakeStory {
     images: [{}, {}],
     wordCount: 4200,
     profileId: null,
+    features: { world: { enabled: true, pacing: "A day per journey." } },
     settings: {
       modelId: "~anthropic/claude-sonnet-latest",
       thinking: "off",
@@ -137,6 +139,7 @@ describe("story_map", () => {
     getStoryMock.mockImplementation(async () => fakeStory())
     listLorebookEntriesMock.mockImplementation(async () => [
       {
+        npc: false,
         id: "lore-1",
         name: "Vell",
         keys: ["vell", "the wanderer"],
@@ -168,10 +171,14 @@ describe("story_map", () => {
         id: "lore-1",
         name: "Vell",
         keys: ["vell", "the wanderer"],
+        npc: false,
         enabled: true,
         alwaysActive: false,
       },
     ])
+    expect(data.features).toEqual({
+      world: { enabled: true, pacing: "A day per journey." },
+    })
     // Full lore content never leaves this tool — only the index.
     expect(JSON.stringify(data)).not.toContain("Long lore text")
 

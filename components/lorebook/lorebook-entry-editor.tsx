@@ -36,6 +36,7 @@ import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useAutosave } from "@/hooks/use-autosave"
+import { useServerSyncedValue } from "@/hooks/use-server-synced"
 import { useMarkdownShortcuts } from "@/hooks/use-markdown-shortcuts"
 import {
   deleteLorebookEntryOptimistic,
@@ -51,6 +52,7 @@ import {
 
 /** A blank draft — the shape the create dialog starts from. */
 export const EMPTY_LOREBOOK_DRAFT: NewLorebookEntry = {
+  npc: false,
   name: "",
   category: "character",
   keys: [],
@@ -63,6 +65,7 @@ export const EMPTY_LOREBOOK_DRAFT: NewLorebookEntry = {
 function draftFromEntry(entry?: LorebookEntry): NewLorebookEntry {
   if (!entry) return { ...EMPTY_LOREBOOK_DRAFT }
   return {
+    npc: entry.npc,
     name: entry.name,
     category: entry.category,
     keys: [...entry.keys],
@@ -108,6 +111,12 @@ export function LorebookEntryEditor({
   const [draft, setDraft] = useState<NewLorebookEntry>(() =>
     draftFromEntry(entry)
   )
+  const category = useServerSyncedValue(entry?.category ?? draft.category, {
+    version: entry?.updatedAt,
+  })
+  const npc = useServerSyncedValue(entry?.npc ?? draft.npc, {
+    version: entry?.updatedAt,
+  })
   const [keyInput, setKeyInput] = useState("")
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [, startSave] = useTransition()
@@ -154,11 +163,19 @@ export function LorebookEntryEditor({
   )
 
   const saveNow = useCallback(
-    (patch: Partial<NewLorebookEntry>) => {
+    (patch: Partial<NewLorebookEntry>, settled?: (ok: boolean) => void) => {
       if (!persists || !entryId) return
       startSave(async () => {
-        const res = await updateLorebookEntryOptimistic(entryId, patch)
-        if (!res.ok) toast.error(res.error)
+        let ok = false
+        try {
+          const res = await updateLorebookEntryOptimistic(entryId, patch)
+          ok = res.ok
+          if (!res.ok) toast.error(res.error)
+        } catch {
+          toast.error("Couldn't save your changes.")
+        } finally {
+          settled?.(ok)
+        }
       })
     },
     [entryId, persists]
@@ -224,11 +241,17 @@ export function LorebookEntryEditor({
       <div className="space-y-2">
         <Label>Category</Label>
         <Select
-          value={draft.category}
+          value={category.value}
           onValueChange={(value) => {
-            const category = value as LorebookCategory
-            setDraft((prev) => ({ ...prev, category }))
-            saveNow({ category })
+            const next = value as LorebookCategory
+            setDraft((prev) => ({ ...prev, category: next }))
+            if (persists) {
+              const previous = category.value
+              category.write(next)
+              saveNow({ category: next }, (ok) =>
+                ok ? category.settle() : category.reset(previous)
+              )
+            }
           }}
           items={LOREBOOK_CATEGORIES.map((c) => ({
             value: c.value,
@@ -247,6 +270,31 @@ export function LorebookEntryEditor({
           </SelectContent>
         </Select>
       </div>
+
+      {category.value === "character" && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-4">
+            <Label htmlFor={`${uid}-npc`}>Living NPC</Label>
+            <Switch
+              id={`${uid}-npc`}
+              checked={npc.value}
+              onCheckedChange={(next) => {
+                setDraft((prev) => ({ ...prev, npc: next }))
+                if (persists) {
+                  const previous = npc.value
+                  npc.write(next)
+                  saveNow({ npc: next }, (ok) =>
+                    ok ? npc.settle() : npc.reset(previous)
+                  )
+                }
+              }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Remembers what it witnesses and keeps a line of what is on its mind.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor={`${uid}-key`}>Trigger keys</Label>

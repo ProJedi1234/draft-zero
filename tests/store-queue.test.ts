@@ -23,6 +23,7 @@ import { localRefresh } from "@/lib/sync/client"
 
 function story(id: string, updatedAt: string, title = id): StoryRecord {
   return {
+    features: {},
     id,
     title,
     description: "",

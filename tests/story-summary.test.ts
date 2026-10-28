@@ -67,6 +67,7 @@ function prose(count: number, chars = 400): StoryEntry[] {
 
 function story(over: Partial<Story> = {}): Story {
   return {
+    features: {},
     id: "story-1",
     title: "A Story",
     description: "",

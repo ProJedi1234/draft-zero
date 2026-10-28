@@ -25,6 +25,7 @@ export const CONTEXT_SECTION_LABELS: Record<ContextSectionId, string> = {
   lore: "Lorebook",
   summary: "Story so far",
   story: "Story",
+  world: "World",
   authorsNote: "Author's note",
 }
 
@@ -35,6 +36,7 @@ export const CONTEXT_SECTION_ORDER: readonly ContextSectionId[] = [
   "lore",
   "summary",
   "story",
+  "world",
   "authorsNote",
 ]
 
@@ -228,6 +230,8 @@ function sectionNote(id: ContextSectionId, ctx: ComposedContext): string {
       return "The narrator's standing brief. Always sent whole."
     case "memory":
       return "Sent whole, ahead of everything else."
+    case "world":
+      return "The story clock and active NPCs, sent beside the most recent prose."
     case "authorsNote":
       return "Sent whole, just before the most recent paragraph."
     case "summary":

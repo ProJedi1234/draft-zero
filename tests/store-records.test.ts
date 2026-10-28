@@ -47,6 +47,7 @@ describe("isValidEntityId", () => {
 
 function storyRow(overrides: Partial<StoryRow> = {}): StoryRow {
   return {
+    featuresJson: null,
     id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
     title: "The Salt Road",
     description: "A caravan, a debt.",
@@ -80,6 +81,7 @@ function storyRow(overrides: Partial<StoryRow> = {}): StoryRow {
 describe("toStoryRecord", () => {
   test("maps every projected field and passes the word count through", () => {
     expect(toStoryRecord(storyRow(), 4212)).toEqual({
+      features: {},
       id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
       title: "The Salt Road",
       description: "A caravan, a debt.",

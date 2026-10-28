@@ -81,6 +81,7 @@ const EXPECTED_ORDER = [
   "read",
   "search",
   "lore_get",
+  "world_state",
   "usage",
   "context_breakdown",
   "profiles",
@@ -90,6 +91,7 @@ const EXPECTED_ORDER = [
   "edit",
   "rewind",
   "lore_write",
+  "world_patch",
   "update_story",
   "save_profile",
   "delete_story",
@@ -102,13 +104,14 @@ const READ_TOOLS = new Set([
   "read",
   "search",
   "lore_get",
+  "world_state",
   "usage",
   "context_breakdown",
   "profiles",
 ])
 
 describe("createMcpServer", () => {
-  test("registers all 18 planned tools, in the fixed order", async () => {
+  test("registers all 20 planned tools, in the fixed order", async () => {
     const tools = await listTools()
     expect(tools.map((tool) => tool.name)).toEqual(EXPECTED_ORDER)
   })
@@ -134,7 +137,7 @@ describe("createMcpServer", () => {
       expect(tool.inputSchema?.type, `${tool.name} inputSchema root`).toBe(
         "object"
       )
-      // The client model reads all eighteen on every tools/list; a nameless
+      // The client model reads all twenty on every tools/list; a nameless
       // one costs it a call to find out what it does.
       expect(tool.description?.length ?? 0, `${tool.name}`).toBeGreaterThan(20)
       expect(tool.title, `${tool.name} has no title`).toBeTruthy()

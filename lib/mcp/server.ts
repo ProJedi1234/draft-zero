@@ -39,6 +39,7 @@ import {
 } from "@/lib/mcp/tools/story-crud"
 import { registerStoryMap } from "@/lib/mcp/tools/story-map"
 import { registerUsage } from "@/lib/mcp/tools/usage"
+import { registerWorldState, registerWorldPatch } from "@/lib/mcp/tools/world"
 import { registerWrite } from "@/lib/mcp/tools/write"
 
 const SERVER_INFO = {
@@ -73,6 +74,7 @@ const REGISTRARS: readonly RegisterTool[] = [
   registerRead,
   registerSearch,
   registerLoreGet,
+  registerWorldState,
   registerUsage,
   registerContextBreakdown,
   registerProfiles,
@@ -83,6 +85,7 @@ const REGISTRARS: readonly RegisterTool[] = [
   registerEdit,
   registerRewind,
   registerLoreWrite,
+  registerWorldPatch,
   registerUpdateStory,
   registerSaveProfile,
   // Destroy
@@ -91,7 +94,7 @@ const REGISTRARS: readonly RegisterTool[] = [
 ]
 
 /**
- * The `tools/list` answer is a build-time constant — the same 18 declarations
+ * The `tools/list` answer is a build-time constant — the same 20 declarations
  * every request — so it is worth caching client-side. `private` because a
  * single-user LAN app has no shared cache to populate.
  *

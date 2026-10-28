@@ -9,6 +9,7 @@ import { getDb } from "@/lib/db/client"
 import { getAppSettings } from "@/lib/db/queries"
 import { appSettings } from "@/lib/db/schema"
 import { clearAtmosphereBreaker } from "@/lib/generation/atmosphere"
+import { clearWorldBreaker } from "@/lib/generation/world"
 import { resolveOpenRouterKey } from "@/lib/generation/key"
 import { fetchKeyMetadata } from "@/lib/generation/key-check"
 import { commitChange } from "@/lib/services/commit"
@@ -60,6 +61,8 @@ export const updateAppSettings: Service<UpdateAppSettingsInput> = async (
     values.summaryTemperature = temperature
     values.summaryTargetWords = targetWords
     values.summaryMaxTokens = maxTokens
+    // The world pass runs on the summarizer's model.
+    clearWorldBreaker()
   }
   if (patch.atmosphere !== undefined) {
     const {

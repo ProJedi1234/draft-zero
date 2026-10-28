@@ -13,6 +13,7 @@ import { installFakeDb } from "@/lib/services/test-support"
 /* -------------------------------------------------------------------------- */
 
 type FakeEntry = {
+  npc: boolean
   id: string
   storyId: string
   name: string
@@ -27,6 +28,7 @@ type FakeEntry = {
 }
 
 const EXISTING: FakeEntry = {
+  npc: false,
   id: "lore-1",
   storyId: "s1",
   name: "Vell",
@@ -160,6 +162,22 @@ describe("lore_get", () => {
 })
 
 describe("lore_write", () => {
+  test("create and update carry the NPC flag", async () => {
+    db.next([{ ...rowOf(EXISTING), npc: true }])
+    const created = await handler()({ storyId: "s1", name: "Vell", npc: true })
+    expect(created.structuredContent?.changed).toContain("npc")
+    expect(db.argsOf(0, "values")?.[0]).toMatchObject({ npc: true })
+    getLorebookEntryMock.mockImplementation(async () => EXISTING)
+    db.next([{ ...rowOf(EXISTING), npc: true }])
+    const updated = await handler()({
+      storyId: "s1",
+      id: EXISTING.id,
+      npc: true,
+    })
+    expect(updated.structuredContent?.changed).toEqual(["npc"])
+    expect(db.argsOf(1, "set")?.[0]).toMatchObject({ npc: true })
+  })
+
   function handler() {
     const { server, handlers } = makeFakeServer()
     registerLoreWrite(server as never, {} as never)

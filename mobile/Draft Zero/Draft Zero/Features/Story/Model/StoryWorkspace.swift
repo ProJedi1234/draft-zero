@@ -24,6 +24,7 @@ final class StoryWorkspace {
     let illustration: IllustrationController
     let derivation: DerivationController
     let composer: ComposerModel
+    let world: WorldModel
 
     private(set) var loadState: LoadState = .loading
     private(set) var story: Story?
@@ -63,6 +64,7 @@ final class StoryWorkspace {
         self.storyId = storyId
         self.api = api
         notices = app.notices
+        world = WorldModel(storyId: storyId, api: api, notices: app.notices)
         library = app.library
         sync = app.sync
         local = app.local
@@ -183,6 +185,7 @@ final class StoryWorkspace {
         do {
             let (payload, json) = try await api.workspace(storyId: storyId)
             await apply(payload, fresh: true)
+            if payload.story.features?.world?.enabled == true { await world.load() }
             local?.saveWorkspace(storyId, json: json)
         } catch is CancellationError {
             return
@@ -192,6 +195,9 @@ final class StoryWorkspace {
         } catch {
             if story == nil {
                 loadState = .failed((error as? LocalizedError)?.errorDescription ?? "Couldn't open this story.")
+            } else if story?.features?.world?.enabled == true, world.state == nil {
+                // A cached story still needs a world result, or the section spins forever.
+                await world.load()
             }
         }
     }

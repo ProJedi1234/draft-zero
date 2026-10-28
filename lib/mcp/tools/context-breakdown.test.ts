@@ -29,7 +29,7 @@ const resolveStoryRecapMock = mock(
   } | null> => null
 )
 
-await installEntriesDoubles()
+const db = await installEntriesDoubles()
 installQueryMocks()
 
 const { registerContextBreakdown } =
@@ -62,6 +62,7 @@ function passage(id: string, position: number, text: string): StoryEntry {
 
 function lore(id: string, overrides: Partial<LorebookEntry> = {}) {
   return {
+    npc: false,
     id,
     storyId: "story-1",
     name: "Vell",
@@ -79,6 +80,7 @@ function lore(id: string, overrides: Partial<LorebookEntry> = {}) {
 
 function story(overrides: Partial<Story> = {}): Story {
   return {
+    features: {},
     id: "story-1",
     title: "Test",
     description: "",
@@ -154,6 +156,7 @@ function registeredHandler(): ToolHandler {
 }
 
 beforeEach(() => {
+  db.reset()
   stubQueries({
     getStoryFull: getStoryFullMock,
     listLorebookEntries: listLorebookEntriesMock,
@@ -168,6 +171,52 @@ beforeEach(() => {
 })
 
 describe("context_breakdown", () => {
+  test("the registered SDK handler validates an enabled story's world section", async () => {
+    getStoryFullMock.mockImplementation(async () =>
+      story({ features: { world: { enabled: true, pacing: "" } } })
+    )
+    const { McpServer, createMcpHandler } =
+      await import("@modelcontextprotocol/server")
+    const handler = createMcpHandler(() => {
+      const server = new McpServer(
+        { name: "context-test", version: "1" },
+        { capabilities: { tools: {} } }
+      )
+      registerContextBreakdown(server, undefined as never)
+      return server
+    })
+    const response = await handler.fetch(
+      new Request("http://localhost/api/mcp", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "context_breakdown",
+            arguments: { storyId: "story-1" },
+          },
+        }),
+      })
+    )
+    expect(response.status).toBe(200)
+    const body = await response.text()
+    const message = JSON.parse(
+      body.startsWith("{") ? body : body.match(/^data: (.*)$/m)![1]
+    )
+    expect(message.error).toBeUndefined()
+    expect(message.result.isError).not.toBe(true)
+    expect(message.result.structuredContent.sections).toContainEqual({
+      name: "world",
+      tokens: expect.any(Number),
+      chars: expect.any(Number),
+    })
+  })
+
   test("defaults to the newest passage and shapes sections, lore, recap", async () => {
     const handler = registeredHandler()
 

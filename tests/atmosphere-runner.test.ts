@@ -73,6 +73,7 @@ const ENTRIES = [
 
 function makeStory(over: Partial<Story> = {}): Story {
   return {
+    features: {},
     id: "story-1",
     title: "A Story",
     description: "",

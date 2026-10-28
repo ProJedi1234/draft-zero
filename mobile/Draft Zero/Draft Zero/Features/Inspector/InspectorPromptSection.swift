@@ -48,6 +48,10 @@ struct InspectorPromptSection: View {
                 Text("The recap is written by the model; the narrator prompt tells it how to write.")
             }
             InspectorAtmosphereSection(controls: model.atmosphere, status: model.workspace.atmosphere)
+            InspectorLivingWorldSection(controls: model.livingWorld, isKeyboardUp: isSheet && isKeyboardUp)
+            if model.livingWorld.isEnabled {
+                InspectorWorldSection(world: model.workspace.world, isKeyboardUp: isSheet && isKeyboardUp)
+            }
         }
         .scrollDismissesKeyboard(.interactively)
         .task(watchKeyboard)

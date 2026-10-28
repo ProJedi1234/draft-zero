@@ -309,3 +309,30 @@ describe("importStoryCardsIntoStory", () => {
     expect(bus.events).toEqual([])
   })
 })
+
+test("vendor imports leave story features absent and all NPC opt-ins off", async () => {
+  await importer.importScenario(
+    {
+      json: scenarioText({
+        features: { world: { enabled: true } },
+        lorebook: {
+          entries: [
+            {
+              displayName: "Vell",
+              text: "A sailor.",
+              keys: ["vell"],
+              npc: true,
+            },
+          ],
+        },
+      }),
+    },
+    CTX
+  )
+  expect(insertedRows(0)[0].featuresJson).toBeUndefined()
+  expect(insertedRows(2)[0].npc).toBe(false)
+  db.reset()
+  await importer.importStoryCards({ json: cardsText() }, CTX)
+  expect(insertedRows(0)[0].featuresJson).toBeUndefined()
+  expect(insertedRows(1).map((row) => row.npc)).toEqual([false, false])
+})

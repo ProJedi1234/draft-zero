@@ -98,6 +98,7 @@ export function StoryActionsMenu({
       const res = await duplicateStoryOptimistic(
         story.id,
         {
+          features: story.features,
           id: story.id,
           title: story.title,
           description: story.description,

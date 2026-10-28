@@ -19,6 +19,7 @@ struct InspectorProseSection: View {
             TextField(title, text: $field.value, prompt: Text(placeholder), axis: .vertical)
                 .lineLimit(lines)
                 .focused($isFocused)
+                .accessibilityLabel(title)
             if field.saveFailed {
                 InspectorUnsavedRow(retry: retry, discard: field.discardEdit)
             }

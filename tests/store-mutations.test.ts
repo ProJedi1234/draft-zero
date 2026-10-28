@@ -19,6 +19,7 @@ import type { ActionResult, StorySummary } from "@/lib/types"
 /* -------------------------------------------------------------------------- */
 
 const canonical: StoryRecord = {
+  features: {},
   id: "11111111-1111-4111-8111-111111111111",
   title: "Server Title",
   description: "server description",
@@ -183,6 +184,7 @@ describe("optimistic patch shapes", () => {
       [
         "createdAt",
         "description",
+        "features",
         "genre",
         "id",
         "pending",
@@ -243,6 +245,7 @@ describe("optimistic patch shapes", () => {
     })
 
     const seed: StorySummary = {
+      features: {},
       id: STORY_ID,
       title: "Original",
       description: "d",

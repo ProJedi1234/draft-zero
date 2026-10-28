@@ -17,6 +17,7 @@ const CTX = { origin: "device-a" }
 
 function row(overrides: Record<string, unknown> = {}) {
   return {
+    npc: false,
     id: ENTRY,
     storyId: STORY,
     name: "Vell",
@@ -53,6 +54,7 @@ describe("createLorebookEntry", () => {
     if (!result.ok) return
     expect(lorebookEntryWriteOutput.parse(result.data).record.id).toBe(ENTRY)
     expect(db.argsOf(0, "values")?.[0]).toMatchObject({
+      npc: false,
       id: ENTRY,
       name: "Vell",
       category: "concept",
@@ -173,4 +175,22 @@ describe("deleteLorebookEntry", () => {
     const result = await lorebook.deleteLorebookEntry({ id: ENTRY }, CTX)
     expect(result.ok || result.code).toBe("not_found")
   })
+})
+
+test("NPC opt-in survives create, patch and the sync record", async () => {
+  db.next([row({ npc: true })])
+  const created = await lorebook.createLorebookEntry(
+    { storyId: STORY, name: "Vell", npc: true },
+    CTX
+  )
+  expect(created.ok && created.data.record.npc).toBe(true)
+  expect(db.argsOf(0, "values")?.[0]).toMatchObject({ npc: true })
+  expect(bus.events[0]).toMatchObject({ data: { npc: true } })
+  db.next([row({ npc: false })])
+  const updated = await lorebook.updateLorebookEntry(
+    { id: ENTRY, patch: { npc: false } },
+    CTX
+  )
+  expect(updated.ok && updated.data.record.npc).toBe(false)
+  expect(db.argsOf(1, "set")?.[0]).toMatchObject({ npc: false })
 })

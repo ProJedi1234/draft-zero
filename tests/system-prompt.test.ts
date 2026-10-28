@@ -17,6 +17,7 @@ import {
   NARRATOR_MECHANICS,
   resolveSystemPrompt,
 } from "@/lib/generation/system-prompt"
+import { MOCK_STORIES } from "@/lib/mock-data"
 import type { LorebookEntry, Story } from "@/lib/types"
 
 describe("resolveSystemPrompt", () => {
@@ -51,6 +52,7 @@ describe("NARRATOR_MECHANICS", () => {
     // Every optional block switched on at once, so the rendered prompt shows
     // each label renderPrompt knows how to emit.
     const story = {
+      features: { world: { enabled: true, pacing: "" } },
       id: "story",
       title: "Untitled Story",
       memory: "You are a smuggler.",
@@ -72,6 +74,7 @@ describe("NARRATOR_MECHANICS", () => {
       })),
     } as unknown as Story
     const lore: LorebookEntry = {
+      npc: false,
       id: "lore-1",
       storyId: "story",
       name: "The Gull",
@@ -85,16 +88,22 @@ describe("NARRATOR_MECHANICS", () => {
       updatedAt: "2026-01-01T00:00:00.000Z",
     }
 
-    const prompt = renderPrompt(
-      composeContext({ story, lorebookEntries: [lore] })
-    )
+    const context = composeContext({ story, lorebookEntries: [lore] })
+    const prompt = renderPrompt(context)
     const labels = [...prompt.matchAll(/^\[([^\]:]+)/gm)].map((m) => m[1])
 
     expect(new Set(labels)).toEqual(
-      new Set(["Memory", "Lore", "Story so far", "Story", "Author's note"])
+      new Set([
+        "Memory",
+        "Lore",
+        "Story so far",
+        "Story",
+        "World",
+        "Author's note",
+      ])
     )
     for (const label of labels) {
-      expect(NARRATOR_MECHANICS).toContain(`[${label}`)
+      expect(context.systemPrompt).toContain(`[${label}`)
     }
   })
 
@@ -104,4 +113,43 @@ describe("NARRATOR_MECHANICS", () => {
     expect(NARRATOR_MECHANICS).toContain("ends with narration")
     expect(NARRATOR_MECHANICS).not.toContain("the excerpt ends with one.")
   })
+})
+
+// Captured from feat/living-world before the server implementation.
+const BASE_SYSTEM_PROMPT =
+  "you are the narrator of an interactive adventure. the player plays the main character, written as \"you\"; you play the world and everyone else in it. continue the story like it never stopped, in the voice it already has. follow these rules:\n- present tense, second person\n- keep the reader inside the main character: what you see, hear and touch, up close\n- concrete, specific detail over summary and abstraction\n- when a character enters a scene, give them one memorable detail\n- convey emotion through sentence rhythm and what the narration notices, not by naming it\n- let the world push back: people want things of their own, plans meet resistance, not every attempt succeeds\n- dialogue sounds like the person speaking it — their background, mood and mannerisms. break grammar when they would\n- keep it fresh: do not reuse phrasing, images or sentence shapes from recent passages\n\nhow the story reaches you:\n- the user turn is the story so far, in labelled blocks. [Memory] and [Lore: …] are facts about the world. [Story so far] sums up what came before the excerpt. [Story] is the excerpt itself — its final paragraph may come after a [Lore: …] or [Author's note: …] block. the author's note is direction for the passage you are about to write: follow it, never mention it. none of these labels belong in your prose\n- lines beginning with > are the player's own turns, not narration. when the excerpt ends with one, carry it into your prose as it happens — narrate the action, and put their speech in quotes in the story — then continue into what it causes. when it ends with narration instead, pick up exactly where it stops, without retelling it\n- never write a > line yourself, and never take a further turn for the player. write only the prose that follows, with no > and no leading marker of any kind\n- unless the instructions above set a different length, write ONE paragraph, roughly 40 to 100 words. a second only if a distinct beat demands it, never a third. stop while the scene still has somewhere to go"
+
+test("disabled stories preserve the base system prompt byte for byte", () => {
+  for (const features of [{}, { world: { enabled: false, pacing: "" } }]) {
+    const story = { ...MOCK_STORIES[0], systemPrompt: null, features }
+    const context = composeContext({ story, lorebookEntries: [] })
+    expect(context.systemPrompt).toBe(BASE_SYSTEM_PROMPT)
+    expect(
+      context.systemPrompt.match(/how the story reaches you:/g)
+    ).toHaveLength(1)
+  }
+  expect(resolveSystemPrompt("Be terse.")).toBe(
+    "Be terse.\n\n" +
+      BASE_SYSTEM_PROMPT.slice(
+        BASE_SYSTEM_PROMPT.indexOf("how the story reaches you:")
+      )
+  )
+})
+
+test("enabled stories append one lowercase world mechanics bullet after resolving once", () => {
+  const prompt = composeContext({
+    story: {
+      ...MOCK_STORIES[0],
+      systemPrompt: "Be terse.",
+      features: { world: { enabled: true, pacing: "" } },
+    },
+    lorebookEntries: [],
+  }).systemPrompt
+  expect(
+    prompt.startsWith(resolveSystemPrompt("Be terse.") + "\n- [World: ")
+  ).toBe(true)
+  expect(prompt).toContain(
+    "keep each NPC's knowledge limited to their own experience"
+  )
+  expect(prompt.match(/how the story reaches you:/g)).toHaveLength(1)
 })

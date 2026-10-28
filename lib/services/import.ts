@@ -80,6 +80,7 @@ function loreRows(
     category: entry.category,
     keysJson: JSON.stringify(entry.keys),
     content: entry.content,
+    npc: entry.npc,
     enabled: entry.enabled,
     alwaysActive: entry.alwaysActive,
     priority: entry.priority,

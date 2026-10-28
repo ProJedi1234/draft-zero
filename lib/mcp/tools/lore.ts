@@ -61,6 +61,7 @@ const loreEntry = z.object({
     .number()
     .int()
     .describe("Higher wins when the lore budget is tight."),
+  npc: z.boolean(),
   enabled: z.boolean(),
   alwaysActive: z.boolean().describe("Rides every generation, trigger or not."),
 })
@@ -114,6 +115,7 @@ export const registerLoreGet: RegisterTool = (server) => {
             keys: entry.keys,
             content: entry.content,
             priority: entry.priority,
+            npc: entry.npc,
             enabled: entry.enabled,
             alwaysActive: entry.alwaysActive,
           }
@@ -140,6 +142,12 @@ const writeInput = z.object({
     ),
   content: z.string().optional(),
   priority: z.number().int().optional(),
+  npc: z
+    .boolean()
+    .optional()
+    .describe(
+      "Opt this character into living-world memory. Defaults to false."
+    ),
   enabled: z.boolean().optional(),
   alwaysActive: z.boolean().optional(),
 })
@@ -157,6 +165,7 @@ const CREATE_FIELDS = [
   "keys",
   "content",
   "priority",
+  "npc",
   "enabled",
   "alwaysActive",
 ] as const
@@ -222,6 +231,10 @@ export const registerLoreWrite: RegisterTool = (server) => {
             patch.priority = args.priority
             changed.push("priority")
           }
+          if (args.npc !== undefined && args.npc !== existing.npc) {
+            patch.npc = args.npc
+            changed.push("npc")
+          }
           if (args.enabled !== undefined && args.enabled !== existing.enabled) {
             patch.enabled = args.enabled
             changed.push("enabled")
@@ -277,6 +290,7 @@ export const registerLoreWrite: RegisterTool = (server) => {
             keys: args.keys ?? [],
             content: args.content ?? "",
             priority: args.priority ?? 50,
+            npc: args.npc ?? false,
             enabled: args.enabled ?? true,
             alwaysActive: args.alwaysActive ?? false,
           },

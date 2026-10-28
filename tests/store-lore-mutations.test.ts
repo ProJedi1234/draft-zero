@@ -16,6 +16,7 @@ import type { ActionResult, NewLorebookEntry } from "@/lib/types"
 const STORY_ID = "22222222-2222-4222-8222-222222222222"
 
 const canonical: LorebookEntryRecord = {
+  npc: false,
   id: "unused — replaced per call",
   storyId: STORY_ID,
   name: "Server Name",
@@ -67,7 +68,10 @@ const mockedActions = {
   ) => {
     calls.push({ name: "update", args: [id, patch, options] })
     if (!updateResult.ok) return updateResult
-    return { ok: true as const, data: { record: { ...canonical, id } } }
+    return {
+      ok: true as const,
+      data: { record: { ...updateResult.data.record, id } },
+    }
   },
   deleteLorebookEntry: async (
     id: string,
@@ -84,6 +88,7 @@ const mutations = await import("@/lib/store/lorebook-mutations")
 
 function draft(overrides: Partial<NewLorebookEntry> = {}): NewLorebookEntry {
   return {
+    npc: false,
     name: "Ash",
     category: "character",
     keys: ["ash"],
@@ -170,6 +175,36 @@ describe("startLorebookCreate", () => {
 })
 
 describe("updateLorebookEntryOptimistic", () => {
+  test("NPC opt-in reaches the server, confirms, and rolls back a refused opt-out", async () => {
+    const { id, settled } = mutations.startLorebookCreate(STORY_ID, draft())
+    await settled
+    updateResult = {
+      ok: true,
+      data: {
+        record: {
+          ...canonical,
+          npc: true,
+          updatedAt: "2099-01-02T00:00:00.000Z",
+        },
+      },
+    }
+
+    const pending = mutations.updateLorebookEntryOptimistic(id, { npc: true })
+    expect(clientStore.getLoreView(STORY_ID).entries[0]?.npc).toBe(true)
+    expect((await pending).ok).toBe(true)
+    expect(calls.find((call) => call.name === "update")?.args[1]).toEqual({
+      npc: true,
+    })
+    expect(clientStore.getLoreView(STORY_ID).entries[0]?.npc).toBe(true)
+
+    updateResult = { ok: false, error: "Couldn't save that." }
+    const refused = mutations.updateLorebookEntryOptimistic(id, { npc: false })
+    expect(clientStore.getLoreView(STORY_ID).entries[0]?.npc).toBe(false)
+    expect((await refused).ok).toBe(false)
+    expect(clientStore.getLoreView(STORY_ID).entries[0]?.npc).toBe(true)
+    expect(clientStore.getView().pendingCount).toBe(0)
+  })
+
   test("the edit is visible before the server answers", async () => {
     const { id, settled } = mutations.startLorebookCreate(STORY_ID, draft())
     await settled

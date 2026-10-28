@@ -25,13 +25,13 @@ export interface ActiveLoreEntry {
 }
 
 /**
- * The six things a prompt is assembled from, in the order they are sent.
+ * The sections a prompt is assembled from, in the order they are sent.
  *
  * "system" never appears in renderPrompt — it rides the system message — but it
  * is part of what the budget pays for, so it is a section like any other.
  */
 export type ContextSectionId =
-  "system" | "memory" | "lore" | "summary" | "story" | "authorsNote"
+  "system" | "memory" | "lore" | "summary" | "story" | "world" | "authorsNote"
 
 /** One labelled piece of the rendered user turn. See promptBlocks. */
 export interface PromptBlock {
@@ -62,6 +62,8 @@ export interface ContextFit {
 
 /** Fully composed generation context — everything a provider needs, provider-agnostic. */
 export interface ComposedContext {
+  /** Volatile living-world blocks. Absent in older saved contexts. */
+  world?: string[]
   /** Already resolved: the story's override, or the built-in default. Sent as the system message. */
   systemPrompt: string
   memory: string

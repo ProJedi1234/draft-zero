@@ -41,6 +41,7 @@ import { toast } from "sonner"
 import { scheduleLoreRevalidate } from "@/lib/store/lore-revalidate"
 import { scheduleStoreRevalidate } from "@/lib/store/revalidate"
 import { clientStore } from "@/lib/store/store"
+import { storyChanges } from "@/lib/sync/story-changes"
 import {
   atmosphereStatus,
   draftRelay,
@@ -110,6 +111,7 @@ export function useStorySync(): void {
             // revalidate is idempotent.
             scheduleStoreRevalidate(null)
             everConnected = true
+            storyChanges.publish(null)
             attempt = 0
             continue
           }
@@ -119,6 +121,7 @@ export function useStorySync(): void {
             continue
           }
           if (event.type === "change") {
+            storyChanges.publish(event.storyId)
             scheduleRefresh()
             if (!event.covered) {
               scheduleStoreRevalidate({

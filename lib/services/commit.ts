@@ -142,3 +142,8 @@ export function commitStoryDelete(
   revalidatePath("/", "layout")
   publishStoryDelete(id, version, origin)
 }
+
+/** Detached world passes publish only after their transaction has committed. */
+export function publishWorldChange(storyId: string): void {
+  publishBus({ kind: "change", storyId })
+}

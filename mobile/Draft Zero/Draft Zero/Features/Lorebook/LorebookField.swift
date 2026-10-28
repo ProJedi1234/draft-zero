@@ -3,14 +3,14 @@ import Foundation
 /// One editable field of a lorebook entry: the unit of dirty tracking, remote
 /// adoption and PATCH bodies, so a save only ever sends what the writer touched.
 nonisolated enum LorebookField: String, CaseIterable, Sendable {
-    case name, category, keys, content, enabled, alwaysActive, priority
+    case name, category, keys, content, enabled, alwaysActive, priority, npc
 
     /// Typing waits for a pause; switches and pickers save at once.
     var saveDelay: Duration {
         switch self {
         case .name, .keys, .content: .milliseconds(600)
         case .priority: .milliseconds(400)
-        case .category, .enabled, .alwaysActive: .zero
+        case .category, .enabled, .alwaysActive, .npc: .zero
         }
     }
 
@@ -18,7 +18,7 @@ nonisolated enum LorebookField: String, CaseIterable, Sendable {
     /// Typed text is kept instead, so a retry can still send it.
     var revertsOnFailure: Bool {
         switch self {
-        case .category, .enabled, .alwaysActive, .priority: true
+        case .category, .enabled, .alwaysActive, .priority, .npc: true
         case .name, .keys, .content: false
         }
     }
@@ -32,6 +32,7 @@ nonisolated enum LorebookField: String, CaseIterable, Sendable {
         case .enabled: .bool(draft.enabled)
         case .alwaysActive: .bool(draft.alwaysActive)
         case .priority: .number(Double(draft.priority))
+        case .npc: .bool(draft.npc)
         }
     }
 
@@ -45,6 +46,7 @@ nonisolated enum LorebookField: String, CaseIterable, Sendable {
         case .enabled: draft.enabled = entry.enabled
         case .alwaysActive: draft.alwaysActive = entry.alwaysActive
         case .priority: draft.priority = entry.priority
+        case .npc: draft.npc = entry.npc ?? false
         }
     }
 
@@ -58,6 +60,7 @@ nonisolated enum LorebookField: String, CaseIterable, Sendable {
         if old.enabled != new.enabled { fields.insert(.enabled) }
         if old.alwaysActive != new.alwaysActive { fields.insert(.alwaysActive) }
         if old.priority != new.priority { fields.insert(.priority) }
+        if old.npc != new.npc { fields.insert(.npc) }
         return fields
     }
 

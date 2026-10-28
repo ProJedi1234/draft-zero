@@ -65,6 +65,7 @@ export function startLorebookCreate(
     category: input.category,
     keys: input.keys ?? [],
     content: input.content ?? "",
+    npc: input.npc ?? false,
     enabled: input.enabled ?? true,
     alwaysActive: input.alwaysActive ?? false,
     priority: input.priority ?? 50,
@@ -115,6 +116,7 @@ export async function updateLorebookEntryOptimistic(
   if (patch.keys !== undefined) fields.keys = patch.keys
   if (patch.content !== undefined) fields.content = patch.content
   if (patch.enabled !== undefined) fields.enabled = patch.enabled
+  if (patch.npc !== undefined) fields.npc = patch.npc
   if (patch.alwaysActive !== undefined) fields.alwaysActive = patch.alwaysActive
   if (patch.priority !== undefined) fields.priority = patch.priority
 

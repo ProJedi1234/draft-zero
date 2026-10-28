@@ -1,6 +1,9 @@
 // lib/db/queries.ts — Read layer. Server-only: imported by server components
 // and server actions. Every call reads fresh from Postgres (no caching layer).
 
+import { readWorldData } from "@/lib/db/world"
+import { parseStoryFeatures } from "@/lib/world/features"
+
 import {
   and,
   asc,
@@ -40,6 +43,7 @@ import { resolveGenerationSettings } from "@/lib/generation/resolve"
 import { findMissingBlobs, resolveImageBackend } from "@/lib/images/blob-store"
 
 import type { StoryRecord } from "@/lib/store/records"
+import type { StoryFeatures } from "@/lib/services/world.schema"
 import { toStoryRecord } from "@/lib/store/records"
 
 import { getDb, type DrizzleDb, type DrizzleTx } from "./client"
@@ -847,7 +851,7 @@ export async function getStory(
     })
   }
 
-  return toStory(
+  const story = toStory(
     storyRow,
     profileRow ?? null,
     manuscript.rows,
@@ -861,6 +865,10 @@ export async function getStory(
     imageCosts,
     manuscript.window
   )
+  if (parseStoryFeatures(storyRow.featuresJson).world?.enabled) {
+    story.world = (await readWorldData(db, id)).state
+  }
+  return story
 }
 
 /**
@@ -910,6 +918,20 @@ export async function getStoryTitle(id: string): Promise<string | null> {
     .limit(1)
     .then((rows) => rows[0])
   return row?.title ?? null
+}
+
+/** A story's feature settings, or null when the story does not exist. */
+export async function getStoryFeatures(
+  id: string
+): Promise<StoryFeatures | null> {
+  const db = await getDb()
+  const row = await db
+    .select({ featuresJson: stories.featuresJson })
+    .from(stories)
+    .where(eq(stories.id, id))
+    .limit(1)
+    .then((rows) => rows[0])
+  return row ? parseStoryFeatures(row.featuresJson) : null
 }
 
 /**

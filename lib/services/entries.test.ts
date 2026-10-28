@@ -589,6 +589,7 @@ describe("loadEntryContext", () => {
 
   function story(): Story {
     return {
+      features: {},
       id: STORY,
       title: "Test",
       description: "",

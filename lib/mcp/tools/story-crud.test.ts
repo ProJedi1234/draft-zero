@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { installKeylessCatalog } from "@/lib/mcp/tools/test-catalog"
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
 import { captureBus, installFakeDb } from "@/lib/services/test-support"
+import type { StoryFeatures } from "@/lib/services/world.schema"
 
 /* -------------------------------------------------------------------------- */
 /* Mocks — declared before importing the module under test                   */
@@ -15,6 +16,7 @@ import { captureBus, installFakeDb } from "@/lib/services/test-support"
 
 /** A stories row as the service's insert or update returns it. */
 const STORY_ROW = {
+  featuresJson: null,
   id: "story-1",
   title: "Doomed Story",
   description: "",
@@ -38,6 +40,9 @@ const getStoryTitleMock = mock(
   async (_id: string) => "Doomed Story" as string | null
 )
 const countLivePassagesMock = mock(async (_id: string) => 0)
+const getStoryFeaturesMock = mock(
+  async (_id: string) => ({}) as StoryFeatures | null
+)
 
 installQueryMocks()
 installKeylessCatalog()
@@ -112,6 +117,7 @@ beforeEach(async () => {
   stubQueries({
     getStoryTitle: getStoryTitleMock,
     countLivePassages: countLivePassagesMock,
+    getStoryFeatures: getStoryFeaturesMock,
     getAppSettings: async () => ({ defaultProfileId: null }),
     listStoryRecords: listStoryRecordsMock,
   })
@@ -122,6 +128,7 @@ beforeEach(async () => {
   countLivePassagesMock.mockClear()
   getStoryTitleMock.mockImplementation(async () => "Doomed Story")
   countLivePassagesMock.mockImplementation(async () => 0)
+  getStoryFeaturesMock.mockImplementation(async () => ({}))
 })
 
 afterEach(() => bus.stop())
@@ -247,6 +254,20 @@ describe("duplicate_story", () => {
     return (db.argsOf(3, "values")?.[0] as { id: string }).id
   }
 
+  test("duplication preserves living-world settings and character opt-in", async () => {
+    const featuresJson = JSON.stringify({
+      world: { enabled: true, pacing: "Slow." },
+    })
+    db.next([{ ...STORY_ROW, featuresJson }])
+    db.next([])
+    db.next([{ id: "npc", storyId: "story-1", name: "Vell", npc: true }])
+    db.next([{ ...STORY_ROW, featuresJson, id: "copy" }])
+    db.next([])
+    await duplicateHandler()({ storyId: "story-1" }, makeCtx())
+    expect(db.argsOf(3, "values")?.[0]).toMatchObject({ featuresJson })
+    expect(db.argsOf(4, "values")?.[0]).toMatchObject([{ npc: true }])
+  })
+
   test("copies under the service's default title", async () => {
     scriptEmptyCopy()
     const result = (await duplicateHandler()(
@@ -318,6 +339,46 @@ describe("duplicate_story", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("update_story", () => {
+  test("writes features through the story service", async () => {
+    const { server, handlers } = makeFakeServer()
+    registerUpdateStory(server as never, undefined as never)
+    const features = { world: { enabled: true, pacing: "Take it slow." } }
+    db.next([{ ...STORY_ROW, featuresJson: JSON.stringify(features) }])
+    const result = (await handlers.get("update_story")!(
+      { storyId: "story-1", features },
+      makeCtx()
+    )) as { structuredContent: { changed: string[] } }
+    expect(updateSet(0)).toEqual({ featuresJson: JSON.stringify(features) })
+    expect(result.structuredContent.changed).toEqual(["features"])
+  })
+
+  test("keeps stored feature fields the call leaves out", async () => {
+    getStoryFeaturesMock.mockImplementation(async () => ({
+      world: { enabled: true, pacing: "Take it slow." },
+    }))
+    const { server, handlers } = makeFakeServer()
+    registerUpdateStory(server as never, undefined as never)
+    const merged = { world: { enabled: false, pacing: "Take it slow." } }
+    db.next([{ ...STORY_ROW, featuresJson: JSON.stringify(merged) }])
+    await handlers.get("update_story")!(
+      { storyId: "story-1", features: { world: { enabled: false } } },
+      makeCtx()
+    )
+    expect(updateSet(0)).toEqual({ featuresJson: JSON.stringify(merged) })
+  })
+
+  test("refuses features for a missing story before writing", async () => {
+    getStoryFeaturesMock.mockImplementation(async () => null)
+    const { server, handlers } = makeFakeServer()
+    registerUpdateStory(server as never, undefined as never)
+    const result = (await handlers.get("update_story")!(
+      { storyId: "gone", features: { world: { enabled: true } } },
+      makeCtx()
+    )) as { isError?: boolean }
+    expect(result.isError).toBe(true)
+    expect(db.statements).toEqual([])
+  })
+
   test("reports only the fields actually passed as changed", async () => {
     const { server, handlers } = makeFakeServer()
     registerUpdateStory(server as never, undefined as never)

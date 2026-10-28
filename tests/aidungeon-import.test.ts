@@ -279,6 +279,7 @@ describe("parseStoryCards — partial cards", () => {
   test("a card with neither title nor keys is still importable", () => {
     const data = parsed([{ value: "A rumour with no name.", type: "location" }])
     expect(data.lorebookEntries[0]).toEqual({
+      npc: false,
       name: "Untitled entry",
       category: "location",
       keys: [],

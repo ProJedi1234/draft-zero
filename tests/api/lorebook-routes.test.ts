@@ -17,6 +17,7 @@ const STORY = "11111111-1111-4111-8111-111111111111"
 const ENTRY = "22222222-2222-4222-8222-222222222222"
 
 const ROW = {
+  npc: false,
   id: ENTRY,
   storyId: STORY,
   name: "Vell",

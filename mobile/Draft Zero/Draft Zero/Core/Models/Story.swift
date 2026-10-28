@@ -9,6 +9,7 @@ nonisolated struct Story: Codable, Sendable, Hashable, Identifiable {
     }
 
     var id: String
+    var features: StoryFeatures? = nil
     var title: String
     var description: String
     var genre: String

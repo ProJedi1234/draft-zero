@@ -38,13 +38,20 @@ const inputSchema = z.object({
 /** Wire name for each internal ContextSectionId — see CONTEXT_SECTION_ORDER. */
 const SECTION_WIRE_NAME: Record<
   ContextSectionId,
-  "systemPrompt" | "memory" | "recap" | "lore" | "authorsNote" | "manuscript"
+  | "systemPrompt"
+  | "memory"
+  | "recap"
+  | "lore"
+  | "world"
+  | "authorsNote"
+  | "manuscript"
 > = {
   system: "systemPrompt",
   memory: "memory",
   lore: "lore",
   summary: "recap",
   story: "manuscript",
+  world: "world",
   authorsNote: "authorsNote",
 }
 
@@ -77,6 +84,7 @@ const outputSchema = z.object({
           "memory",
           "recap",
           "lore",
+          "world",
           "authorsNote",
           "manuscript",
         ]),

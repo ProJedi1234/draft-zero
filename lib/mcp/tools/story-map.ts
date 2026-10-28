@@ -16,6 +16,7 @@ import {
   structured,
   type RegisterTool,
 } from "@/lib/mcp/helpers"
+import { storyFeatures } from "@/lib/services/world.schema"
 
 const inputSchema = z.object({
   storyId: z.string().describe("Story id from list_stories."),
@@ -39,6 +40,7 @@ const outputSchema = z.object({
         id: z.string(),
         name: z.string(),
         keys: z.array(z.string()).describe("Trigger words."),
+        npc: z.boolean().describe("Opted into living-world memory."),
         enabled: z.boolean(),
         alwaysActive: z.boolean(),
       })
@@ -46,6 +48,9 @@ const outputSchema = z.object({
     .describe(
       "Index only — names and triggers, no content. Use lore_get for a body."
     ),
+  features: storyFeatures.describe(
+    "Per-story features. An absent feature is off. Change them with update_story."
+  ),
   firstPosition: z.number().int().describe("Lowest live slot; -1 when empty."),
   lastPosition: z.number().int().describe("Highest live slot; -1 when empty."),
   counts: z.object({
@@ -82,7 +87,7 @@ export const registerStoryMap: RegisterTool = (server) => {
     {
       title: "Story map",
       description:
-        "Everything about one story except its prose: recap, memory, author's note, lorebook index, position bounds, counts, and the profile and model it generates with. A few hundred tokens. Read this before any other story tool.",
+        "Everything about one story except its prose: recap, memory, author's note, lorebook index, features, position bounds, counts, and the profile and model it generates with. A few hundred tokens. Read this before any other story tool.",
       inputSchema,
       outputSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
@@ -122,9 +127,11 @@ export const registerStoryMap: RegisterTool = (server) => {
               id: entry.id,
               name: entry.name,
               keys: entry.keys,
+              npc: entry.npc,
               enabled: entry.enabled,
               alwaysActive: entry.alwaysActive,
             })),
+            features: story.features,
             firstPosition: bounds.empty ? -1 : bounds.first,
             lastPosition: bounds.empty ? -1 : bounds.last,
             counts: {

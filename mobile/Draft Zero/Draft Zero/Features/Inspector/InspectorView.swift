@@ -21,6 +21,7 @@ struct InspectorView: View {
             }
         }
         .environment(\.inspectorIsSheet, isSheet)
+        .noticeOverlay(isEnabled: isSheet)
         // A trailing column starts right of the window's leading edge; a sheet spans it.
         .onGeometryChange(for: Bool.self) { proxy in
             proxy.frame(in: .global).minX < 1

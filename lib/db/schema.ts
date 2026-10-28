@@ -19,6 +19,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core"
 
+import type { WorldPatchSource } from "@/lib/services/world.schema"
 import type { OpKind } from "@/lib/history/ops"
 import type {
   AtmosphereEngine,
@@ -35,6 +36,7 @@ export const stories = pgTable("stories", {
   title: text("title").notNull(),
   description: text("description").notNull().default(""),
   genre: text("genre").notNull().default(""),
+  featuresJson: text("features_json"),
   memory: text("memory").notNull().default(""),
   authorsNote: text("authors_note").notNull().default(""),
   // Nullable on purpose: NULL means "use the built-in narrator prompt", which
@@ -476,6 +478,28 @@ export const generationCalls = pgTable(
   ]
 )
 
+export const worldPatches = pgTable(
+  "world_patches",
+  {
+    id: text("id").primaryKey(),
+    storyId: text("story_id")
+      .notNull()
+      .references(() => stories.id, { onDelete: "cascade" }),
+    entryId: text("entry_id").references(() => storyEntries.id, {
+      onDelete: "cascade",
+    }),
+    source: text("source").notNull().$type<WorldPatchSource>(),
+    opsJson: text("ops_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("world_patches_story_id_idx").on(table.storyId),
+    uniqueIndex("world_patches_world_entry_idx")
+      .on(table.entryId)
+      .where(sql`${table.source} = 'world'`),
+  ]
+)
+
 export const lorebookEntries = pgTable(
   "lorebook_entries",
   {
@@ -489,6 +513,7 @@ export const lorebookEntries = pgTable(
     /** JSON-serialized string[] of trigger keys. */
     keysJson: text("keys_json").notNull(),
     content: text("content").notNull().default(""),
+    npc: boolean("npc").notNull().default(false),
     enabled: boolean("enabled").notNull().default(true),
     alwaysActive: boolean("always_active").notNull().default(false),
     priority: integer("priority").notNull().default(50),
@@ -747,3 +772,5 @@ export type NewStoryImageRow = typeof storyImages.$inferInsert
 export type AppSettingsRow = typeof appSettings.$inferSelect
 export type ModelProfileRow = typeof modelProfiles.$inferSelect
 export type NewModelProfileRow = typeof modelProfiles.$inferInsert
+
+export type WorldPatchRow = typeof worldPatches.$inferSelect

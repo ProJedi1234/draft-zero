@@ -13,6 +13,7 @@ final class InspectorModel {
     let imageModel: ServerSyncedValue<String?>
     let settings: StoryModelSettings
     let atmosphere: AtmosphereControls
+    let livingWorld: LivingWorldControls
     let nextContext: NextContextLoader
 
     init(workspace: StoryWorkspace, story: Story) {
@@ -24,6 +25,7 @@ final class InspectorModel {
         imageModel = ServerSyncedValue(story.imageModelId, version: version)
         settings = StoryModelSettings(workspace: workspace, story: story)
         atmosphere = AtmosphereControls(workspace: workspace, story: story)
+        livingWorld = LivingWorldControls(workspace: workspace, story: story)
         nextContext = NextContextLoader(storyId: workspace.storyId, api: workspace.api)
     }
 
@@ -48,7 +50,7 @@ final class InspectorModel {
     }
 
     /// True while the writer is typing in one of the prose fields.
-    var isTyping: Bool { memory.isFocused || authorsNote.isFocused }
+    var isTyping: Bool { memory.isFocused || authorsNote.isFocused || livingWorld.pacing.isFocused }
 
     /// Offers the story as the server now holds it to every control.
     func apply() {
@@ -59,6 +61,7 @@ final class InspectorModel {
         imageModel.receive(story.imageModelId, version: story.updatedAt)
         settings.apply()
         atmosphere.apply()
+        livingWorld.apply()
     }
 
     /// Sends every waiting edit, for leaving the screen or the app.
@@ -67,6 +70,8 @@ final class InspectorModel {
         await authorsNote.flush()
         await settings.flush()
         await atmosphere.flush()
+        await livingWorld.pacing.flush()
+        await workspace.world.flush()
     }
 
     /// Bound by the Keep summarizing switch; setting it saves.
