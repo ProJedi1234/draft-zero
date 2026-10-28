@@ -55,12 +55,42 @@ test("world_patch applies corrections through the real service", async () => {
     ops: [{ type: "set-clock", minutes: 90 }],
   })
   expect(result.structuredContent).toEqual({
-    state: { storyId: "world-mcp-tests", minutes: 90, npcs: [] },
+    storyId: "world-mcp-tests",
+    minutes: 90,
+    npcs: [],
   })
   expect(db.argsOf(4, "values")?.[0]).toMatchObject({
     source: "manual",
     entryId: null,
   })
+})
+test("world_patch returns only the NPCs it changed", async () => {
+  const npc = (id: string, name: string) => ({
+    id,
+    storyId: "world-mcp-tests",
+    name,
+    category: "character",
+    npc: true,
+    keysJson: "[]",
+    content: "",
+    enabled: true,
+    alwaysActive: false,
+    priority: 50,
+    createdAt: "0",
+    updatedAt: "0",
+  })
+  db.next([{ id: "world-mcp-tests" }])
+  db.next([])
+  db.next([npc("vell", "Vell"), npc("mara", "Mara")])
+  db.next([])
+  const result = await capture(registerWorldPatch).call({
+    storyId: "world-mcp-tests",
+    ops: [{ type: "set-mind", loreEntryId: "vell", mind: "The tide is late." }],
+  })
+  expect(result.structuredContent).toMatchObject({
+    npcs: [{ loreEntryId: "vell", mind: "The tide is late." }],
+  })
+  expect((result.structuredContent as { npcs: unknown[] }).npcs).toHaveLength(1)
 })
 test("world tools return actionable failures without structuredContent", async () => {
   expect(

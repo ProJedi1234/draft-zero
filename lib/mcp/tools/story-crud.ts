@@ -11,6 +11,7 @@ import { z } from "zod"
 
 import {
   countLivePassages,
+  getStoryFeatures,
   getStoryTitle,
   listModelProfiles,
 } from "@/lib/db/queries"
@@ -48,7 +49,10 @@ import {
   updateGenerationSettings,
   updateStoryMeta,
 } from "@/lib/services/stories"
-import { storyFeatures } from "@/lib/services/world.schema"
+import {
+  PACING_MAX_CHARS,
+  type StoryFeatures,
+} from "@/lib/services/world.schema"
 import {
   duplicateScopes,
   type UpdateGenerationSettingsInput,
@@ -209,14 +213,46 @@ export const registerDuplicateStory: RegisterTool = (server) => {
 /** What `profile` accepts, besides an id or a name, to leave every profile. */
 const CUSTOM = "custom"
 
+// No defaults here, unlike storyFeatures: an omitted field must mean "keep",
+// or turning the world off would also blank its pacing rules.
+const featuresPatch = z.object({
+  world: z
+    .object({
+      enabled: z.boolean().optional(),
+      pacing: z
+        .string()
+        .max(PACING_MAX_CHARS, "Pacing rules are too long.")
+        .optional()
+        .describe("Rules the story clock follows, in plain prose."),
+    })
+    .optional()
+    .describe("Living world: NPC memory and a story clock."),
+})
+
+/** Lays a features patch over the stored features, field by field. */
+function mergeFeatures(
+  current: StoryFeatures,
+  patch: z.infer<typeof featuresPatch>
+): StoryFeatures {
+  if (!patch.world) return current
+  const world = current.world ?? { enabled: false, pacing: "" }
+  return {
+    ...current,
+    world: {
+      enabled: patch.world.enabled ?? world.enabled,
+      pacing: patch.world.pacing ?? world.pacing,
+    },
+  }
+}
+
 const updateInput = z.object({
   storyId: z.string(),
   title: z.string().optional(),
   ...metaFields,
-  features: storyFeatures
+  features: featuresPatch
     .optional()
     .describe(
-      "Per-story feature settings. Replaces the feature object; omitted features are off."
+      "Per-story feature settings. Only the fields you pass change; story_map shows the current ones."
     ),
   profile: z
     .string()
@@ -317,7 +353,7 @@ export const registerUpdateStory: RegisterTool = (server) => {
     {
       title: "Update story",
       description:
-        "Change a story's title, description, genre, memory, author's note or system prompt — the same fields create_story takes — and which model writes it: follow a profile, or set a model and settings of its own. Only the fields you pass move. Synced to open browsers.",
+        "Change a story's title, description, genre, memory, author's note or system prompt — the same fields create_story takes — its features such as the living world, and which model writes it: follow a profile, or set a model and settings of its own. Only the fields you pass move. Synced to open browsers.",
       inputSchema: updateInput,
       outputSchema: updateOutput,
       annotations: {
@@ -338,7 +374,7 @@ export const registerUpdateStory: RegisterTool = (server) => {
 
         if (changed.length === 0) {
           throw new ToolInputError(
-            `Nothing to update — pass at least one of title, ${META_FIELDS.join(", ")}, profile, settings.`
+            `Nothing to update — pass at least one of title, ${META_FIELDS.join(", ")}, features, profile, settings.`
           )
         }
 
@@ -346,7 +382,13 @@ export const registerUpdateStory: RegisterTool = (server) => {
 
         const patch: UpdateStoryMetaInput["patch"] = {}
         if (fields.title !== undefined) patch.title = fields.title
-        if (fields.features !== undefined) patch.features = fields.features
+        if (fields.features !== undefined) {
+          const current = await getStoryFeatures(storyId)
+          if (current === null) {
+            throw new ToolInputError(`No story with id ${storyId}.`)
+          }
+          patch.features = mergeFeatures(current, fields.features)
+        }
         for (const field of META_FIELDS) {
           const value = fields[field]
           if (value !== undefined) patch[field] = value

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { installKeylessCatalog } from "@/lib/mcp/tools/test-catalog"
 import { installQueryMocks, stubQueries } from "@/lib/mcp/tools/test-queries"
 import { captureBus, installFakeDb } from "@/lib/services/test-support"
+import type { StoryFeatures } from "@/lib/services/world.schema"
 
 /* -------------------------------------------------------------------------- */
 /* Mocks — declared before importing the module under test                   */
@@ -39,6 +40,9 @@ const getStoryTitleMock = mock(
   async (_id: string) => "Doomed Story" as string | null
 )
 const countLivePassagesMock = mock(async (_id: string) => 0)
+const getStoryFeaturesMock = mock(
+  async (_id: string) => ({}) as StoryFeatures | null
+)
 
 installQueryMocks()
 installKeylessCatalog()
@@ -113,6 +117,7 @@ beforeEach(async () => {
   stubQueries({
     getStoryTitle: getStoryTitleMock,
     countLivePassages: countLivePassagesMock,
+    getStoryFeatures: getStoryFeaturesMock,
     getAppSettings: async () => ({ defaultProfileId: null }),
     listStoryRecords: listStoryRecordsMock,
   })
@@ -123,6 +128,7 @@ beforeEach(async () => {
   countLivePassagesMock.mockClear()
   getStoryTitleMock.mockImplementation(async () => "Doomed Story")
   countLivePassagesMock.mockImplementation(async () => 0)
+  getStoryFeaturesMock.mockImplementation(async () => ({}))
 })
 
 afterEach(() => bus.stop())
@@ -344,6 +350,33 @@ describe("update_story", () => {
     )) as { structuredContent: { changed: string[] } }
     expect(updateSet(0)).toEqual({ featuresJson: JSON.stringify(features) })
     expect(result.structuredContent.changed).toEqual(["features"])
+  })
+
+  test("keeps stored feature fields the call leaves out", async () => {
+    getStoryFeaturesMock.mockImplementation(async () => ({
+      world: { enabled: true, pacing: "Take it slow." },
+    }))
+    const { server, handlers } = makeFakeServer()
+    registerUpdateStory(server as never, undefined as never)
+    const merged = { world: { enabled: false, pacing: "Take it slow." } }
+    db.next([{ ...STORY_ROW, featuresJson: JSON.stringify(merged) }])
+    await handlers.get("update_story")!(
+      { storyId: "story-1", features: { world: { enabled: false } } },
+      makeCtx()
+    )
+    expect(updateSet(0)).toEqual({ featuresJson: JSON.stringify(merged) })
+  })
+
+  test("refuses features for a missing story before writing", async () => {
+    getStoryFeaturesMock.mockImplementation(async () => null)
+    const { server, handlers } = makeFakeServer()
+    registerUpdateStory(server as never, undefined as never)
+    const result = (await handlers.get("update_story")!(
+      { storyId: "gone", features: { world: { enabled: true } } },
+      makeCtx()
+    )) as { isError?: boolean }
+    expect(result.isError).toBe(true)
+    expect(db.statements).toEqual([])
   })
 
   test("reports only the fields actually passed as changed", async () => {

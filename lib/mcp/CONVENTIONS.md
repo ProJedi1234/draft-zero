@@ -5,22 +5,22 @@ The contract the tool modules follow, verified against
 Where the SDK's own docs disagree with what the handler does, the correction is called out
 as ⚠️.
 
-Read this before writing a tool. It is the contract between the twelve `lib/mcp/tools/*.ts`
+Read this before writing a tool. It is the contract between the thirteen `lib/mcp/tools/*.ts`
 modules; `server.ts`, `helpers.ts` and `app/api/mcp/route.ts` are shared and already written.
 
 ---
 
 ## 1. What is already wired
 
-| File | Owner | What it does |
-|---|---|---|
-| `app/api/mcp/route.ts` | shared | One module-scope `createMcpHandler`, exported as POST/GET/DELETE. `runtime = "nodejs"`. |
-| `lib/mcp/server.ts` | shared | Per-request `McpServer` factory; the fixed registrar order; `tools/list` cache hint; the `requestState` codec. |
-| `lib/mcp/helpers.ts` | shared | `structured`, `failed`, `runTool`, pagination, position ranges, compact formatters. |
-| `lib/mcp/model-settings.ts` | shared | The generation-settings fields, model-id check and profile lookup that `update_story` and the profile tools share. |
-| `lib/mcp/tools/*.ts` | one bundle each | Tool declarations and handlers. **Your file.** |
+| File                        | Owner           | What it does                                                                                                       |
+| --------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `app/api/mcp/route.ts`      | shared          | One module-scope `createMcpHandler`, exported as POST/GET/DELETE. `runtime = "nodejs"`.                            |
+| `lib/mcp/server.ts`         | shared          | Per-request `McpServer` factory; the fixed registrar order; `tools/list` cache hint; the `requestState` codec.     |
+| `lib/mcp/helpers.ts`        | shared          | `structured`, `failed`, `runTool`, pagination, position ranges, compact formatters.                                |
+| `lib/mcp/model-settings.ts` | shared          | The generation-settings fields, model-id check and profile lookup that `update_story` and the profile tools share. |
+| `lib/mcp/tools/*.ts`        | one bundle each | Tool declarations and handlers. **Your file.**                                                                     |
 
-To add a tool beyond the eighteen, you must edit `server.ts` — coordinate first. To
+To add a tool beyond the twenty, you must edit `server.ts` — coordinate first. To
 implement one that is, you only edit your own file.
 
 Packages installed for this: `@modelcontextprotocol/server@2.0.0` (pulls
@@ -41,7 +41,13 @@ import { runTool, structured, type RegisterTool } from "@/lib/mcp/helpers"
 
 const inputSchema = z.object({
   storyId: z.string(),
-  limit: z.number().int().min(1).max(100).optional().describe("Max entries. Default 10."),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe("Max entries. Default 10."),
 })
 
 const outputSchema = z.object({
@@ -53,8 +59,8 @@ export const registerRead: RegisterTool = (server, deps) => {
   server.registerTool(
     "read",
     {
-      title: "Read passages",           // human label for a UI
-      description: "…",                 // what the client MODEL reads. See §7.
+      title: "Read passages", // human label for a UI
+      description: "…", // what the client MODEL reads. See §7.
       inputSchema,
       outputSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
@@ -62,8 +68,11 @@ export const registerRead: RegisterTool = (server, deps) => {
     async (args, ctx) =>
       runTool("read", async () => {
         // args is typed from inputSchema — no parse call, the SDK validated it.
-        return structured(`positions 204–213 · 10 entries`, { entries, hasMore })
-      }),
+        return structured(`positions 204–213 · 10 entries`, {
+          entries,
+          hasMore,
+        })
+      })
   )
 }
 ```
@@ -93,7 +102,12 @@ content was provided"`. A shape mismatch is caught the same way. Since every too
 `outputSchema` (plan rule 6), every success goes through `structured()`:
 
 ```ts
-return structured("wrote position 214 · 180 words", { storyId, position: 214, kind: "narration", words: 180 })
+return structured("wrote position 214 · 180 words", {
+  storyId,
+  position: 214,
+  kind: "narration",
+  words: 180,
+})
 ```
 
 `content` contains the one-line summary followed by a text block with the serialized JSON
@@ -121,7 +135,7 @@ Therefore:
   lands there.
 - Things the model can fix — unknown id, empty range, a name matching no lore entry — are
   `throw new ToolInputError("No story with id abc123.")` or a direct `return failed("…")`. Say
-  what to do next: *"No lore entry named 'Vell'. Call story_map for the index."*
+  what to do next: _"No lore entry named 'Vell'. Call story_map for the index."_
 - Never attach `structuredContent` to an `isError` result. Output-schema validation correctly
   skips error results; adding structured content to one just re-opens the validation you dodged.
 
@@ -175,7 +189,7 @@ Mechanics worth knowing:
 - The codec's `bind` is `ctx.mcpReq.method`, which is `"tools/call"` for every tool and so
   cannot tell them apart. **Check `state.tool` yourself** — that check is the only thing stopping
   a seal minted by one tool from being replayed into another.
-- `acceptedContent(responses, key, schema)` returns the content only when the writer *accepted*.
+- `acceptedContent(responses, key, schema)` returns the content only when the writer _accepted_.
   Decline and cancel both read as `undefined`; use `inputResponse(responses, key)` if you need
   to tell the two apart.
 - `ttlSeconds` is 300. A confirmation left unanswered for six minutes has to be asked again.
@@ -217,8 +231,8 @@ journal and the sync bus behave identically.
 These are the reason the server is worth building; a tool that breaks them costs the writer
 tokens on every call.
 
-1. **Workflow-shaped, not CRUD.** Eighteen tools cover the whole surface. If you find yourself
-   wanting a nineteenth, the answer is usually a flag on an existing one.
+1. **Workflow-shaped, not CRUD.** Twenty tools cover the whole surface. If you find yourself
+   wanting a twenty-first, the answer is usually a flag on an existing one.
 2. **Compact by default.** Lists return ids and counts. Reads default to the tail (~10 entries).
    Searches return snippets (`snippet()`, ~160 chars), never passages. Detail is opt-in.
 3. **Map before manuscript.** `story_map` is the cheap orientation; other tools may assume the
@@ -231,7 +245,7 @@ tokens on every call.
 6. **Every tool declares `outputSchema` and returns `structuredContent`.** §3.
 7. **Registration order is fixed** and lives in `server.ts`. Reads, then writes, then destroy.
 
-Descriptions are the most-read text in the server: the client model sees all eighteen on every
+Descriptions are the most-read text in the server: the client model sees all twenty on every
 `tools/list`. Aim for one or two sentences — what it does, what it returns, when to reach for it
 over its neighbour. `read`'s description earns its length by naming its default (the tail) so the
 model does not send a range it did not need.
@@ -251,20 +265,20 @@ wants to be re-asked cheaply has to be cheap.
 
 From `@/lib/mcp/helpers`:
 
-| Helper | Use |
-|---|---|
-| `structured(summary, data)` | The only success return. |
-| `failed(reason)` | Model-visible failure; no structured content. |
-| `runTool(name, body)` | Wrap every handler body. §4. |
-| `ToolInputError` | Throw inside `runTool` for advice the model can act on. |
-| `resolveRange(input, bounds, defaultLimit)` | `from`/`to`/`limit` → inclusive window. Defaults to the tail; resolves `"start"` / `"end"`. |
-| `paginate(rows, cursor, limit)` | `{ items, nextCursor, total }` over an ordered array. |
-| `encodeCursor` / `decodeCursor` | When you page in SQL instead. |
-| `clampLimit(n)` | Keeps a client `limit` in `1..100`. |
-| `snippet(text, max?)` | Whitespace-collapsed, word-boundary truncation with an ellipsis. |
-| `matchSnippet(text, needle, radius?)` | A snippet windowed on WHERE the text matched. For search hits. |
-| `wordCount`, `plural`, `line`, `shortDate`, `usd` | Summary-line formatting. |
-| `MAX_PAGE_SIZE`, `SNIPPET_CHARS`, `MATCH_RADIUS` | The shared ceilings. Use them in `z.number().max(…)`. |
+| Helper                                            | Use                                                                                         |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `structured(summary, data)`                       | The only success return.                                                                    |
+| `failed(reason)`                                  | Model-visible failure; no structured content.                                               |
+| `runTool(name, body)`                             | Wrap every handler body. §4.                                                                |
+| `ToolInputError`                                  | Throw inside `runTool` for advice the model can act on.                                     |
+| `resolveRange(input, bounds, defaultLimit)`       | `from`/`to`/`limit` → inclusive window. Defaults to the tail; resolves `"start"` / `"end"`. |
+| `paginate(rows, cursor, limit)`                   | `{ items, nextCursor, total }` over an ordered array.                                       |
+| `encodeCursor` / `decodeCursor`                   | When you page in SQL instead.                                                               |
+| `clampLimit(n)`                                   | Keeps a client `limit` in `1..100`.                                                         |
+| `snippet(text, max?)`                             | Whitespace-collapsed, word-boundary truncation with an ellipsis.                            |
+| `matchSnippet(text, needle, radius?)`             | A snippet windowed on WHERE the text matched. For search hits.                              |
+| `wordCount`, `plural`, `line`, `shortDate`, `usd` | Summary-line formatting.                                                                    |
+| `MAX_PAGE_SIZE`, `SNIPPET_CHARS`, `MATCH_RADIUS`  | The shared ceilings. Use them in `z.number().max(…)`.                                       |
 
 Shared types: `RegisterTool`, `ToolDeps`, `RequestStatePayload`, `PositionArg`, `Page<T>`.
 
@@ -296,7 +310,7 @@ throws when called, so a spec whose tool reads it must stub it.
 
 ### The integration spec
 
-`lib/mcp/server.test.ts` builds the real factory and asks it `tools/list`: all eighteen names in
+`lib/mcp/server.test.ts` builds the real factory and asks it `tools/list`: all twenty names in
 the fixed order, an object `outputSchema` and `inputSchema` on each, and the annotations reads
 and destructive tools are supposed to carry. It never CALLS a tool, but importing the server reaches
 every service, which imports `"server-only"` — so it installs the fake db, which doubles that
@@ -312,9 +326,17 @@ const handler = createMcpHandler(createMcpServer)
 const res = await handler.fetch(
   new Request("http://localhost/api/mcp", {
     method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "read", arguments: { storyId } } }),
-  }),
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "read", arguments: { storyId } },
+    }),
+  })
 )
 ```
 

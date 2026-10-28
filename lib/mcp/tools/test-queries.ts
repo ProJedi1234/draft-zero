@@ -52,6 +52,7 @@ const DEFAULTS = {
   getLorebookEntry: async () => null,
   getManuscriptBounds: async () => ({ first: 0, last: -1, empty: true }),
   getStory: async () => null,
+  getStoryFeatures: async () => null,
   getStoryFull: async () => null,
   getStoryTitle: async () => null,
   getUsageAggregate: async () => EMPTY_USAGE,

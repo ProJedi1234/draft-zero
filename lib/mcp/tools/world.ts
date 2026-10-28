@@ -6,12 +6,33 @@ import {
 } from "@/lib/mcp/helpers"
 import { NO_ORIGIN } from "@/lib/services/context"
 import { applyWorldPatch, getWorldState } from "@/lib/services/world"
+import { z } from "zod"
+
 import {
   applyWorldPatchInput,
-  applyWorldPatchOutput,
   getWorldInput,
   getWorldOutput,
+  npcState,
+  type WorldOp,
 } from "@/lib/services/world.schema"
+
+// Returns only the NPCs the patch named, so a correction does not cost a
+// re-read of every memory in the story.
+const worldPatchOutput = z.object({
+  storyId: z.string(),
+  minutes: z.number().describe("The story clock after the patch."),
+  npcs: z
+    .array(npcState)
+    .describe(
+      "Each NPC the patch changed, in full. Empty for a clock-only patch."
+    ),
+})
+
+function touchedNpcs(ops: readonly WorldOp[]): Set<string> {
+  return new Set(
+    ops.flatMap((op) => ("loreEntryId" in op ? [op.loreEntryId] : []))
+  )
+}
 
 export const registerWorldState: RegisterTool = (server) => {
   server.registerTool(
@@ -42,9 +63,9 @@ export const registerWorldPatch: RegisterTool = (server) => {
     {
       title: "Correct living world",
       description:
-        "Apply manual world corrections: set-clock uses absolute minutes, set-mind replaces an NPC's thought, add-memory needs a caller-minted unique memory id and importance 1–5, and strike-memory removes by id. Read ids with world_state. advance-clock is refused. Anchored to the latest live generated passage, or null before one exists, so undoing past it removes these changes. Refused while a generation is running.",
+        "Apply manual world corrections: set-clock uses absolute minutes, set-mind replaces an NPC's thought, add-memory needs a caller-minted unique memory id and importance 1–5, and strike-memory removes by id. Read ids with world_state. advance-clock is refused. Anchored to the latest live generated passage, or null before one exists, so undoing past it removes these changes. Refused while a generation is running. Returns the clock and the NPCs it changed.",
       inputSchema: applyWorldPatchInput,
-      outputSchema: applyWorldPatchOutput,
+      outputSchema: worldPatchOutput,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -56,10 +77,13 @@ export const registerWorldPatch: RegisterTool = (server) => {
       runTool("world_patch", async () => {
         const result = await applyWorldPatch(args, NO_ORIGIN)
         if (!result.ok) throw new ToolInputError(result.error)
-        return structured(
-          `world corrected · ${result.data.state.minutes} minutes`,
-          result.data
-        )
+        const { state } = result.data
+        const touched = touchedNpcs(args.ops)
+        return structured(`world corrected · ${state.minutes} minutes`, {
+          storyId: state.storyId,
+          minutes: state.minutes,
+          npcs: state.npcs.filter((npc) => touched.has(npc.loreEntryId)),
+        })
       })
   )
 }
