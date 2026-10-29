@@ -18,7 +18,7 @@
 // priced this call"; the counts of those rows come back beside every total so
 // the UI can say "$0.42+" instead of presenting an undercount as exact.
 
-import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm"
 
 import {
   kindsForPart,
@@ -179,9 +179,11 @@ async function readPerTurn(
       and(
         eq(generationCalls.storyId, storyId),
         settled,
-        or(
-          eq(generationCalls.origVariantGroupId, slot),
-          eq(generationCalls.subjectGroupId, slot)
+        // One key, so the join can hash. The columns never overlap: only
+        // background calls carry a subject, and they never become passages.
+        eq(
+          sql`coalesce(${generationCalls.subjectGroupId}, ${generationCalls.origVariantGroupId})`,
+          slot
         )
       )
     )
