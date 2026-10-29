@@ -913,6 +913,7 @@ describe("the run registry and loop", () => {
       storyId,
       runId,
       startedAt: expect.any(String),
+      kind: "text",
     })
     // The server's clock, not the client's — a device that connects late must
     // count from here rather than from when it happened to look.

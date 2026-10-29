@@ -32,12 +32,19 @@ export interface RunStatus {
   state: RunMarkState
   /** Server start time for a working story, so the row can count up. Null otherwise. */
   startedAt: string | null
+  /** What a working story is making. Null otherwise. */
+  kind: ActiveRun["kind"] | null
 }
 
 /** How a run ended, until the writer opens that story and spends it. */
 export type UnseenEnding = Extract<RunMarkState, "done" | "failed">
 
-const IDLE: RunStatus = { state: "idle", startedAt: null }
+const IDLE: RunStatus = { state: "idle", startedAt: null, kind: null }
+
+/** The verb for a working story, which may be streaming prose or drawing a picture. */
+export function runVerb(run: RunStatus): string {
+  return run.kind === "image" ? "drawing" : "writing"
+}
 
 export function markFor(status: RunEndStatus): UnseenEnding {
   // A run the writer stopped on purpose is not news, and marking it would
@@ -134,9 +141,10 @@ export function useRunStatus(
       const run = running.get(storyId)
       // Running outranks an unseen ending: a story that finished and started
       // again is working, and the mark for the older run is stale.
-      if (run) return { state: "working", startedAt: run.startedAt }
+      if (run)
+        return { state: "working", startedAt: run.startedAt, kind: run.kind }
       const mark = current[storyId]
-      return mark ? { state: mark, startedAt: null } : IDLE
+      return mark ? { state: mark, startedAt: null, kind: null } : IDLE
     },
     [running, current]
   )

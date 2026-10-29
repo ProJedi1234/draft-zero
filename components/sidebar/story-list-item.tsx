@@ -8,11 +8,8 @@ import type { StorySummary } from "@/lib/types"
 import type { StoryView } from "@/lib/store/store"
 import { formatRelativeDate } from "@/lib/format"
 import { useElapsed } from "@/hooks/use-elapsed"
-import type { RunStatus } from "@/hooks/use-run-status"
-import {
-  StoryRunMark,
-  type RunMarkState,
-} from "@/components/sidebar/story-run-mark"
+import { runVerb, type RunStatus } from "@/hooks/use-run-status"
+import { StoryRunMark } from "@/components/sidebar/story-run-mark"
 import {
   SidebarMenuAction,
   SidebarMenuButton,
@@ -31,13 +28,13 @@ import { StoryActionsMenu } from "@/components/story/story-actions-menu"
  */
 function subtitleFor(
   story: StorySummary,
-  state: RunMarkState,
+  run: RunStatus,
   elapsed: string | null
 ): string {
-  if (state === "working")
-    return elapsed === null ? "writing" : `writing · ${elapsed}`
-  if (state === "done") return "new passage"
-  if (state === "failed") return "stopped"
+  if (run.state === "working")
+    return elapsed === null ? runVerb(run) : `${runVerb(run)} · ${elapsed}`
+  if (run.state === "done") return "new passage"
+  if (run.state === "failed") return "stopped"
   return `${story.genre ? `${story.genre} · ` : ""}${formatRelativeDate(story.updatedAt)}`
 }
 
@@ -82,7 +79,7 @@ export function StoryListItem({
               run.state === "failed" && "text-destructive"
             )}
           >
-            {subtitleFor(story, run.state, elapsed)}
+            {subtitleFor(story, run, elapsed)}
           </span>
         </div>
       </SidebarMenuButton>

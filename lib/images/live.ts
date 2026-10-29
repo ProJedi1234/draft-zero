@@ -119,6 +119,7 @@ export function listActiveImageRuns(): ActiveRun[] {
     storyId: run.storyId,
     runId: run.runId,
     startedAt: run.startedAt,
+    kind: "image",
   }))
 }
 

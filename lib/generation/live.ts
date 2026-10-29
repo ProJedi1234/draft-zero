@@ -206,6 +206,7 @@ export function listActiveRuns(): ActiveRun[] {
     storyId: run.storyId,
     runId: run.runId,
     startedAt: run.startedAt,
+    kind: "text",
   }))
 }
 

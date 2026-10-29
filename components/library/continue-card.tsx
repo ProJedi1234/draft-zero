@@ -6,7 +6,7 @@ import { ArrowRight } from "lucide-react"
 import { formatRelativeDate } from "@/lib/format"
 import type { StoryView } from "@/lib/store/store"
 import { useElapsed } from "@/hooks/use-elapsed"
-import type { RunStatus } from "@/hooks/use-run-status"
+import { runVerb, type RunStatus } from "@/hooks/use-run-status"
 import { tintVars } from "@/components/library/tint"
 
 /**
@@ -35,8 +35,8 @@ export function ContinueCard({
   const meta =
     run.state === "working"
       ? elapsed === null
-        ? "writing now"
-        : `writing · ${elapsed}`
+        ? `${runVerb(run)} now`
+        : `${runVerb(run)} · ${elapsed}`
       : formatRelativeDate(story.updatedAt)
 
   return (
