@@ -120,6 +120,7 @@ test("uses summarizer settings, present cards and player turn; validates and com
   expect(r.opened[0]).toMatchObject({
     requestKind: "world",
     modelId: "ollama:test",
+    subjectGroupId: passage.variantGroupId,
   })
   expect(r.requests[0]).toMatchObject({
     modelId: "ollama:test",

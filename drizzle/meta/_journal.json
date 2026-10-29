@@ -232,6 +232,13 @@
       "when": 1792970782934,
       "tag": "0032_sudden_swarm",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793235001977,
+      "tag": "0033_ledger_subject_group",
+      "breakpoints": true
     }
   ]
 }

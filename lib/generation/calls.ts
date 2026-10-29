@@ -45,6 +45,8 @@ export interface CallStart {
   thinking: ThinkingLevel | null
   /** The story's pinned endpoint tag, or null for Auto routing. */
   providerName: string | null
+  /** For a call that makes no passage, the slot it was about. */
+  subjectGroupId?: string | null
 }
 
 /**
@@ -66,6 +68,7 @@ export async function recordCallStarted(call: CallStart): Promise<void> {
       storyId: call.storyId,
       origStoryId: call.origStoryId,
       storyEntryId: null,
+      subjectGroupId: call.subjectGroupId ?? null,
       storyTitle: call.storyTitle,
       requestKind: call.requestKind,
       modelId: call.modelId,
