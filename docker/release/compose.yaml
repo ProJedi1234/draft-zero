@@ -1,0 +1,69 @@
+# compose.yaml — run a published Draft Zero release. Attached to every GitHub
+# release with the image tag pinned to that release.
+#
+#   mv env.example .env      # then set POSTGRES_PASSWORD
+#   docker compose up -d
+#
+# Unlike the dev stack at the repo root, nothing here builds from source: the
+# app and the migrate one-shot both run the published image.
+
+name: draft-zero
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: draft_zero
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: draft_zero
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U draft_zero -d draft_zero"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  # The app never migrates itself (see docs/setup.md), so every `up` applies
+  # pending migrations here first and the app waits for a clean exit.
+  migrate:
+    image: ghcr.io/projedi1234/draft-zero:${DRAFT_ZERO_VERSION:-latest}
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://draft_zero:${POSTGRES_PASSWORD}@postgres:5432/draft_zero
+    command: ["bun", "run", "db:migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    image: ghcr.io/projedi1234/draft-zero:${DRAFT_ZERO_VERSION:-latest}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://draft_zero:${POSTGRES_PASSWORD}@postgres:5432/draft_zero
+    # Loopback by default because the app has no login: anyone who can reach
+    # the port can read every story and spend the saved OpenRouter key.
+    ports:
+      - "${DRAFT_ZERO_BIND:-127.0.0.1:3000}:3000"
+    volumes:
+      - app-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:
+  app-data:
