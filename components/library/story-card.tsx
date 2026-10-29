@@ -5,7 +5,7 @@ import Link from "next/link"
 import { formatRelativeDate } from "@/lib/format"
 import type { StoryView } from "@/lib/store/store"
 import { useElapsed } from "@/hooks/use-elapsed"
-import type { RunStatus } from "@/hooks/use-run-status"
+import { runVerb, type RunStatus } from "@/hooks/use-run-status"
 import { Button } from "@/components/ui/button"
 import { StoryRunMark } from "@/components/sidebar/story-run-mark"
 import { StoryActionsMenu } from "@/components/story/story-actions-menu"
@@ -26,8 +26,8 @@ function metaFor(
   const head =
     run.state === "working"
       ? elapsed === null
-        ? "writing"
-        : `writing · ${elapsed}`
+        ? runVerb(run)
+        : `${runVerb(run)} · ${elapsed}`
       : run.state === "done"
         ? "new passage"
         : run.state === "failed"
@@ -104,7 +104,7 @@ export function StoryCard({
       {story.pending ? null : (
         <>
           {/* Status reaches a screen reader through the meta line above, which
-              already says "writing" in words. */}
+              already says "writing" or "drawing" in words. */}
           <StoryRunMark state={run.state} className="shrink-0" />
           <StoryActionsMenu
             story={story}

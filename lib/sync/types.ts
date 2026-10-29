@@ -311,6 +311,8 @@ export interface ActiveRun {
    *  from when it happened to look — a phone that just woke must not restart
    *  the clock on a run that has been going for twenty minutes. */
   startedAt: string
+  /** Prose or a picture, so the library can say "writing" or "drawing". */
+  kind: "text" | "image"
 }
 
 /** Keepalive cadence for both channels; silence past ~2 intervals means the socket is dead. */
