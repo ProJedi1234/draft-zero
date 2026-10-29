@@ -143,6 +143,8 @@ export interface DeriveRunFrame {
   excludedLoreIds: string[]
   /** The prompt so far, compressed the way RunFrame compresses prose. */
   text: string
+  /** Reasoning characters seen so far, so an attacher lands in the thinking phase. */
+  reasoningChars: number
 }
 
 /**
@@ -163,6 +165,8 @@ export type DeriveRunWireEvent =
   | DeriveRunFrame
   /** One increment. `value` is the delta; the frame above carried the history. */
   | { type: "text"; value: string }
+  /** The model reasoned. The words stay server-side; the count is the signal. */
+  | { type: "reasoning"; chars: number }
   | { type: "ping" }
   | DeriveRunEndFrame
 

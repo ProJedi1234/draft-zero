@@ -41,6 +41,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { RetryButton } from "@/components/story/retry-profile-menu"
+import { useElapsedSeconds } from "@/components/story/generation-caret"
 import {
   Popover,
   PopoverContent,
@@ -140,6 +141,7 @@ export function Composer({
   excludedLoreIds,
   onToggleLore,
   deriving,
+  deriveThinking,
   derivedBrief,
   derivedExcludedLoreIds,
   markDevelopedRef,
@@ -203,6 +205,8 @@ export function Composer({
    * happened here or on the writer's phone.
    */
   deriving: boolean
+  /** The develop's model is reasoning and has written nothing yet. */
+  deriveThinking: boolean
   /**
    * The brief the live — or most recently finished — develop is answering, or
    * null if this device has not seen one. Not the same thing as `value`: a
@@ -753,11 +757,17 @@ export function Composer({
                   id="developed-prompt-label"
                   className="text-[0.625rem] tracking-widest text-muted-foreground uppercase"
                 >
-                  {deriving
-                    ? "Developing…"
-                    : laneStale
-                      ? "Brief changed — ↵ develops again"
-                      : "Developed prompt — ↵ draws"}
+                  {deriving ? (
+                    deriveThinking ? (
+                      <DeriveThinkingLabel />
+                    ) : (
+                      "Developing…"
+                    )
+                  ) : laneStale ? (
+                    "Brief changed — ↵ develops again"
+                  ) : (
+                    "Developed prompt — ↵ draws"
+                  )}
                 </span>
               </div>
               {/* A raw textarea rather than <Textarea>, because this is machine
@@ -881,7 +891,9 @@ export function Composer({
               miss entirely. */}
           <span role="status" aria-live="polite" className="sr-only">
             {deriving
-              ? "Developing the image prompt."
+              ? deriveThinking
+                ? "Thinking before writing the image prompt."
+                : "Developing the image prompt."
               : laneAnnouncement
                 ? "Image prompt ready. Press Enter to draw."
                 : ""}
@@ -1294,5 +1306,30 @@ function StyleButton({
         />
       </PopoverContent>
     </Popover>
+  )
+}
+
+/**
+ * The lane's label while the develop's model reasons. Its own component so the
+ * once-a-second clock re-renders this line, not the whole composer.
+ */
+function DeriveThinkingLabel() {
+  const seconds = useElapsedSeconds(true)
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      Thinking
+      <span aria-hidden className="inline-flex items-end gap-0.5">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="size-[3px] bg-primary/60 motion-safe:animate-dot-hop"
+            style={{ animationDelay: `${i * 160}ms` }}
+          />
+        ))}
+      </span>
+      <span className="font-mono tracking-normal normal-case tabular-nums">
+        {seconds}s
+      </span>
+    </span>
   )
 }
