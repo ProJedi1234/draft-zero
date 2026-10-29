@@ -288,7 +288,14 @@ export function StoryHeader({
           it, and two indicators for one job is one too many. */}
       {inspectorOpen ? null : <AtmosphereChip storyId={story.id} />}
       <SaveStatusChip />
-      <CostChip profile={costProfile} span={span} />
+      <CostChip
+        profile={costProfile}
+        span={span}
+        memory={{
+          world: story.features.world?.enabled ?? false,
+          recap: story.summarize,
+        }}
+      />
       <Tooltip>
         {/* The trigger renders the anchor directly. Wrapping it in <Button>
             instead would make Base UI's button expect native <button>

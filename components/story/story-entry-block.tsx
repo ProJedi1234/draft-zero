@@ -126,6 +126,7 @@ export const StoryEntryBlock = React.memo(function StoryEntryBlock({
   return (
     <div
       data-source={entry.source}
+      data-entry-id={entry.id}
       className={cn(
         "group relative -mx-4 px-4 py-3 transition-colors",
         entry.source === "user" && "border-l-2 border-story-accent",

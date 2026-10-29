@@ -207,6 +207,12 @@ describe("recordCallStarted", () => {
     expect(row.providerName).toBe("Anthropic")
     // Claimed later, by the write that persists the passage — never here.
     expect(row.storyEntryId).toBeNull()
+    expect(row.subjectGroupId).toBeNull()
+  })
+
+  test("a background call keeps the slot it was about", async () => {
+    await recordCallStarted({ ...START, subjectGroupId: "slot-7" })
+    expect(inserts[0].subjectGroupId).toBe("slot-7")
   })
 
   test("a call whose story is gone is still a call", async () => {

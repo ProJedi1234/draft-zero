@@ -397,6 +397,9 @@ export const generationCalls = pgTable(
       onDelete: "set null",
     }),
     origImageGroupId: text("orig_image_group_id"),
+    // The slot a background call was about, so a turn's cost can include the
+    // world pass it caused. No FK, same afterlife as orig_variant_group_id.
+    subjectGroupId: text("subject_group_id"),
     /** Survives story deletion so a global ledger still reads as English. */
     storyTitle: text("story_title"),
     /** What the writer asked for. */

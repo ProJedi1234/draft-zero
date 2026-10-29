@@ -186,8 +186,12 @@ export interface StoryCostProfile {
   completionTokens: number
   /** Spend by model, descending. */
   perModel: ModelShareRow[]
-  /** Spend per surviving passage, in manuscript order — the sparkline's data. */
+  /** Kept-take cost per surviving passage. The native ledger's sparkline still reads it. */
   perEntry: EntrySpendRow[]
+  /** What the money bought, in SPEND_PURPOSES order. Purposes with no calls are absent. */
+  perPurpose: PurposeSpendRow[]
+  /** Every call a surviving passage caused, in manuscript order. */
+  perTurn: TurnSpendRow[]
 }
 
 export interface ModelShareRow {
@@ -200,6 +204,48 @@ export interface EntrySpendRow {
   entryId: string
   position: number
   costUsd: string | null
+}
+
+/** A line of the ledger. See SPEND_PART_BY_KIND for which request kinds land on each. */
+export type SpendPart =
+  | "take"
+  | "reroll"
+  | "image"
+  | "image-prompt"
+  | "world"
+  | "recap"
+  | "atmosphere"
+
+export type SpendPurpose = "story" | "pictures" | "memory" | "atmosphere"
+
+export interface SpendFigure {
+  costUsd: string
+  calls: number
+  unpricedCalls: number
+}
+
+export interface PurposeSpendRow extends SpendFigure {
+  purpose: SpendPurpose
+  /** The purpose's own lines, in SPEND_PARTS order. */
+  parts: (SpendFigure & { part: SpendPart })[]
+  /** The models that did this job, most expensive first. */
+  models: (SpendFigure & { modelId: string })[]
+}
+
+/**
+ * One passage's slot and everything spent on it. A call the slot never kept
+ * (an aborted re-roll, a world pass from before the link existed) is in the
+ * totals but not here.
+ */
+export interface TurnSpendRow {
+  entryId: string
+  position: number
+  /** The generate or continue call(s) that opened the slot. NULL when none was priced. */
+  takeUsd: string | null
+  rerollUsd: string | null
+  rerolls: number
+  worldUsd: string | null
+  unpricedCalls: number
 }
 
 /** The "where am I right now" numbers, all UTC-day bucketed. */

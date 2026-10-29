@@ -234,6 +234,7 @@ async function worldOnce(
     modelId,
     thinking: summarizer.thinking,
     providerName: summarizer.providerTag,
+    subjectGroupId: passage.variantGroupId,
   })
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 60_000)

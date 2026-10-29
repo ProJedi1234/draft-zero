@@ -18,8 +18,15 @@
 // priced this call"; the counts of those rows come back beside every total so
 // the UI can say "$0.42+" instead of presenting an undercount as exact.
 
-import { and, asc, eq, isNull, ne, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm"
 
+import {
+  kindsForPart,
+  SPEND_PART_BY_KIND,
+  SPEND_PARTS,
+  SPEND_PURPOSE_BY_PART,
+  SPEND_PURPOSES,
+} from "@/lib/spend-purpose"
 import { zonedDayStart } from "@/lib/time-zone"
 import type {
   EntrySpendRow,
@@ -27,9 +34,13 @@ import type {
   ImageModelSpendRow,
   ModelShareRow,
   ModelSpendRow,
+  PurposeSpendRow,
   SpendDay,
+  SpendPart,
+  SpendPurpose,
   StoryCostProfile,
   StorySpendRow,
+  TurnSpendRow,
 } from "@/lib/types"
 
 import { getDb } from "./client"
@@ -68,10 +79,130 @@ function dayKey(timeZone: string) {
   return sql<string>`to_char(${generationCalls.createdAt}::timestamptz at time zone ${timeZone}::text, 'YYYY-MM-DD')`
 }
 
+/** `case request_kind when 'generate' then 'take' … end`, from the shared map. */
+function kindCase(to: (kind: keyof typeof SPEND_PART_BY_KIND) => string) {
+  // Inlined rather than bound: the values are code constants, never input.
+  const arms = Object.keys(SPEND_PART_BY_KIND).map(
+    (kind) =>
+      `when '${kind}' then '${to(kind as keyof typeof SPEND_PART_BY_KIND)}'`
+  )
+  return sql.raw(`case "generation_calls"."request_kind" ${arms.join(" ")} end`)
+}
+
+/** The calls that land on one ledger line, as a FILTER predicate. */
+function partFilter(part: SpendPart) {
+  return inArray(generationCalls.requestKind, kindsForPart(part))
+}
+
 /**
- * Everything the story-header ledger shows, in three round trips.
+ * Purpose totals, each purpose's lines, and the models behind it, summed in
+ * one GROUPING SETS pass so no figure is ever added up in JS.
+ */
+async function readPerPurpose(
+  db: Awaited<ReturnType<typeof getDb>>,
+  scope: ReturnType<typeof and>
+): Promise<PurposeSpendRow[]> {
+  const rows = await db
+    .select({
+      purpose: sql<SpendPurpose | null>`${kindCase(
+        (kind) => SPEND_PURPOSE_BY_PART[SPEND_PART_BY_KIND[kind]]
+      )}`.as("purpose"),
+      part: sql<SpendPart | null>`${kindCase(
+        (kind) => SPEND_PART_BY_KIND[kind]
+      )}`.as("part"),
+      modelId: sql<string | null>`${generationCalls.modelId}`.as("model"),
+      costUsd: totalUsd,
+      calls: callCount,
+      unpricedCalls: unpricedCount,
+    })
+    .from(generationCalls)
+    .where(scope)
+    .groupBy(
+      sql`grouping sets ((purpose), (purpose, part), (purpose, "generation_calls"."model_id"))`
+    )
+    .orderBy(sql`sum(${generationCalls.costUsd}) desc nulls last`)
+
+  return SPEND_PURPOSES.flatMap((purpose) => {
+    const mine = rows.filter((row) => row.purpose === purpose)
+    const total = mine.find((row) => row.part === null && row.modelId === null)
+    if (!total) return []
+    const figure = (row: (typeof rows)[number]) => ({
+      costUsd: row.costUsd,
+      calls: row.calls,
+      unpricedCalls: row.unpricedCalls,
+    })
+    return [
+      {
+        purpose,
+        ...figure(total),
+        parts: SPEND_PARTS.flatMap((part) => {
+          const row = mine.find((r) => r.part === part && r.modelId === null)
+          return row ? [{ part, ...figure(row) }] : []
+        }),
+        models: mine
+          .filter((row) => row.part === null && row.modelId !== null)
+          .map((row) => ({ modelId: row.modelId as string, ...figure(row) })),
+      },
+    ]
+  })
+}
+
+/**
+ * Every surviving passage and what its slot cost: the take that opened it, the
+ * re-rolls tried in it, and the world passes it caused.
+ */
+async function readPerTurn(
+  db: Awaited<ReturnType<typeof getDb>>,
+  storyId: string
+): Promise<TurnSpendRow[]> {
+  const slot = storyEntries.variantGroupId
+  const sumOf = (part: SpendPart) =>
+    sql<
+      string | null
+    >`(sum(${generationCalls.costUsd}) filter (where ${partFilter(part)}))::text`
+
+  return db
+    .select({
+      entryId: storyEntries.id,
+      position: storyEntries.position,
+      takeUsd: sumOf("take"),
+      rerollUsd: sumOf("reroll"),
+      rerolls: sql<number>`(count(${generationCalls.id}) filter (where ${partFilter("reroll")}))::int`,
+      worldUsd: sumOf("world"),
+      // count(id), not count(*): a passage with no calls still yields one
+      // all-NULL joined row, and that is not an unpriced call.
+      unpricedCalls: sql<number>`(count(${generationCalls.id}) filter (where ${generationCalls.costUsd} is null))::int`,
+    })
+    .from(storyEntries)
+    .leftJoin(
+      generationCalls,
+      and(
+        eq(generationCalls.storyId, storyId),
+        settled,
+        // One key, so the join can hash. The columns never overlap: only
+        // background calls carry a subject, and they never become passages.
+        eq(
+          sql`coalesce(${generationCalls.subjectGroupId}, ${generationCalls.origVariantGroupId})`,
+          slot
+        )
+      )
+    )
+    .where(
+      and(
+        eq(storyEntries.storyId, storyId),
+        isNull(storyEntries.deletedAt),
+        eq(storyEntries.isActive, true),
+        eq(storyEntries.source, "generated")
+      )
+    )
+    .groupBy(storyEntries.id)
+    .orderBy(asc(storyEntries.position))
+}
+
+/**
+ * Everything the story-header ledger shows, in five parallel round trips.
  *
- * `perEntry` is the sparkline's data and is deliberately LEFT-joined from the
+ * `perEntry` is the native sparkline's data and is deliberately LEFT-joined from the
  * manuscript side: a passage with no ledger row (imported, pre-ledger, or from
  * a call the recorder missed) is a point with an unknown cost, not a point at
  * zero and not a missing point.
@@ -82,7 +213,7 @@ export async function getStoryCostProfile(
   const db = await getDb()
   const scope = and(eq(generationCalls.storyId, storyId), settled)
 
-  const [totals, perModel, perEntry] = await Promise.all([
+  const [totals, perModel, perEntry, perPurpose, perTurn] = await Promise.all([
     db
       .select({
         totalUsd,
@@ -125,6 +256,8 @@ export async function getStoryCostProfile(
         )
       )
       .orderBy(asc(storyEntries.position)),
+    readPerPurpose(db, scope),
+    readPerTurn(db, storyId),
   ])
 
   return {
@@ -136,6 +269,8 @@ export async function getStoryCostProfile(
     completionTokens: totals?.completionTokens ?? 0,
     perModel: perModel satisfies ModelShareRow[],
     perEntry: perEntry satisfies EntrySpendRow[],
+    perPurpose,
+    perTurn,
   }
 }
 
