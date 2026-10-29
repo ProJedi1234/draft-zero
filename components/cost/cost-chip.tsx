@@ -36,12 +36,24 @@ import {
 export function CostChip({
   profile,
   span,
+  memory,
 }: {
   profile: StoryCostProfile
-  /** First/last generated passage, ISO — passed through to the sparkline. */
+  /** First/last generated passage, ISO — passed through to the strip caption. */
   span?: { firstIso: string; lastIso: string } | null
+  memory: { world: boolean; recap: boolean }
 }) {
   const [open, setOpen] = React.useState(false)
+
+  // Only short stories offer the jump, and their passages are all rendered.
+  const jumpTo = React.useCallback((entryId: string) => {
+    const target = document.querySelector(
+      `[data-entry-id="${CSS.escape(entryId)}"]`
+    )
+    if (!target) return
+    setOpen(false)
+    target.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, [])
 
   // A total built partly from calls OpenRouter never priced is shown as an
   // explicit floor, never as an exact figure.
@@ -78,7 +90,12 @@ export function CostChip({
         className="w-[22rem] gap-0 bg-surface-glass-strong p-0 backdrop-blur-md"
         aria-label="Spend ledger"
       >
-        <CostLedger profile={profile} span={span} />
+        <CostLedger
+          profile={profile}
+          span={span}
+          memory={memory}
+          onJump={jumpTo}
+        />
       </PopoverContent>
     </Popover>
   )

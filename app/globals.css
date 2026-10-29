@@ -389,6 +389,17 @@
   animation: contour-drift 14s linear infinite;
 }
 
+/* The secondary line of a spend purpose: its colour, striped. Set the colour
+   with a text-* utility so the stripes follow it. */
+@utility bg-hatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    currentColor 0 1.5px,
+    transparent 1.5px 3.5px
+  );
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
 @utility animate-contour-scan {
   animation: contour-scan 4.5s cubic-bezier(0.45, 0, 0.3, 1) infinite;
 }
@@ -410,6 +421,10 @@
     --color-chart-3: var(--chart-3);
     --color-chart-2: var(--chart-2);
     --color-chart-1: var(--chart-1);
+    --color-spend-story: var(--spend-story);
+    --color-spend-pictures: var(--spend-pictures);
+    --color-spend-memory: var(--spend-memory);
+    --color-spend-atmosphere: var(--spend-atmosphere);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -509,6 +524,12 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
+    /* Spend purposes. Run through the dataviz CVD validator, all pairs, light
+       and dark: no fifth hue passes, so sub-lines are striped, not recoloured. */
+    --spend-story: #2a78d6;
+    --spend-pictures: #e87ba4;
+    --spend-memory: #008300;
+    --spend-atmosphere: #eda100;
     --radius: 0.625rem;
     --sidebar: oklch(calc(0.985 - 0.088 * var(--story-c)) calc(0.078 * var(--story-c)) var(--story-h));
     --sidebar-foreground: oklch(0.145 0 0);
@@ -572,6 +593,10 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
+    --spend-story: #3987e5;
+    --spend-pictures: #d55181;
+    --spend-memory: #008300;
+    --spend-atmosphere: #c98500;
     --sidebar: oklch(calc(0.205 + 0.03 * var(--story-c)) calc(0.058 * var(--story-c)) var(--story-h));
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.488 0.243 264.376);

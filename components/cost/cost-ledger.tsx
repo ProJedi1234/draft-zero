@@ -3,49 +3,66 @@
 import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 
-import type { ModelShareRow, StoryCostProfile } from "@/lib/types"
-import {
-  formatTokenCount,
-  formatUsd,
-  formatUsdFloor,
-  shortModelId,
-} from "@/lib/format"
+import type { PurposeSpendRow, StoryCostProfile } from "@/lib/types"
+import { formatTokenCount, formatUsd, formatUsdFloor } from "@/lib/format"
+import { SPEND_PART_LABELS, SPEND_PURPOSE_LABELS } from "@/lib/spend-purpose"
+import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
-import { Meter } from "@/components/ui/meter"
 import { MICRO_LABEL } from "@/components/cost/micro-label"
-import { RowList } from "@/components/cost/row-list"
-import { CostSpark } from "@/components/cost/cost-spark"
+import { formatShare, PurposeRows } from "@/components/cost/purpose-rows"
+import { partFill, purposeFill } from "@/components/cost/spend-swatch"
+import { TurnSpend } from "@/components/cost/turn-spend"
 
-/** Model rows shown before the list asks to be expanded. */
-const VISIBLE_MODELS = 5
-
-/** Whole-number share, with a floor so a real row never reads as 0%. */
-function formatShare(fraction: number): string {
-  if (!Number.isFinite(fraction) || fraction <= 0) return "—"
-  const percent = fraction * 100
-  return percent < 1 ? "<1%" : `${Math.round(percent)}%`
+interface Segment {
+  key: string
+  label: string
+  fill: string
+  usd: number
 }
 
-function ModelRow({ row, total }: { row: ModelShareRow; total: number }) {
-  const cost = Number.parseFloat(row.costUsd)
-  const fraction = total > 0 && Number.isFinite(cost) ? cost / total : 0
+/** Story and memory split into their lines; pictures and atmosphere stay whole. */
+function segmentsOf(rows: PurposeSpendRow[]): Segment[] {
+  return rows.flatMap((row) => {
+    const split = row.purpose === "story" || row.purpose === "memory"
+    const pieces = split
+      ? row.parts.map((part) => ({
+          key: part.part,
+          label: SPEND_PART_LABELS[part.part],
+          fill: partFill(part.part),
+          usd: Number.parseFloat(part.costUsd),
+        }))
+      : [
+          {
+            key: row.purpose,
+            label: SPEND_PURPOSE_LABELS[row.purpose],
+            fill: purposeFill(row.purpose),
+            usd: Number.parseFloat(row.costUsd),
+          },
+        ]
+    return pieces.filter((piece) => Number.isFinite(piece.usd) && piece.usd > 0)
+  })
+}
 
+function SpendBar({ rows, total }: { rows: PurposeSpendRow[]; total: number }) {
+  const segments = segmentsOf(rows)
+  if (segments.length === 0 || !(total > 0)) return null
+  const label = segments
+    .map((s) => `${s.label} ${formatShare(s.usd / total)}`)
+    .join(", ")
   return (
-    <div className="flex items-center gap-3 px-4 py-1.5">
-      <span
-        className="max-w-[9rem] flex-none truncate font-mono text-xs text-muted-foreground"
-        title={row.modelId}
-      >
-        {shortModelId(row.modelId)}
-      </span>
-      {/* The house meter — the one bar shape this app owns. */}
-      <Meter value={fraction} className="flex-1" />
-      <span className="w-14 flex-none text-right font-mono text-xs text-muted-foreground tabular-nums">
-        {formatUsd(row.costUsd)}
-      </span>
-      <span className="w-9 flex-none text-right font-mono text-xs text-muted-foreground/60 tabular-nums">
-        {formatShare(fraction)}
-      </span>
+    <div
+      role="img"
+      aria-label={label}
+      title={label}
+      className="mt-3 flex h-2 gap-0.5"
+    >
+      {segments.map((segment) => (
+        <span
+          key={segment.key}
+          className={cn("h-full min-w-0.5 basis-0 rounded-[1px]", segment.fill)}
+          style={{ flexGrow: segment.usd * 1e6 }}
+        />
+      ))}
     </div>
   )
 }
@@ -60,12 +77,17 @@ function ModelRow({ row, total }: { row: ModelShareRow; total: number }) {
 export function CostLedger({
   profile,
   span,
+  memory,
+  onJump,
 }: {
   profile: StoryCostProfile
-  /** First/last generated passage, ISO — the sparkline caption's range. */
+  /** First/last generated passage, ISO — the strip caption's range. */
   span?: { firstIso: string; lastIso: string } | null
+  memory: { world: boolean; recap: boolean }
+  onJump: (entryId: string) => void
 }) {
   const total = Number.parseFloat(profile.totalUsd)
+  const turns = profile.perTurn.length
 
   return (
     <div className="flex flex-col text-sm">
@@ -74,54 +96,54 @@ export function CostLedger({
         <p className="mt-1.5 font-mono text-2xl text-foreground tabular-nums">
           {formatUsdFloor(profile.totalUsd, profile.unpricedCalls)}
         </p>
-        <p className="mt-1 font-mono text-xs text-muted-foreground tabular-nums">
-          {profile.calls} {profile.calls === 1 ? "generation" : "generations"} ·{" "}
+        {turns > 0 && total > 0 ? (
+          <p className="mt-1 font-mono text-xs text-muted-foreground tabular-nums">
+            {turns} {turns === 1 ? "turn" : "turns"} · ≈{" "}
+            {formatUsd(total / turns)} each
+          </p>
+        ) : null}
+        <p className="mt-1 font-mono text-xs text-muted-foreground/70 tabular-nums">
+          {profile.calls} {profile.calls === 1 ? "call" : "calls"} ·{" "}
           {formatTokenCount(profile.promptTokens)} in ·{" "}
           {formatTokenCount(profile.completionTokens)} out
         </p>
+        {profile.unpricedCalls > 0 ? (
+          <p className="mt-1 font-mono text-xs text-muted-foreground/70 tabular-nums">
+            {profile.unpricedCalls}{" "}
+            {profile.unpricedCalls === 1 ? "call" : "calls"} not recorded
+          </p>
+        ) : null}
+        <SpendBar rows={profile.perPurpose} total={total} />
       </section>
 
-      {profile.perEntry.length > 0 ? (
+      {profile.perPurpose.length > 0 ? (
         <section className="border-t px-4 py-3">
-          <CostSpark
-            entries={profile.perEntry}
+          <div className="mb-1 flex items-baseline justify-between gap-3">
+            <h2 className={MICRO_LABEL}>Where it went</h2>
+            <span className="font-mono text-[0.625rem] text-muted-foreground/60">
+              open a row for its models
+            </span>
+          </div>
+          <PurposeRows
+            rows={profile.perPurpose}
             totalUsd={profile.totalUsd}
-            span={span}
+            memory={memory}
           />
         </section>
       ) : null}
 
-      {profile.perModel.length > 0 ? (
-        <section className="border-t py-2">
-          <h2 className={`${MICRO_LABEL} px-4 pt-1 pb-1.5`}>By model</h2>
-          <RowList
-            rows={profile.perModel}
-            cap={VISIBLE_MODELS}
-            triggerClassName="mx-4 mb-1"
-            renderRow={(row) => (
-              <ModelRow key={row.modelId} row={row} total={total} />
-            )}
-          />
-        </section>
+      {turns > 0 ? (
+        <TurnSpend rows={profile.perTurn} span={span ?? null} onJump={onJump} />
       ) : null}
 
-      <footer className="flex items-center justify-between gap-3 border-t px-4 py-2">
-        <p className="font-mono text-[0.625rem] text-muted-foreground/60 tabular-nums">
-          {profile.unpricedCalls > 0
-            ? `${profile.unpricedCalls} ${
-                profile.unpricedCalls === 1 ? "generation" : "generations"
-              } not recorded`
-            : null}
-        </p>
+      <footer className="flex items-center justify-end border-t px-4 py-2">
         <Link
           href="/usage"
           className={buttonVariants({ variant: "ghost", size: "xs" })}
         >
           All usage
           {/* A lucide glyph, like every other arrow in the app. The unicode "→"
-              this used to carry was the only one in the codebase, and the ghost
-              button's uppercase + wide tracking letter-spaced it away from the
-              word it belonged to. */}
+              letter-spaced away from its word under the ghost button's tracking. */}
           <ArrowRight data-icon="inline-end" />
         </Link>
       </footer>
