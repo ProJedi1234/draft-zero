@@ -784,6 +784,7 @@ function StoryEditor({
           excludedLoreIds={excludedLoreIds}
           onToggleLore={toggleLore}
           deriving={derivation.deriving}
+          deriveThinking={derivation.thinking}
           derivedBrief={derivation.derivedBrief}
           derivedExcludedLoreIds={derivation.derivedExcludedLoreIds}
           markDevelopedRef={markLaneDevelopedRef}

@@ -41,7 +41,7 @@ const BAR_WIDTH = "2px"
  * canvas — every persisted passage included — once a second for the length of a
  * think, to update one word of text.
  */
-function useElapsedSeconds(running: boolean): number {
+export function useElapsedSeconds(running: boolean): number {
   const [seconds, setSeconds] = React.useState(0)
 
   React.useEffect(() => {

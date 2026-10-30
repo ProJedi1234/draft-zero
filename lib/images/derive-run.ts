@@ -73,6 +73,8 @@ export interface LiveDeriveRun {
   callId: string | null
   /** The snapshot: everything the model has written so far. */
   textSoFar: string
+  /** Reasoning characters so far — the snapshot of the thinking phase. */
+  reasoningChars: number
   /** Set exactly once, after the draft row committed — a finished run IS its end frame. */
   end: DeriveRunEndFrame | null
   /** True when the story is being deleted out from under the develop. */
@@ -134,6 +136,7 @@ export function attachDeriveRun(
     brief: run.brief,
     excludedLoreIds: run.excludedLoreIds,
     text: run.textSoFar,
+    reasoningChars: run.reasoningChars,
   }
   run.listeners.add(listener)
   return {
@@ -178,6 +181,7 @@ export function launchDeriveRun(
     settings: opts.settings,
     callId: null,
     textSoFar: "",
+    reasoningChars: 0,
     end: null,
     discarded: false,
     upstream: new AbortController(),
@@ -289,6 +293,9 @@ async function deriveRunLoop(run: LiveDeriveRun): Promise<void> {
       })) {
         if (event.type === "text" && event.value) {
           emit(event.value)
+        } else if (event.type === "reasoning" && event.chars) {
+          run.reasoningChars += event.chars
+          fanOut({ type: "reasoning", chars: event.chars })
         } else if (event.type === "done") {
           usage = {
             generationId: event.generationId ?? null,

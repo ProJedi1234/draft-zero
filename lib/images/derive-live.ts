@@ -17,8 +17,10 @@ import { streamOllamaCompletion } from "@/lib/generation/ollama-chat"
 import { reasoningParam } from "@/lib/generation/openrouter"
 
 export interface DerivationEvent {
-  type: "text" | "done"
+  type: "text" | "reasoning" | "done"
   value?: string
+  /** Reasoning characters in this chunk; `reasoning` events only. */
+  chars?: number
   generationId?: string | null
   costUsd?: number | null
   promptTokens?: number | null
@@ -112,6 +114,12 @@ export async function* streamDerivation(opts: {
     }
     if (generationId === null && chunk.id) generationId = chunk.id
 
+    // Asked for "off", a mandatory reasoner thinks anyway. The composer says so
+    // instead of sitting on an empty lane for the length of the think.
+    const reasoning = chunk.choices[0]?.delta.reasoning
+    if (typeof reasoning === "string" && reasoning !== "") {
+      yield { type: "reasoning", chars: reasoning.length }
+    }
     const text = chunk.choices[0]?.delta.content
     if (typeof text === "string" && text !== "") {
       yield { type: "text", value: text }
@@ -150,6 +158,9 @@ async function* streamLocalDerivation(opts: {
     signal: opts.signal,
   })) {
     if (event.type === "text") yield { type: "text", value: event.value }
+    if (event.type === "reasoning") {
+      yield { type: "reasoning", chars: event.chars }
+    }
     if (event.type === "usage") {
       promptTokens = event.usage.promptTokens
       completionTokens = event.usage.completionTokens

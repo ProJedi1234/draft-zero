@@ -338,6 +338,9 @@ export function useImagePromptDerivation(
   }
 ) {
   const [deriving, setDeriving] = React.useState(false)
+  // The model is reasoning and has not written a word of the prompt yet. Only
+  // a reasoning model that cannot be turned off ever gets here.
+  const [thinking, setThinking] = React.useState(false)
   // Which brief the live — or most recently finished — run is answering. The
   // composer dates its lane by this rather than by its own textarea, so a
   // device that attached halfway through still marks staleness against the
@@ -399,7 +402,10 @@ export function useImagePromptDerivation(
         // linger window closed. Either way the composer unlocks — the settled
         // prompt, if there was one, arrived as a `draft` event.
         if (events === null) {
-          if (!controller.signal.aborted) setDeriving(false)
+          if (!controller.signal.aborted) {
+            setThinking(false)
+            setDeriving(false)
+          }
           return
         }
 
@@ -413,12 +419,17 @@ export function useImagePromptDerivation(
               setDerivedBrief(event.brief)
               setDerivedExcludedLoreIds(event.excludedLoreIds)
               setDeriving(true)
+              setThinking(text === "" && event.reasoningChars > 0)
               // The snapshot, not a delta: an attacher lands in the middle of
               // a sentence and gets all of it at once.
               optionsRef.current.onText(text)
             } else if (event.type === "text") {
               text += event.value
+              setThinking(false)
               optionsRef.current.onText(text)
+            } else if (event.type === "reasoning") {
+              // Never back to thinking once words arrive, like the prose caret.
+              if (text === "") setThinking(true)
             } else if (event.type === "end") {
               const launched = launchedRef.current
               launchedRef.current = false
@@ -436,6 +447,7 @@ export function useImagePromptDerivation(
               } else {
                 optionsRef.current.onDiscard({ persist: launched })
               }
+              setThinking(false)
               // Last, so the composer's falling edge fires over settled text.
               setDeriving(false)
               return
@@ -481,6 +493,7 @@ export function useImagePromptDerivation(
       launchedRef.current = true
       setDerivedBrief(input.brief)
       setDerivedExcludedLoreIds(input.excludedLoreIds)
+      setThinking(false)
       setDeriving(true)
       optionsRef.current.onText("")
 
@@ -555,5 +568,12 @@ export function useImagePromptDerivation(
     attach(null)
   }, [attach])
 
-  return { deriving, derivedBrief, derivedExcludedLoreIds, develop, attach }
+  return {
+    deriving,
+    thinking,
+    derivedBrief,
+    derivedExcludedLoreIds,
+    develop,
+    attach,
+  }
 }
