@@ -48,6 +48,8 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql://draft_zero:${POSTGRES_PASSWORD}@postgres:5432/draft_zero
+      # Pinned over .env so pictures always land on the app-data volume.
+      DRAFT_ZERO_DATA_DIR: /data
     # Loopback by default because the app has no login: anyone who can reach
     # the port can read every story and spend the saved OpenRouter key.
     ports:
