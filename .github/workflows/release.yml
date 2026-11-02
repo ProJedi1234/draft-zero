@@ -81,11 +81,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Only for the OCI labels. The source label is what links the GHCR
-      # package back to this repo.
+      # package back to this repo. The semver rule makes the version label
+      # 1.2.3 like the image tags, instead of the raw ref name v1.2.3.
       - id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
+          tags: type=semver,pattern={{version}}
 
       # Pushed by digest with no tag. The publish job tags the merged index.
       - id: build
