@@ -163,6 +163,26 @@ against it, so a signature a real server rejects fails the build.
 CI runs tests, format check, lint, types and a production build on every push
 and pull request.
 
+## Releases
+
+Publishing a GitHub release runs `.github/workflows/release.yml`. It builds
+`Dockerfile.prod` for amd64 and arm64, pushes the image to GHCR, and attaches
+`docker/release/compose.yaml` (pinned to the release) and
+`docker/release/env.example`. [Self-hosting](self-hosting.md) covers running
+the result.
+
+```bash
+gh release create v0.4.0 --target main --generate-notes
+gh release create v0.5.0-rc.1 --target main --generate-notes --prerelease
+```
+
+- Tags must be semver with a `v` prefix, or the workflow stops before building.
+- Release from a commit on main. The workflow does not re-run tests.
+- Prereleases publish only their full version and leave `latest` alone.
+- The notes should say whether the release adds migrations, and whether it
+  changes a sync contract that needs a newer iOS build.
+- The iOS app is not a release asset. It ships through Xcode or TestFlight.
+
 ## Layout
 
 - `app/` — routes: `/` (the library), `/story/[storyId]`,

@@ -115,6 +115,9 @@ docker compose --profile app up --build
 [docs/setup.md](docs/setup.md) covers the database options, migrations, the
 Docker images and every environment variable.
 
+To run a published release without the source, see
+[docs/self-hosting.md](docs/self-hosting.md).
+
 ## Stack
 
 Next.js 16 App Router, React 19, Tailwind v4, shadcn on `@base-ui/react`,
@@ -123,7 +126,9 @@ package manager and test runner.
 
 ## Docs
 
-- [Setup](docs/setup.md) — database, Docker, migrations, scripts, layout
+- [Setup](docs/setup.md) — database, Docker, migrations, scripts, layout,
+  cutting a release
+- [Self-hosting](docs/self-hosting.md) — running a published release
 - [Do and Say](docs/do-and-say.md) — how a first-person turn becomes prose
 - [Provider routing](docs/provider-routing.md) — pinning a host, zero data
   retention
