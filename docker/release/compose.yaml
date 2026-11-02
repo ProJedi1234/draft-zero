@@ -7,7 +7,9 @@
 # Unlike the dev stack at the repo root, nothing here builds from source: the
 # app and the migrate one-shot both run the published image.
 
-name: draft-zero
+# Not `draft-zero`, which the dev stack pins: sharing it would share containers
+# and the database volume with a dev checkout on the same host.
+name: draft-zero-release
 
 services:
   postgres:

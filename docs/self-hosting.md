@@ -18,7 +18,9 @@ Requires Docker with Compose 2.24 or later.
 ```bash
 mkdir draft-zero && cd draft-zero
 # download compose.yaml and env.example from the release into this directory
-mv env.example .env       # set POSTGRES_PASSWORD, letters and digits only
+mv env.example .env
+chmod 600 .env            # it will hold the database password and API keys
+# set POSTGRES_PASSWORD in .env, letters and digits only
 docker compose up -d
 ```
 
@@ -33,7 +35,9 @@ or behind a proxy that authenticates.
 
 ## Upgrade
 
-Download the newer release's `compose.yaml` over the old one, then:
+Download the newer release's `compose.yaml` over the old one. If `.env` sets
+`DRAFT_ZERO_VERSION`, change or clear it too, because it overrides the version
+the compose file pins. Then:
 
 ```bash
 docker compose pull
@@ -48,6 +52,9 @@ docker compose exec postgres pg_dump -U draft_zero -Fc draft_zero > draft-zero.d
 ```
 
 ## Data
+
+Compose names the volumes `draft-zero-release_postgres-data` and
+`draft-zero-release_app-data`.
 
 | Volume | Holds |
 |---|---|

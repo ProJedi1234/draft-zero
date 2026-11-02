@@ -27,8 +27,35 @@ env:
   NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
+  # Runs once, before either build, so a bad tag never starts a 3-minute build.
+  tag:
+    name: Check tag
+    runs-on: ubuntu-24.04
+    outputs:
+      stable: ${{ steps.check.outputs.stable }}
+    steps:
+      # Strict semver, because metadata-action emits no tags for anything else
+      # and the image would be pushed untagged.
+      - id: check
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE_FLAG: ${{ github.event.release.prerelease }}
+        run: |
+          num='(0|[1-9][0-9]*)'
+          if [[ ! "$TAG" =~ ^v$num\.$num\.$num(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "::error::Release tag '$TAG' is not semver like v1.2.3 or v1.2.3-rc.1"
+            exit 1
+          fi
+          # `latest` moves only when the tag and the release checkbox both say stable.
+          if [[ "$TAG" == *-* || "$PRERELEASE_FLAG" == "true" ]]; then
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stable=true" >> "$GITHUB_OUTPUT"
+          fi
+
   image:
     name: Image (${{ matrix.arch }})
+    needs: tag
     strategy:
       matrix:
         include:
@@ -41,17 +68,6 @@ jobs:
       contents: read
       packages: write
     steps:
-      # The image tags come from the release tag, so a tag that is not semver
-      # would produce an image with no tags at all.
-      - name: Check tag
-        env:
-          TAG: ${{ github.event.release.tag_name }}
-        run: |
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Release tag '$TAG' is not semver like v1.2.3 or v1.2.3-rc.1"
-            exit 1
-          fi
-
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -97,7 +113,7 @@ jobs:
 
   publish:
     name: Tag image and attach assets
-    needs: image
+    needs: [tag, image]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -131,7 +147,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !github.event.release.prerelease }}
+            type=raw,value=latest,enable=${{ needs.tag.outputs.stable == 'true' }}
 
       - name: Create multi-arch tags
         working-directory: ${{ runner.temp }}/digests
