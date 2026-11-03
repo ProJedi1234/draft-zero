@@ -21,6 +21,7 @@ import {
   stories,
   storyEntries,
   type StoryRow,
+  worldPatches,
 } from "@/lib/db/schema"
 import { storyVersionBump } from "@/lib/db/story-version"
 import { discardStoryRun } from "@/lib/generation/live"
@@ -31,6 +32,7 @@ import {
 import { discardStoryDeriveRun } from "@/lib/images/derive-run"
 import { discardStoryImageRun } from "@/lib/images/live"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
+import { copyWorldPatches } from "@/lib/world/copy"
 import {
   commitChange,
   commitStoryDelete,
@@ -309,8 +311,9 @@ export async function setStoryTintAuto(
 }
 
 /**
- * Copies a story (entries + lorebook + settings), title suffixed " (copy)",
- * fresh ids/timestamps. Scope "opening" copies only the first live passage.
+ * Copies a story (entries + lorebook + settings + living world), title
+ * suffixed " (copy)", fresh ids/timestamps. Scope "opening" copies only the
+ * first live passage and starts the world fresh: clock at zero, no memories.
  */
 export async function duplicateStory(
   raw: DuplicateStoryInput,
@@ -321,58 +324,125 @@ export async function duplicateStory(
   const { id, scope } = parsed.data
 
   const db = await getDb()
-  const source = await db
-    .select()
-    .from(stories)
-    .where(eq(stories.id, id))
-    .limit(1)
-    .then((rows) => rows[0])
-
-  if (!source) return fail("not_found", "Story not found.")
-
-  // Only the manuscript as it currently reads gets copied: deleted passages and
-  // the inactive alternative takes belong to the original's history, and the
-  // copy is deliberately given none (see below). Copying them would be worse
-  // than useless — with no ops to explain them they would have to land as
-  // ordinary active passages, so every retried block would appear twice.
-  const liveEntries = db
-    .select()
-    .from(storyEntries)
-    .where(
-      and(
-        eq(storyEntries.storyId, id),
-        isNull(storyEntries.deletedAt),
-        eq(storyEntries.isActive, true)
-      )
-    )
-    .orderBy(asc(storyEntries.position))
-  const [entries, lore] = await Promise.all([
-    scope === "opening" ? liveEntries.limit(1) : liveEntries,
-    db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
-  ])
-
-  const now = new Date().toISOString()
   const copyId = parsed.data.copyId ?? crypto.randomUUID()
 
   let copy: StoryRow | undefined
   try {
-    ;[copy] = await db
-      .insert(stories)
-      .values({
-        ...source,
-        id: copyId,
-        title: parsed.data.title ?? `${source.title} (copy)`,
-        // No ops are copied, so the copy's cursor has to start where an
-        // untouched story's does. Undo history is a record of what the writer
-        // did to *this* manuscript; inheriting the original's would offer to
-        // reverse edits whose rows were never copied, and `...source` would
-        // otherwise carry a non-zero cursor pointing at ops that do not exist
-        // here.
-        undoCursor: 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning()
+    // One repeatable-read transaction, so every read sees the same snapshot
+    // (an edit landing between them would fold to a world that never existed)
+    // and a failure part-way leaves no half-copy for a copyId retry to accept.
+    const result = await db.transaction(
+      async (tx): Promise<ServiceResult<StoryRow | undefined>> => {
+        const [source] = await tx
+          .select()
+          .from(stories)
+          .where(eq(stories.id, id))
+          .limit(1)
+        if (!source) return fail("not_found", "Story not found.")
+
+        // Only the manuscript as it currently reads gets copied: deleted
+        // passages and the inactive alternative takes belong to the original's
+        // history, and the copy is deliberately given none. Copying them would
+        // be worse than useless — with no ops to explain them they would have
+        // to land as ordinary active passages, so every retried block would
+        // appear twice.
+        const liveEntries = tx
+          .select()
+          .from(storyEntries)
+          .where(
+            and(
+              eq(storyEntries.storyId, id),
+              isNull(storyEntries.deletedAt),
+              eq(storyEntries.isActive, true)
+            )
+          )
+          .orderBy(asc(storyEntries.position))
+        const entries = await (scope === "opening"
+          ? liveEntries.limit(1)
+          : liveEntries)
+        const lore = await tx
+          .select()
+          .from(lorebookEntries)
+          .where(eq(lorebookEntries.storyId, id))
+        // An opening copy replays the setup, so it keeps no world patches, not
+        // even the NULL-anchored ones set before the first generated passage.
+        const patches =
+          scope === "opening"
+            ? []
+            : await tx
+                .select()
+                .from(worldPatches)
+                .where(eq(worldPatches.storyId, id))
+
+        const now = new Date().toISOString()
+        // actionKind/inputText travel with the copy: a player turn in the
+        // original is still a player turn here, and dropping the pair would
+        // silently demote every Say and Do in the copy to un-re-editable prose.
+        const entryIds = new Map<string, string>()
+        const entryRows = entries.map((entry, index) => {
+          // Each copied passage opens a fresh one-take slot named after itself.
+          // The original's variant groups are not carried over: their other
+          // takes were left behind, so a shared group id would describe a slot
+          // that no longer has anything else in it.
+          const entryId = crypto.randomUUID()
+          entryIds.set(entry.id, entryId)
+          return {
+            id: entryId,
+            storyId: copyId,
+            position: index,
+            variantGroupId: entryId,
+            variantIndex: 0,
+            isActive: true,
+            source: entry.source,
+            text: entry.text,
+            actionKind: entry.actionKind,
+            inputText: entry.inputText,
+            createdAt: now,
+          }
+        })
+        // The lorebook is per-story, so a copy needs its own copy of the lore.
+        const loreIds = new Map<string, string>()
+        const loreRows = lore.map((entry) => {
+          const loreId = crypto.randomUUID()
+          loreIds.set(entry.id, loreId)
+          return {
+            ...entry,
+            id: loreId,
+            storyId: copyId,
+            createdAt: now,
+            updatedAt: now,
+          }
+        })
+        const patchRows = copyWorldPatches(patches, copyId, entryIds, loreIds)
+
+        const [row] = await tx
+          .insert(stories)
+          .values({
+            ...source,
+            id: copyId,
+            title: parsed.data.title ?? `${source.title} (copy)`,
+            // No ops are copied, so the copy's cursor has to start where an
+            // untouched story's does. Undo history is a record of what the
+            // writer did to *this* manuscript; inheriting the original's would
+            // offer to reverse edits whose rows were never copied.
+            undoCursor: 0,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning()
+        if (!row) return ok(undefined)
+        if (entryRows.length > 0)
+          await tx.insert(storyEntries).values(entryRows)
+        if (loreRows.length > 0)
+          await tx.insert(lorebookEntries).values(loreRows)
+        if (patchRows.length > 0)
+          await tx.insert(worldPatches).values(patchRows)
+        return ok(row)
+      },
+      { isolationLevel: "repeatable read" }
+    )
+    if (!result.ok) return result
+    copy = result.data
   } catch (error) {
     // Same idempotency key as createStory: our own copyId colliding means the
     // first attempt committed and published.
@@ -386,47 +456,6 @@ export async function duplicateStory(
   }
 
   if (!copy) return fail("failed", "Story could not be copied.")
-
-  // actionKind/inputText travel with the copy: a player turn in the original is
-  // still a player turn here, and dropping the pair would silently demote every
-  // Say and Do in the copy to un-re-editable prose.
-  if (entries.length > 0) {
-    await db.insert(storyEntries).values(
-      entries.map((entry, index) => {
-        // Each copied passage opens a fresh one-take slot named after itself.
-        // The original's variant groups are not carried over: their other takes
-        // were left behind above, so a shared group id would describe a slot
-        // that no longer has anything else in it.
-        const entryId = crypto.randomUUID()
-        return {
-          id: entryId,
-          storyId: copyId,
-          position: index,
-          variantGroupId: entryId,
-          variantIndex: 0,
-          isActive: true,
-          source: entry.source,
-          text: entry.text,
-          actionKind: entry.actionKind,
-          inputText: entry.inputText,
-          createdAt: now,
-        }
-      })
-    )
-  }
-
-  // The lorebook is per-story, so a copy needs its own copy of the lore.
-  if (lore.length > 0) {
-    await db.insert(lorebookEntries).values(
-      lore.map((entry) => ({
-        ...entry,
-        id: crypto.randomUUID(),
-        storyId: copyId,
-        createdAt: now,
-        updatedAt: now,
-      }))
-    )
-  }
 
   // Library-level for the same reason as createStory: the copy has no viewers.
   const record = await recordFor(copy)

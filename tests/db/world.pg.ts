@@ -159,11 +159,69 @@ test("manual patch publishes after commit and story deletion cascades patches", 
   ).toEqual([])
 })
 
-test("duplication copies feature and NPC flags, leaving patches behind without an id map", async () => {
+test("a full copy carries the live world onto its own passages and NPCs", async () => {
+  await applyWorldPatch(
+    { storyId, ops: [{ type: "set-clock", minutes: 60 }] },
+    NO_ORIGIN
+  )
+  const first = await narrate("Vell waits five minutes.")
+  await patch(first.id, 5)
+  const second = await narrate("Vell waits ten minutes.")
+  await patch(second.id, 10)
+  const retry = await narrate("Vell waits all day.", second.variantGroupId)
+  await patch(retry.id, 600)
+  await selectVariantByOffset(
+    { storyId, entryId: retry.id, offset: -1 },
+    NO_ORIGIN
+  )
+  await applyWorldPatch(
+    {
+      storyId,
+      ops: [{ type: "set-mind", loreEntryId: npcId, mind: "Bells." }],
+    },
+    NO_ORIGIN
+  )
+  const original = await state()
+  const { duplicateStory } = await import("@/lib/services/stories")
+  const copied = await duplicateStory({ id: storyId }, NO_ORIGIN)
+  if (!copied.ok) throw new Error(copied.error)
+  const result = await getWorldState({ storyId: copied.data.id }, NO_ORIGIN)
+  if (!result.ok) throw new Error(result.error)
+  const copy = result.data.state
+  expect(copy.minutes).toBe(original.minutes)
+  expect(copy.minutes).toBe(75)
+  expect(copy.npcs).toHaveLength(1)
+  expect(copy.npcs[0].loreEntryId).not.toBe(npcId)
+  expect(copy.npcs[0].mind).toBe("Bells.")
+  expect(copy.npcs[0].memories.map((m) => m.text)).toEqual(
+    original.npcs[0].memories.map((m) => m.text)
+  )
+  expect(copy.npcs[0].memories.map((m) => m.text)).not.toContain(
+    "I heard 600 bells."
+  )
+  expect(copy.npcs[0].memories.map((m) => m.entryId)).not.toContain(first.id)
+
+  // The copy's world is its own: deleting a passage there moves only its clock.
+  const copyEntries = (await liveWorldIo.load(copied.data.id)).entries
+  const last = copyEntries.sort((a, b) => b.position - a.position)[0]
+  await deleteEntry({ storyId: copied.data.id, entryId: last.id }, NO_ORIGIN)
+  const after = await getWorldState({ storyId: copied.data.id }, NO_ORIGIN)
+  expect(after.ok && after.data.state.minutes).toBe(65)
+  expect((await state()).minutes).toBe(75)
+})
+
+test("an opening copy keeps feature and NPC flags but starts the world fresh", async () => {
+  await applyWorldPatch(
+    { storyId, ops: [{ type: "set-clock", minutes: 60 }] },
+    NO_ORIGIN
+  )
   const entry = await narrate("Vell waits five minutes.")
   await patch(entry.id, 5)
   const { duplicateStory } = await import("@/lib/services/stories")
-  const copied = await duplicateStory({ id: storyId }, NO_ORIGIN)
+  const copied = await duplicateStory(
+    { id: storyId, scope: "opening" },
+    NO_ORIGIN
+  )
   if (!copied.ok) throw new Error(copied.error)
   expect(copied.data.record.features).toEqual({
     world: { enabled: true, pacing: "" },
@@ -178,6 +236,13 @@ test("duplication copies feature and NPC flags, leaving patches behind without a
     mind: "",
   })
   expect(result.data.state.npcs[0].loreEntryId).not.toBe(npcId)
+  const db = await getDb()
+  expect(
+    await db
+      .select()
+      .from(worldPatches)
+      .where(eq(worldPatches.storyId, copied.data.id))
+  ).toEqual([])
 })
 
 test("passage context folds only earlier patches while next context includes the live world", async () => {

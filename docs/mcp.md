@@ -102,7 +102,7 @@ writes, then the destructive tools.
 | `world_state` | A living-world story's clock and every opted-in NPC's mind and memories, with the ids `world_patch` needs. |
 | `profiles` | Every model profile: its model with live pricing, thinking level, slider overrides, how many stories follow it, and which is the default. |
 | `create_story` | Start a new, empty story, configured in one call. Returns its id. |
-| `duplicate_story` | Copy a story's live manuscript, lore and settings into a new story, optionally under a new title. `scope: "opening"` keeps only the first passage. Images, recaps and undo history stay behind. Returns the copy's id. |
+| `duplicate_story` | Copy a story's live manuscript, lore and settings into a new story, optionally under a new title. The living world comes along. `scope: "opening"` keeps only the first passage and starts the world fresh, with the clock at zero and no NPC memories. Images, recaps and undo history stay behind. Returns the copy's id. |
 | `write` | Append one passage as narration or as a Do or Say turn — a turn is translated into second person exactly as the composer does it. Returns the position it took. |
 | `edit` | Replace the text of one passage in place, by position. |
 | `rewind` | Retire every passage after a position, the way the app's rewind does — a soft delete, so the recap falls back to the newest version the remaining text still covers. |
