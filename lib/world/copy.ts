@@ -1,6 +1,7 @@
 import { worldOp, type WorldOp } from "@/lib/services/world.schema"
 
 interface PatchRow {
+  id: string
   entryId: string | null
   source: "world" | "manual"
   opsJson: string
@@ -11,6 +12,9 @@ interface PatchRow {
  * Re-points a story's world patches at a copy's passages and lore. A patch on
  * a passage the copy left behind is dropped, as is any op naming lore with no
  * copy, so the copy folds to the same world the original reads today.
+ *
+ * The fold breaks createdAt ties by patch id, so the new ids share a prefix and
+ * end in a padded index that sorts the way the original ids did.
  */
 export function copyWorldPatches(
   rows: readonly PatchRow[],
@@ -18,7 +22,14 @@ export function copyWorldPatches(
   entryIds: ReadonlyMap<string, string>,
   loreIds: ReadonlyMap<string, string>
 ) {
-  return rows.flatMap((row) => {
+  const batch = crypto.randomUUID()
+  const ordered = rows
+    .slice()
+    .sort(
+      (a, b) =>
+        a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
+    )
+  return ordered.flatMap((row, index) => {
     const entryId = row.entryId === null ? null : entryIds.get(row.entryId)
     if (entryId === undefined) return []
     let raw: unknown
@@ -37,7 +48,7 @@ export function copyWorldPatches(
     if (ops.length === 0) return []
     return [
       {
-        id: crypto.randomUUID(),
+        id: `${batch}-${String(index).padStart(6, "0")}`,
         storyId,
         entryId,
         source: row.source,

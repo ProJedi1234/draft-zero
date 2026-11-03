@@ -362,25 +362,72 @@ export async function duplicateStory(
   const now = new Date().toISOString()
   const copyId = parsed.data.copyId ?? crypto.randomUUID()
 
+  // actionKind/inputText travel with the copy: a player turn in the original is
+  // still a player turn here, and dropping the pair would silently demote every
+  // Say and Do in the copy to un-re-editable prose.
+  const entryIds = new Map<string, string>()
+  const entryRows = entries.map((entry, index) => {
+    // Each copied passage opens a fresh one-take slot named after itself.
+    // The original's variant groups are not carried over: their other takes
+    // were left behind above, so a shared group id would describe a slot
+    // that no longer has anything else in it.
+    const entryId = crypto.randomUUID()
+    entryIds.set(entry.id, entryId)
+    return {
+      id: entryId,
+      storyId: copyId,
+      position: index,
+      variantGroupId: entryId,
+      variantIndex: 0,
+      isActive: true,
+      source: entry.source,
+      text: entry.text,
+      actionKind: entry.actionKind,
+      inputText: entry.inputText,
+      createdAt: now,
+    }
+  })
+  // The lorebook is per-story, so a copy needs its own copy of the lore.
+  const loreIds = new Map<string, string>()
+  const loreRows = lore.map((entry) => {
+    const loreId = crypto.randomUUID()
+    loreIds.set(entry.id, loreId)
+    return {
+      ...entry,
+      id: loreId,
+      storyId: copyId,
+      createdAt: now,
+      updatedAt: now,
+    }
+  })
+  const patchRows = copyWorldPatches(patches, copyId, entryIds, loreIds)
+
   let copy: StoryRow | undefined
   try {
-    ;[copy] = await db
-      .insert(stories)
-      .values({
-        ...source,
-        id: copyId,
-        title: parsed.data.title ?? `${source.title} (copy)`,
-        // No ops are copied, so the copy's cursor has to start where an
-        // untouched story's does. Undo history is a record of what the writer
-        // did to *this* manuscript; inheriting the original's would offer to
-        // reverse edits whose rows were never copied, and `...source` would
-        // otherwise carry a non-zero cursor pointing at ops that do not exist
-        // here.
-        undoCursor: 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning()
+    // One transaction, so a failure part-way leaves no half-copy for a retry
+    // with the same copyId to mistake for the finished one.
+    copy = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(stories)
+        .values({
+          ...source,
+          id: copyId,
+          title: parsed.data.title ?? `${source.title} (copy)`,
+          // No ops are copied, so the copy's cursor has to start where an
+          // untouched story's does. Undo history is a record of what the
+          // writer did to *this* manuscript; inheriting the original's would
+          // offer to reverse edits whose rows were never copied.
+          undoCursor: 0,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+      if (!row) return undefined
+      if (entryRows.length > 0) await tx.insert(storyEntries).values(entryRows)
+      if (loreRows.length > 0) await tx.insert(lorebookEntries).values(loreRows)
+      if (patchRows.length > 0) await tx.insert(worldPatches).values(patchRows)
+      return row
+    })
   } catch (error) {
     // Same idempotency key as createStory: our own copyId colliding means the
     // first attempt committed and published.
@@ -394,59 +441,6 @@ export async function duplicateStory(
   }
 
   if (!copy) return fail("failed", "Story could not be copied.")
-
-  // actionKind/inputText travel with the copy: a player turn in the original is
-  // still a player turn here, and dropping the pair would silently demote every
-  // Say and Do in the copy to un-re-editable prose.
-  const entryIds = new Map<string, string>()
-  const loreIds = new Map<string, string>()
-  if (entries.length > 0) {
-    await db.insert(storyEntries).values(
-      entries.map((entry, index) => {
-        // Each copied passage opens a fresh one-take slot named after itself.
-        // The original's variant groups are not carried over: their other takes
-        // were left behind above, so a shared group id would describe a slot
-        // that no longer has anything else in it.
-        const entryId = crypto.randomUUID()
-        entryIds.set(entry.id, entryId)
-        return {
-          id: entryId,
-          storyId: copyId,
-          position: index,
-          variantGroupId: entryId,
-          variantIndex: 0,
-          isActive: true,
-          source: entry.source,
-          text: entry.text,
-          actionKind: entry.actionKind,
-          inputText: entry.inputText,
-          createdAt: now,
-        }
-      })
-    )
-  }
-
-  // The lorebook is per-story, so a copy needs its own copy of the lore.
-  if (lore.length > 0) {
-    await db.insert(lorebookEntries).values(
-      lore.map((entry) => {
-        const loreId = crypto.randomUUID()
-        loreIds.set(entry.id, loreId)
-        return {
-          ...entry,
-          id: loreId,
-          storyId: copyId,
-          createdAt: now,
-          updatedAt: now,
-        }
-      })
-    )
-  }
-
-  const copiedPatches = copyWorldPatches(patches, copyId, entryIds, loreIds)
-  if (copiedPatches.length > 0) {
-    await db.insert(worldPatches).values(copiedPatches)
-  }
 
   // Library-level for the same reason as createStory: the copy has no viewers.
   const record = await recordFor(copy)
