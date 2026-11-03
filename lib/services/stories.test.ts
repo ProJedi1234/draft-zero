@@ -372,15 +372,29 @@ describe("duplicateStory", () => {
     inputText: "open the door",
   }
   const lore = { id: "l1", storyId: STORY, name: "Vell", npc: true }
+  const memory = { id: "m1", text: "He opened the door.", importance: 3 }
+  const worldPatch = {
+    id: "p1",
+    storyId: STORY,
+    entryId: "e1",
+    source: "world",
+    opsJson: JSON.stringify([
+      { type: "advance-clock", minutes: 5 },
+      { type: "add-memory", loreEntryId: "l1", memory },
+    ]),
+    createdAt: "2026-10-01T00:00:00.000Z",
+  }
 
-  test("copies the live manuscript, features and NPC flags under the copy id", async () => {
+  test("copies the live manuscript, features, NPC flags and world under the copy id", async () => {
     const featuresJson = JSON.stringify({
       world: { enabled: true, pacing: "Slow." },
     })
     db.next([row({ featuresJson })])
     db.next([entry])
     db.next([lore])
+    db.next([worldPatch, { ...worldPatch, id: "p2", entryId: "gone" }])
     db.next([row({ id: COPY, title: "The Long Road (copy)" })])
+    db.next([])
     db.next([])
     db.next([])
 
@@ -393,17 +407,19 @@ describe("duplicateStory", () => {
       "select",
       "select",
       "select",
+      "select",
+      "insert",
       "insert",
       "insert",
       "insert",
     ])
-    expect(db.argsOf(3, "values")?.[0]).toMatchObject({
+    expect(db.argsOf(4, "values")?.[0]).toMatchObject({
       id: COPY,
       title: "The Long Road (copy)",
       featuresJson,
       undoCursor: 0,
     })
-    const [copied] = db.argsOf(4, "values")?.[0] as Record<string, unknown>[]
+    const [copied] = db.argsOf(5, "values")?.[0] as Record<string, unknown>[]
     expect(copied).toMatchObject({
       storyId: COPY,
       position: 0,
@@ -413,16 +429,28 @@ describe("duplicateStory", () => {
       inputText: "open the door",
     })
     expect(copied.variantGroupId).toBe(copied.id)
-    const [copiedLore] = db.argsOf(5, "values")?.[0] as Record<
+    const [copiedLore] = db.argsOf(6, "values")?.[0] as Record<
       string,
       unknown
     >[]
     expect(copiedLore).toMatchObject({ storyId: COPY, name: "Vell", npc: true })
     expect(copiedLore.id).not.toBe("l1")
+    const patches = db.argsOf(7, "values")?.[0] as Record<string, unknown>[]
+    expect(patches).toHaveLength(1)
+    expect(patches[0]).toMatchObject({
+      storyId: COPY,
+      entryId: copied.id,
+      source: "world",
+      createdAt: worldPatch.createdAt,
+    })
+    expect(JSON.parse(patches[0].opsJson as string)).toEqual([
+      { type: "advance-clock", minutes: 5 },
+      { type: "add-memory", loreEntryId: copiedLore.id, memory },
+    ])
     expect(bus.events).toEqual(upsertEvents(COPY, null))
   })
 
-  test("the opening scope reads only the first live passage", async () => {
+  test("the opening scope reads only the first live passage and no world", async () => {
     db.next([row()])
     db.next([entry])
     db.next([lore])
@@ -448,6 +476,7 @@ describe("duplicateStory", () => {
     db.next([row()])
     db.next([])
     db.next([])
+    db.next([])
     db.next([row({ id: COPY })])
     await stories.duplicateStory({ id: STORY, copyId: COPY }, CTX)
     expect(db.argsOf(1, "limit")).toBeUndefined()
@@ -466,12 +495,13 @@ describe("duplicateStory", () => {
     db.next([row()])
     db.next([])
     db.next([])
+    db.next([])
     db.next([row({ id: COPY, title: "Road Not Taken" })])
     await stories.duplicateStory(
       { id: STORY, copyId: COPY, title: "  Road Not Taken " },
       CTX
     )
-    expect(db.argsOf(3, "values")?.[0]).toMatchObject({
+    expect(db.argsOf(4, "values")?.[0]).toMatchObject({
       title: "Road Not Taken",
     })
   })
@@ -493,9 +523,11 @@ describe("duplicateStory", () => {
     db.next([row()])
     db.next([])
     db.next([])
+    db.next([])
     db.next([row({ id: COPY })])
     await stories.duplicateStory({ id: STORY, copyId: COPY }, CTX)
     expect(db.statements.map((s) => s.root)).toEqual([
+      "select",
       "select",
       "select",
       "select",
@@ -505,6 +537,7 @@ describe("duplicateStory", () => {
 
   test("a retried copy id confirms the first attempt, silently", async () => {
     db.next([row()])
+    db.next([])
     db.next([])
     db.next([])
     db.next(uniqueViolation())
@@ -545,6 +578,7 @@ describe("duplicateStory", () => {
 
   test("an empty copy insert fails", async () => {
     db.next([row()])
+    db.next([])
     db.next([])
     db.next([])
     db.next([])

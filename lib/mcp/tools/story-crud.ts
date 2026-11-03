@@ -164,7 +164,7 @@ const duplicateInput = z.object({
     .enum(duplicateScopes)
     .optional()
     .describe(
-      '"opening" keeps only the first passage, to replay the setup with the same lore and settings. Default "full".'
+      '"opening" keeps only the first passage and resets the living world (clock at zero, no NPC minds or memories), to replay the setup with the same lore and settings. "full" also copies the world. Default "full".'
     ),
 })
 
@@ -180,7 +180,7 @@ export const registerDuplicateStory: RegisterTool = (server) => {
     {
       title: "Duplicate story",
       description:
-        "Copy a story — its live manuscript (or just its opening), lore and settings — into a new story, to branch it or replay it without touching the original. Images, recaps and undo history stay behind. Returns the copy's id.",
+        "Copy a story — its live manuscript (or just its opening), lore, settings and living world — into a new story, to branch it or replay it without touching the original. Images, recaps and undo history stay behind. Returns the copy's id.",
       inputSchema: duplicateInput,
       outputSchema: duplicateOutput,
       annotations: {

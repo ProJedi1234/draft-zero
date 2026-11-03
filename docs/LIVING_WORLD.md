@@ -38,6 +38,13 @@ State = apply ops in order, starting from `{ minutes: 0, npcs: {} }`.
 
 Undo, redo, retry, switch-take, and rewind need no journal changes, because they already change which entries are live. Editing a passage does not re-run its patch.
 
+## Duplication
+
+Both scopes keep feature flags, pacing rules and NPC opt-ins.
+
+- **Full.** Copies every patch that counts in the fold today: NULL-anchored patches and patches on live passages. Each is re-pointed at the copy's passage and lore ids, so the copy reads the same clock, minds and memories. Patches on deleted passages and inactive takes are left behind with those passages.
+- **Opening.** Copies no patches, NULL-anchored ones included. The clock starts at zero and every NPC starts with no mind and no memories.
+
 ## World pass
 
 - **When.** In `finishRun` next to `scheduleSummary`, only when a passage landed and `features.world.enabled`. Same contract as `summarize.ts` and `atmosphere.ts`: floated, never awaited, never throws into generation, and the next turn is the retry.
@@ -109,5 +116,4 @@ Web and iOS show the same UI:
 - **One server process.** The queue and breaker live in memory. Several server instances could each run, and bill, the same pass. The unique index keeps it from being applied twice.
 - **Catch-up is capped.** Turning the feature on for a long story, or a long outage, leaves older passages without patches.
 - **Prose edits.** Editing a passage, or the lore behind it, does not recompute its patch, even mid-pass.
-- **Duplication.** A copy keeps feature flags and NPC opt-ins but starts with an empty world.
 - **Strikes and takes.** A strike is sent once its Undo window ends. Switching takes before then attaches it to the new take.

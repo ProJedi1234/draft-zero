@@ -21,6 +21,7 @@ import {
   stories,
   storyEntries,
   type StoryRow,
+  worldPatches,
 } from "@/lib/db/schema"
 import { storyVersionBump } from "@/lib/db/story-version"
 import { discardStoryRun } from "@/lib/generation/live"
@@ -31,6 +32,7 @@ import {
 import { discardStoryDeriveRun } from "@/lib/images/derive-run"
 import { discardStoryImageRun } from "@/lib/images/live"
 import { DEFAULT_GENERATION_SETTINGS } from "@/lib/mock-data"
+import { copyWorldPatches } from "@/lib/world/copy"
 import {
   commitChange,
   commitStoryDelete,
@@ -309,8 +311,9 @@ export async function setStoryTintAuto(
 }
 
 /**
- * Copies a story (entries + lorebook + settings), title suffixed " (copy)",
- * fresh ids/timestamps. Scope "opening" copies only the first live passage.
+ * Copies a story (entries + lorebook + settings + living world), title
+ * suffixed " (copy)", fresh ids/timestamps. Scope "opening" copies only the
+ * first live passage and starts the world fresh: clock at zero, no memories.
  */
 export async function duplicateStory(
   raw: DuplicateStoryInput,
@@ -346,9 +349,14 @@ export async function duplicateStory(
       )
     )
     .orderBy(asc(storyEntries.position))
-  const [entries, lore] = await Promise.all([
+  // An opening copy replays the setup, so it keeps no world patches, not even
+  // the NULL-anchored ones a writer set before the first generated passage.
+  const [entries, lore, patches] = await Promise.all([
     scope === "opening" ? liveEntries.limit(1) : liveEntries,
     db.select().from(lorebookEntries).where(eq(lorebookEntries.storyId, id)),
+    scope === "opening"
+      ? []
+      : db.select().from(worldPatches).where(eq(worldPatches.storyId, id)),
   ])
 
   const now = new Date().toISOString()
@@ -390,6 +398,8 @@ export async function duplicateStory(
   // actionKind/inputText travel with the copy: a player turn in the original is
   // still a player turn here, and dropping the pair would silently demote every
   // Say and Do in the copy to un-re-editable prose.
+  const entryIds = new Map<string, string>()
+  const loreIds = new Map<string, string>()
   if (entries.length > 0) {
     await db.insert(storyEntries).values(
       entries.map((entry, index) => {
@@ -398,6 +408,7 @@ export async function duplicateStory(
         // were left behind above, so a shared group id would describe a slot
         // that no longer has anything else in it.
         const entryId = crypto.randomUUID()
+        entryIds.set(entry.id, entryId)
         return {
           id: entryId,
           storyId: copyId,
@@ -418,14 +429,23 @@ export async function duplicateStory(
   // The lorebook is per-story, so a copy needs its own copy of the lore.
   if (lore.length > 0) {
     await db.insert(lorebookEntries).values(
-      lore.map((entry) => ({
-        ...entry,
-        id: crypto.randomUUID(),
-        storyId: copyId,
-        createdAt: now,
-        updatedAt: now,
-      }))
+      lore.map((entry) => {
+        const loreId = crypto.randomUUID()
+        loreIds.set(entry.id, loreId)
+        return {
+          ...entry,
+          id: loreId,
+          storyId: copyId,
+          createdAt: now,
+          updatedAt: now,
+        }
+      })
     )
+  }
+
+  const copiedPatches = copyWorldPatches(patches, copyId, entryIds, loreIds)
+  if (copiedPatches.length > 0) {
+    await db.insert(worldPatches).values(copiedPatches)
   }
 
   // Library-level for the same reason as createStory: the copy has no viewers.

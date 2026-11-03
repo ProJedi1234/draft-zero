@@ -246,12 +246,13 @@ describe("duplicate_story", () => {
     db.next([STORY_ROW])
     db.next([])
     db.next([])
+    db.next([])
     db.next([{ ...STORY_ROW, title: "Doomed Story (copy)" }])
   }
 
   /** The id the service minted for the copy. */
   function copyId() {
-    return (db.argsOf(3, "values")?.[0] as { id: string }).id
+    return (db.argsOf(4, "values")?.[0] as { id: string }).id
   }
 
   test("duplication preserves living-world settings and character opt-in", async () => {
@@ -261,11 +262,12 @@ describe("duplicate_story", () => {
     db.next([{ ...STORY_ROW, featuresJson }])
     db.next([])
     db.next([{ id: "npc", storyId: "story-1", name: "Vell", npc: true }])
+    db.next([])
     db.next([{ ...STORY_ROW, featuresJson, id: "copy" }])
     db.next([])
     await duplicateHandler()({ storyId: "story-1" }, makeCtx())
-    expect(db.argsOf(3, "values")?.[0]).toMatchObject({ featuresJson })
-    expect(db.argsOf(4, "values")?.[0]).toMatchObject([{ npc: true }])
+    expect(db.argsOf(4, "values")?.[0]).toMatchObject({ featuresJson })
+    expect(db.argsOf(5, "values")?.[0]).toMatchObject([{ npc: true }])
   })
 
   test("copies under the service's default title", async () => {
@@ -278,7 +280,7 @@ describe("duplicate_story", () => {
       structuredContent: { id: string; title: string; sourceId: string }
     }
 
-    expect(roots()).toEqual(["select", "select", "select", "insert"])
+    expect(roots()).toEqual(["select", "select", "select", "select", "insert"])
     expect(result.isError).toBeUndefined()
     expect(copyId()).not.toBe("story-1")
     expect(result.structuredContent).toEqual({
@@ -293,6 +295,7 @@ describe("duplicate_story", () => {
     db.next([STORY_ROW])
     db.next([])
     db.next([])
+    db.next([])
     db.next([{ ...STORY_ROW, title: "Road Not Taken" }])
     const result = (await duplicateHandler()(
       { storyId: "story-1", title: "Road Not Taken" },
@@ -301,8 +304,8 @@ describe("duplicate_story", () => {
 
     // One insert, no follow-up rename: a rename that failed after the copy
     // was published would read as an error, and a retry would copy again.
-    expect(roots()).toEqual(["select", "select", "select", "insert"])
-    expect(db.argsOf(3, "values")?.[0]).toMatchObject({
+    expect(roots()).toEqual(["select", "select", "select", "select", "insert"])
+    expect(db.argsOf(4, "values")?.[0]).toMatchObject({
       title: "Road Not Taken",
     })
     expect(result.structuredContent.title).toBe("Road Not Taken")

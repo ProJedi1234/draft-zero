@@ -220,6 +220,7 @@ describe("POST /api/stories/:storyId/duplicate", () => {
     db.next([{ ...ROW, undoCursor: 3 }])
     db.next([])
     db.next([])
+    db.next([])
     db.next([{ ...ROW, id: COPY }])
     const res = await duplicate.POST(request("POST", { copyId: COPY }), params)
     expect(res.status).toBe(200)
